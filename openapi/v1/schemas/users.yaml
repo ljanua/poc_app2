@@ -1,0 +1,92 @@
+components:
+  schemas:
+    Role:
+      type: string
+      enum:
+        - SystemAdmin
+        - Coach
+
+    User:
+      type: object
+      required: [id, name, email, role, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          type: string
+          enum: [active, inactive]
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+
+    UserListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+
+    CreateUserRequest:
+      type: object
+      required: [name, email, role, initialPassword]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/Role'
+        initialPassword:
+          type: string
+          minLength: 10
+
+    ChangeRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/Role'
+
+    ChangePasswordRequest:
+      type: object
+      required: [newPassword, confirmPassword]
+      properties:
+        newPassword:
+          type: string
+          minLength: 10
+        confirmPassword:
+          type: string
+          minLength: 10
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [validation_error, forbidden, not_found, conflict]
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            type: string

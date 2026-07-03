@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S6: Assessment Results — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">Video Assessments</div>
+      <div class="header-meta" id="assessmentHeaderMeta">4 submitted • 3 assessed</div>
+      <div class="header-meta" id="roleMeta">Coach</div>
+    </header>
+
+    <div class="content">
+      <div class="toolbar">
+        <select class="pill-select" id="teamFilter" aria-label="Filter clips by team">
+          <option value="all">All Teams</option>
+        </select>
+      </div>
+
+      <div class="filters">
+        <button class="filter-btn active" data-status="all">All</button>
+        <button class="filter-btn" data-status="assessed">Assessed</button>
+        <button class="filter-btn" data-status="pending">Pending</button>
+        <button class="filter-btn" data-status="failed">Failed</button>
+      </div>
+
+      <div class="results-grid" id="resultsGrid">
+        <div class="notice">Loading clip results...</div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item active" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+    </nav>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const currentUser = MockupApi.getCurrentUser();
+      document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
+      const teamFilter = document.getElementById('teamFilter');
+      const resultsGrid = document.getElementById('resultsGrid');
+      const headerMeta = document.getElementById('assessmentHeaderMeta');
+      const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+      let selectedStatus = 'all';
+
+      function render() {
+        const teamName = teamFilter.value || 'all';
+        const clips = MockupApi.listClips({ teamName: teamName, status: selectedStatus });
+        const allClips = MockupApi.listClips({ teamName: 'all', status: 'all' });
+        const assessedCount = allClips.filter(function (clip) { return clip.status === 'assessed'; }).length;
+        headerMeta.textContent = allClips.length + ' submitted • ' + assessedCount + ' assessed';
+
+        resultsGrid.innerHTML = '';
+        if (!clips.length) {
+          resultsGrid.innerHTML = '<div class="notice">No clips match the selected filters.</div>';
+          return;
+        }
+
+        clips.forEach(function (clip) {
+          const statusClass = clip.status === 'assessed' ? 'status-assessed' : clip.status === 'pending' ? 'status-pending' : 'status-failed';
+          const action = clip.status === 'pending'
+            ? '<button class="view-btn" disabled>Pending</button>'
+            : '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">View Results</a>';
+          const scoreMarkup = clip.status === 'assessed'
+            ? '<div class="result-rating" style="margin-top: 0.6rem;"><span class="rating-star">★</span><span>' + clip.score + ' / 5.0</span></div>'
+            : '<div style="margin-top: 0.6rem; color: var(--text-muted); font-size: 0.85rem;">Assessment in progress…</div>';
+
+          const card = document.createElement('div');
+          card.className = 'result-card';
+          card.innerHTML =
+            '<div class="result-thumbnail">📹<div class="play-icon">▶</div></div>' +
+            '<div class="result-content">' +
+            '<div>' +
+            '<div class="result-header">' +
+            '<div><div class="result-player">' + clip.playerName + '</div><div class="result-situation">' + clip.situation + '</div></div>' +
+            '<span class="status-badge ' + statusClass + '">' + clip.status + '</span>' +
+            '</div>' +
+            '<div class="result-meta"><span>' + clip.submittedAt + '</span><span>' + clip.skill + '</span><span>' + clip.teamName + '</span></div>' +
+            scoreMarkup +
+            '</div>' +
+            action +
+            '</div>';
+
+          resultsGrid.appendChild(card);
+        });
+      }
+
+      MockupApi.listTeams().forEach(function (team) {
+        const option = document.createElement('option');
+        option.value = team.name;
+        option.textContent = team.name;
+        teamFilter.appendChild(option);
+      });
+
+      teamFilter.addEventListener('change', render);
+      filterButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          filterButtons.forEach(function (entry) { entry.classList.remove('active'); });
+          button.classList.add('active');
+          selectedStatus = button.getAttribute('data-status') || 'all';
+          render();
+        });
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

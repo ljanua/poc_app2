@@ -1,0 +1,70 @@
+
+Running 20 tests using 4 workers
+
+[1/20] tests\playwright\s1-player-list.spec.js:9:3 › S1 Player List team filter and add-player flow › bottom navigation routes to teams, capture, and assessments pages
+[2/20] tests\playwright\s3-team-management.spec.js:9:3 › S3 Team Management › shows team KPIs and roster table
+[3/20] tests\playwright\s0-auth-entry.spec.js:4:3 › S0 Login role entry points › shows login shell and role-based entry actions
+[4/20] tests\playwright\s2-player-dashboard.spec.js:9:3 › S2 Player Development Dashboard › shows key development, match time, and performance sections
+[5/20] tests\playwright\s3-team-management.spec.js:21:3 › S3 Team Management › routes view and assign actions back to player list flow
+[6/20] tests\playwright\s0-auth-entry.spec.js:15:3 › S0 Login role entry points › navigates to coach and admin landing pages from login
+[7/20] tests\playwright\s1-player-list.spec.js:22:3 › S1 Player List team filter and add-player flow › shows only players assigned to selected team
+[8/20] tests\playwright\s2-player-dashboard.spec.js:20:3 › S2 Player Development Dashboard › provides actions to view results and submit clips
+[9/20] tests\playwright\s4-video-capture.spec.js:9:3 › S4 Video Capture and Submission › validates required player and situation before submit
+[10/20] tests\playwright\s6-assessment-list.spec.js:9:3 › S6 Assessment Results list › shows assessed and pending result cards with status badges
+[11/20] tests\playwright\s1-player-list.spec.js:34:3 › S1 Player List team filter and add-player flow › adds a player from name lookup and reassigns to selected team
+[12/20] tests\playwright\s7-admin-user-management.spec.js:9:3 › S7 Admin User Management › creates a user from modal and updates table and KPI counts
+[13/20] tests\playwright\s6-assessment-list.spec.js:17:3 › S6 Assessment Results list › opens result detail route from View Results actions
+[14/20] tests\playwright\s7-admin-user-management.spec.js:22:3 › S7 Admin User Management › switching to Coach view disables admin actions
+[15/20] tests\playwright\s7-admin-user-management.spec.js:30:3 › S7 Admin User Management › updates user role from role-change modal
+[16/20] tests\playwright\s1-player-list.spec.js:50:3 › S1 Player List team filter and add-player flow › blocks add action when no valid dropdown match exists
+[17/20] tests\playwright\s1-player-list.spec.js:61:3 › S1 Player List team filter and add-player flow › requires selecting a specific team before add-player suggestions are enabled
+[18/20] tests\playwright\s7-admin-user-management.spec.js:39:3 › S7 Admin User Management › validates password policy in change-password modal
+  1) tests\playwright\s4-video-capture.spec.js:9:3 › S4 Video Capture and Submission › validates required player and situation before submit 
+
+    Error: expect(locator).toHaveClass(expected) failed
+
+    Locator: locator('#playerError')
+    Expected pattern: /show/
+    Received string:  "error-msg"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toHaveClass" with timeout 5000ms
+      - waiting for locator('#playerError')
+        13 × locator resolved to <div id="playerError" class="error-msg">Player is required</div>
+           - unexpected value "error-msg"
+
+
+      10 |     await page.getByRole('button', { name: 'Submit for Assessment' }).click();
+      11 |
+    > 12 |     await expect(page.locator('#playerError')).toHaveClass(/show/);
+         |                                                ^
+      13 |     await expect(page.locator('#situationError')).toHaveClass(/show/);
+      14 |   });
+      15 |
+        at C:\Users\ljanuario\OneDrive - Ryder\Documents\Code\poc_app\tests\playwright\s4-video-capture.spec.js:12:48
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\s4-video-capture-S4-Video--cb965-and-situation-before-submit\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\s4-video-capture-S4-Video--cb965-and-situation-before-submit\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\s4-video-capture-S4-Video--cb965-and-situation-before-submit\error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\s4-video-capture-S4-Video--cb965-and-situation-before-submit\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\s4-video-capture-S4-Video--cb965-and-situation-before-submit\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[19/20] tests\playwright\s7-admin-user-management.spec.js:53:3 › S7 Admin User Management › filters table by role and status
+[20/20] tests\playwright\s4-video-capture.spec.js:16:3 › S4 Video Capture and Submission › accepts file selection and submits valid clip flow
+  1 failed
+    tests\playwright\s4-video-capture.spec.js:9:3 › S4 Video Capture and Submission › validates required player and situation before submit 
+  19 passed (26.7s)

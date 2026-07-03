@@ -1,0 +1,7 @@
+{
+  "code": "forbidden",
+  "message": "You are not allowed to manage users with this role",
+  "details": [
+    "Required role: SystemAdmin"
+  ]
+}

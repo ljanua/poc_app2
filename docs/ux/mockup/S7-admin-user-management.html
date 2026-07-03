@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S7: Admin User Management — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S0-login.html">←</a>
+      <div class="header-title">User &amp; Role Management</div>
+      <div class="role-badge">SystemAdmin</div>
+    </header>
+
+    <div class="content">
+      <div class="toolbar">
+        <input class="search-bar" id="userSearch" type="text" placeholder="Search by name or email">
+        <select class="pill-select" id="statusFilter" aria-label="Filter users by status">
+          <option value="all">All statuses</option>
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+        </select>
+        <select class="pill-select" id="roleFilter" aria-label="Filter users by role">
+          <option value="all">All roles</option>
+          <option value="SystemAdmin">SystemAdmin</option>
+          <option value="Coach">Coach</option>
+        </select>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Active Users</div>
+          <div class="kpi-value" id="kpiActive">27</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">SystemAdmin</div>
+          <div class="kpi-value" id="kpiAdmin">3</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Coach</div>
+          <div class="kpi-value" id="kpiCoach">24</div>
+        </div>
+      </div>
+
+      <div class="page-actions">
+        <button class="btn btn-primary js-admin-action" id="openCreateUser">Create User</button>
+        <button class="btn btn-secondary js-admin-action" id="toggleRoleView">Switch to Coach View</button>
+        <button class="btn btn-secondary">Export Access Report</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr data-name="Maria Alves" data-email="maria@vantageiq.club" data-role="SystemAdmin" data-status="active">
+                <td>Maria Alves</td>
+                <td>maria@vantageiq.club</td>
+                <td><span class="team-chip">SystemAdmin</span></td>
+                <td><span class="badge badge-improving">Active</span></td>
+                <td>Today, 08:31</td>
+                <td>
+                  <div class="inline-actions">
+                    <button class="mini-btn js-admin-action js-change-role" data-user="Maria Alves" data-role="SystemAdmin">Change Role</button>
+                    <button class="mini-btn js-admin-action js-change-password" data-user="Maria Alves">Change Password</button>
+                    <button class="mini-btn warn js-admin-action">Deactivate</button>
+                  </div>
+                </td>
+              </tr>
+              <tr data-name="Joao Lima" data-email="joao@vantageiq.club" data-role="Coach" data-status="active">
+                <td>Joao Lima</td>
+                <td>joao@vantageiq.club</td>
+                <td><span class="team-chip">Coach</span></td>
+                <td><span class="badge badge-improving">Active</span></td>
+                <td>Yesterday</td>
+                <td>
+                  <div class="inline-actions">
+                    <button class="mini-btn js-admin-action js-change-role" data-user="Joao Lima" data-role="Coach">Change Role</button>
+                    <button class="mini-btn js-admin-action js-change-password" data-user="Joao Lima">Change Password</button>
+                    <button class="mini-btn warn js-admin-action">Deactivate</button>
+                  </div>
+                </td>
+              </tr>
+              <tr data-name="Ana Costa" data-email="ana@vantageiq.club" data-role="Coach" data-status="inactive">
+                <td>Ana Costa</td>
+                <td>ana@vantageiq.club</td>
+                <td><span class="team-chip">Coach</span></td>
+                <td><span class="badge badge-declining">Inactive</span></td>
+                <td>6 days ago</td>
+                <td>
+                  <div class="inline-actions">
+                    <button class="mini-btn js-admin-action js-change-role" data-user="Ana Costa" data-role="Coach">Change Role</button>
+                    <button class="mini-btn js-admin-action js-change-password" data-user="Ana Costa">Change Password</button>
+                    <button class="mini-btn positive js-admin-action">Reactivate</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="notice" id="roleNotice" style="margin-top: 1rem;">
+        Only SystemAdmin can create users, assign roles, and deactivate accounts.
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item active" href="./S7-admin-user-management.html">
+        <span class="nav-icon">🔐</span>
+        <span>Users</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="modal" id="createUserModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Create User</h2>
+        <button class="mini-btn" data-close-modal="createUserModal">Close</button>
+      </div>
+      <form id="createUserForm" class="modal-form">
+        <label class="form-label" for="createName">Full Name <span class="required">*</span></label>
+        <input id="createName" type="text" required>
+
+        <label class="form-label" for="createEmail">Work Email <span class="required">*</span></label>
+        <input id="createEmail" type="text" required>
+
+        <label class="form-label" for="createRole">Role <span class="required">*</span></label>
+        <select id="createRole" required>
+          <option value="Coach">Coach</option>
+          <option value="SystemAdmin">SystemAdmin</option>
+        </select>
+
+        <label class="form-label" for="createPassword">Initial Password <span class="required">*</span></label>
+        <input id="createPassword" type="text" required>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit">Save User</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="createUserModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="changeRoleModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Change Role</h2>
+        <button class="mini-btn" data-close-modal="changeRoleModal">Close</button>
+      </div>
+      <form id="changeRoleForm" class="modal-form">
+        <div class="notice">Selected user: <strong id="roleTargetUser">-</strong></div>
+        <label class="form-label" for="updatedRole">New Role <span class="required">*</span></label>
+        <select id="updatedRole" required>
+          <option value="Coach">Coach</option>
+          <option value="SystemAdmin">SystemAdmin</option>
+        </select>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit">Update Role</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="changeRoleModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="changePasswordModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Change Password</h2>
+        <button class="mini-btn" data-close-modal="changePasswordModal">Close</button>
+      </div>
+      <form id="changePasswordForm" class="modal-form">
+        <div class="notice">Selected user: <strong id="passwordTargetUser">-</strong></div>
+        <label class="form-label" for="newPassword">New Password <span class="required">*</span></label>
+        <input id="newPassword" type="text" required>
+
+        <label class="form-label" for="confirmPassword">Confirm Password <span class="required">*</span></label>
+        <input id="confirmPassword" type="text" required>
+        <p class="validation-hint">Password policy in this prototype: at least 10 characters and at least one number.</p>
+        <p class="error-msg" id="passwordError">Password must be at least 10 chars, include one number, and match confirmation.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit">Update Password</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="changePasswordModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const state = {
+        viewRole: 'SystemAdmin',
+        selectedUserName: null,
+        selectedUserEmail: null
+      };
+
+      const usersTableBody = document.getElementById('usersTableBody');
+      const userSearch = document.getElementById('userSearch');
+      const statusFilter = document.getElementById('statusFilter');
+      const roleFilter = document.getElementById('roleFilter');
+      const toggleRoleViewBtn = document.getElementById('toggleRoleView');
+      const roleBadge = document.querySelector('.role-badge');
+      const roleNotice = document.getElementById('roleNotice');
+      const toast = document.getElementById('toast');
+
+      function mapErrorCodeToMessage(code) {
+        if (code === 'forbidden') return 'You do not have permission to perform this action.';
+        if (code === 'conflict') return 'A user with the same identifier already exists.';
+        if (code === 'validation_error') return 'Please review the form fields and try again.';
+        if (code === 'not_found') return 'The selected user was not found anymore. Refresh and try again.';
+        return 'An unexpected API error occurred.';
+      }
+
+      function showMappedError(code) {
+        showToast(mapErrorCodeToMessage(code));
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(function () {
+          toast.classList.remove('show');
+        }, 2500);
+      }
+
+      function getRows() {
+        return Array.from(usersTableBody.querySelectorAll('tr'));
+      }
+
+      function renderUsers() {
+        const users = MockupApi.listUsers();
+        usersTableBody.innerHTML = '';
+
+        users.forEach(function (user) {
+          const row = document.createElement('tr');
+          row.setAttribute('data-name', user.name);
+          row.setAttribute('data-email', user.email);
+          row.setAttribute('data-role', user.role);
+          row.setAttribute('data-status', user.status);
+          row.innerHTML =
+            '<td>' + user.name + '</td>' +
+            '<td>' + user.email + '</td>' +
+            '<td><span class="team-chip">' + user.role + '</span></td>' +
+            '<td><span class="badge ' + (user.status === 'active' ? 'badge-improving' : 'badge-declining') + '">' + (user.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
+            '<td>' + user.lastLogin + '</td>' +
+            '<td><div class="inline-actions">' +
+            '<button class="mini-btn js-admin-action js-change-role" data-user="' + user.name + '" data-email="' + user.email + '" data-role="' + user.role + '">Change Role</button>' +
+            '<button class="mini-btn js-admin-action js-change-password" data-user="' + user.name + '" data-email="' + user.email + '">Change Password</button>' +
+            '<button class="mini-btn ' + (user.status === 'active' ? 'warn js-deactivate' : 'positive js-reactivate') + ' js-admin-action" data-email="' + user.email + '">' + (user.status === 'active' ? 'Deactivate' : 'Reactivate') + '</button>' +
+            '</div></td>';
+          usersTableBody.appendChild(row);
+        });
+      }
+
+      function refreshKpis() {
+        const rows = getRows();
+        let active = 0;
+        let admin = 0;
+        let coach = 0;
+
+        rows.forEach(function (row) {
+          const isVisible = row.style.display !== 'none';
+          if (!isVisible) return;
+          const status = row.getAttribute('data-status');
+          const role = row.getAttribute('data-role');
+          if (status === 'active') active += 1;
+          if (role === 'SystemAdmin') admin += 1;
+          if (role === 'Coach') coach += 1;
+        });
+
+        document.getElementById('kpiActive').textContent = String(active);
+        document.getElementById('kpiAdmin').textContent = String(admin);
+        document.getElementById('kpiCoach').textContent = String(coach);
+      }
+
+      function applyFilters() {
+        const searchValue = userSearch.value.trim().toLowerCase();
+        const statusValue = statusFilter.value;
+        const roleValue = roleFilter.value;
+
+        getRows().forEach(function (row) {
+          const name = row.getAttribute('data-name').toLowerCase();
+          const email = row.getAttribute('data-email').toLowerCase();
+          const status = row.getAttribute('data-status');
+          const role = row.getAttribute('data-role');
+
+          const matchesSearch = !searchValue || name.includes(searchValue) || email.includes(searchValue);
+          const matchesStatus = statusValue === 'all' || status === statusValue;
+          const matchesRole = roleValue === 'all' || role === roleValue;
+
+          row.style.display = matchesSearch && matchesStatus && matchesRole ? '' : 'none';
+        });
+
+        refreshKpis();
+      }
+
+      function setAdminActionState() {
+        const isAdmin = state.viewRole === 'SystemAdmin';
+        const actions = document.querySelectorAll('.js-admin-action');
+        actions.forEach(function (button) {
+          button.disabled = !isAdmin;
+        });
+        roleBadge.textContent = state.viewRole;
+        toggleRoleViewBtn.textContent = isAdmin ? 'Switch to Coach View' : 'Switch to SystemAdmin View';
+        roleNotice.textContent = isAdmin
+          ? 'Only SystemAdmin can create users, assign roles, and deactivate accounts.'
+          : 'Coach view: admin actions are disabled and protected by role checks (403).';
+      }
+
+      function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+
+      document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          closeModal(btn.getAttribute('data-close-modal'));
+        });
+      });
+
+      document.getElementById('openCreateUser').addEventListener('click', function () {
+        openModal('createUserModal');
+      });
+
+      toggleRoleViewBtn.addEventListener('click', function () {
+        state.viewRole = state.viewRole === 'SystemAdmin' ? 'Coach' : 'SystemAdmin';
+        setAdminActionState();
+        showToast('Role switched to ' + state.viewRole + ' view');
+      });
+
+      usersTableBody.addEventListener('click', function (event) {
+        const roleButton = event.target.closest('.js-change-role');
+        const passwordButton = event.target.closest('.js-change-password');
+        const deactivateButton = event.target.closest('.js-deactivate');
+        const reactivateButton = event.target.closest('.js-reactivate');
+
+        if (roleButton) {
+          state.selectedUserName = roleButton.getAttribute('data-user');
+          state.selectedUserEmail = roleButton.getAttribute('data-email');
+          document.getElementById('roleTargetUser').textContent = state.selectedUserName;
+          document.getElementById('updatedRole').value = roleButton.getAttribute('data-role');
+          openModal('changeRoleModal');
+        }
+
+        if (passwordButton) {
+          state.selectedUserName = passwordButton.getAttribute('data-user');
+          state.selectedUserEmail = passwordButton.getAttribute('data-email');
+          document.getElementById('passwordTargetUser').textContent = state.selectedUserName;
+          openModal('changePasswordModal');
+        }
+
+        if (deactivateButton) {
+          const response = MockupApi.deactivateUser(deactivateButton.getAttribute('data-email'), state.viewRole);
+          if (response.status >= 400) {
+            showToast(response.message);
+            return;
+          }
+          renderUsers();
+          applyFilters();
+          setAdminActionState();
+          showToast('User deactivated successfully.');
+        }
+
+        if (reactivateButton) {
+          const response = MockupApi.reactivateUser(reactivateButton.getAttribute('data-email'), state.viewRole);
+          if (response.status >= 400) {
+            showToast(response.message);
+            return;
+          }
+          renderUsers();
+          applyFilters();
+          setAdminActionState();
+          showToast('User reactivated successfully.');
+        }
+      });
+
+      document.getElementById('createUserForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('createName').value.trim();
+        const email = document.getElementById('createEmail').value.trim();
+        const role = document.getElementById('createRole').value;
+        const password = document.getElementById('createPassword').value.trim();
+
+        const response = MockupApi.createUser({ name: name, email: email, role: role, password: password }, state.viewRole);
+        if (response.status >= 400) {
+          showToast(response.message);
+          return;
+        }
+
+        closeModal('createUserModal');
+        event.target.reset();
+        renderUsers();
+        applyFilters();
+        setAdminActionState();
+        showToast('User created with role ' + role + '.');
+      });
+
+      document.getElementById('changeRoleForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const nextRole = document.getElementById('updatedRole').value;
+
+        const response = MockupApi.changeRole(state.selectedUserEmail, nextRole, state.viewRole);
+        if (response.status >= 400) {
+          showToast(response.message);
+          return;
+        }
+
+        closeModal('changeRoleModal');
+        renderUsers();
+        applyFilters();
+        showToast('Role updated for ' + state.selectedUserName + '.');
+      });
+
+      document.getElementById('changePasswordForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const password = document.getElementById('newPassword').value.trim();
+        const confirm = document.getElementById('confirmPassword').value.trim();
+
+        const errorMsg = document.getElementById('passwordError');
+        const response = MockupApi.changePassword(state.selectedUserEmail, password, confirm, state.viewRole);
+        if (response.status >= 400) {
+          showToast(response.message);
+          errorMsg.classList.add('show');
+          return;
+        }
+
+        errorMsg.classList.remove('show');
+        closeModal('changePasswordModal');
+        event.target.reset();
+        showToast('Password updated for ' + state.selectedUserName + '.');
+      });
+
+      userSearch.addEventListener('input', applyFilters);
+      statusFilter.addEventListener('change', applyFilters);
+      roleFilter.addEventListener('change', applyFilters);
+
+      renderUsers();
+      applyFilters();
+      setAdminActionState();
+    })();
+  </script>
+</body>
+</html>

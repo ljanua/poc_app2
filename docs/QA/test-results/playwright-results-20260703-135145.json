@@ -1,0 +1,196 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\ljanuario\\OneDrive - Ryder\\Documents\\Code\\poc_app\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "tests/playwright/s1-player-list.spec.js",
+      "--reporter=json"
+    ],
+    "configFile": "C:\\Users\\ljanuario\\OneDrive - Ryder\\Documents\\Code\\poc_app\\playwright.config.js",
+    "rootDir": "C:/Users/ljanuario/OneDrive - Ryder/Documents/Code/poc_app/tests/playwright",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/ljanuario/OneDrive - Ryder/Documents/Code/poc_app/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "C:/Users/ljanuario/OneDrive - Ryder/Documents/Code/poc_app/tests/playwright",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 4,
+    "webServer": {
+      "command": "node scripts/serve-mockup.js",
+      "url": "http://127.0.0.1:5500",
+      "reuseExistingServer": true,
+      "timeout": 30000
+    }
+  },
+  "suites": [
+    {
+      "title": "s1-player-list.spec.js",
+      "file": "s1-player-list.spec.js",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "S1 Player List team filter and add-player flow",
+          "file": "s1-player-list.spec.js",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "shows only players assigned to selected team",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2521,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-03T17:56:27.756Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "41c596ec1c00c51526cf-3f9bdf49ff69552dfe83",
+              "file": "s1-player-list.spec.js",
+              "line": 9,
+              "column": 3
+            },
+            {
+              "title": "adds a player from name lookup and reassigns to selected team",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1989,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-03T17:56:31.167Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "41c596ec1c00c51526cf-c2202a14c6d3b00ef25a",
+              "file": "s1-player-list.spec.js",
+              "line": 21,
+              "column": 3
+            },
+            {
+              "title": "blocks add action when no valid dropdown match exists",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2477,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-03T17:56:33.184Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "41c596ec1c00c51526cf-9d5b1c2a65646f6fd0c1",
+              "file": "s1-player-list.spec.js",
+              "line": 37,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-03T17:56:25.752Z",
+    "duration": 12817.457,
+    "expected": 3,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

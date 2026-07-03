@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S4: Video Capture / Upload — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S1-player-list.html">←</a>
+      <div class="header-title">Submit a Clip</div>
+      <div class="header-meta" id="roleMeta">Coach</div>
+    </header>
+
+    <div class="content">
+      <div class="form-wrapper">
+        <div class="toolbar" style="margin-bottom: 1rem;">
+          <select class="pill-select" aria-label="Selected team for clip">
+            <option>Team: Senior Squad</option>
+            <option>Team: U19 Prime</option>
+            <option>Team: U17 Elite</option>
+          </select>
+        </div>
+
+        <form id="clipForm">
+          <!-- Video Input Section -->
+          <div class="form-section">
+            <label class="form-label">Video Clip <span class="required">*</span></label>
+            <div class="video-input-section">
+              <button type="button" class="input-btn" onclick="alert('Camera capture would open on mobile')">
+                <span class="input-icon">📷</span>
+                <span>Record a Clip</span>
+              </button>
+              <button type="button" class="input-btn" onclick="document.getElementById('fileInput').click()">
+                <span class="input-icon">📂</span>
+                <span>Upload File</span>
+              </button>
+            </div>
+            <input type="file" id="fileInput" class="file-input" accept="video/mp4,video/quicktime" onchange="updatePreview()">
+            <div class="video-preview" id="videoPreview">No video selected</div>
+            <div class="validation-hint">MP4 or MOV • Max 50MB • Max 60 seconds</div>
+          </div>
+
+          <!-- Player Selector -->
+          <div class="form-section">
+            <label class="form-label" for="player">Player <span class="required">*</span></label>
+            <select id="player" required>
+              <option value="">Select a player…</option>
+            </select>
+            <div class="error-msg" id="playerError">Player is required</div>
+          </div>
+
+          <!-- Situation Description -->
+          <div class="form-section">
+            <label class="form-label" for="situation">Situation <span class="required">*</span></label>
+            <textarea id="situation" placeholder="Describe the moment (e.g. penalty kick attempt, counter-attack opportunity, one-on-one with goalkeeper)" required></textarea>
+            <div class="validation-hint">Max 200 characters</div>
+            <div class="error-msg" id="situationError">Situation is required</div>
+          </div>
+
+          <!-- Skill Focus (Optional) -->
+          <div class="form-section">
+            <label class="form-label">Skill Focus (Optional)</label>
+            <div class="checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" name="skill" value="decision">
+                <span>Decision-making</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="skill" value="technical">
+                <span>Technical Skill</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="skill" value="positioning">
+                <span>Positioning</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" name="skill" value="pace">
+                <span>Pace &amp; Agility</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="form-buttons">
+            <button type="button" class="btn btn-secondary" onclick="handleCancel()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Submit for Assessment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item active" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+    </nav>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+
+  <script>
+    function updatePreview() {
+      const fileInput = document.getElementById('fileInput');
+      const preview = document.getElementById('videoPreview');
+      if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        preview.textContent = `✓ ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
+        preview.classList.add('active');
+      }
+    }
+
+    function handleCancel() {
+      if (confirm('Discard this clip?')) {
+        window.history.back();
+      }
+    }
+
+    document.getElementById('clipForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const player = document.getElementById('player').value;
+      const situation = document.getElementById('situation').value;
+
+      let valid = true;
+      if (!player) {
+        document.getElementById('playerError').classList.add('show');
+        valid = false;
+      } else {
+        document.getElementById('playerError').classList.remove('show');
+      }
+
+      if (!situation) {
+        document.getElementById('situationError').classList.add('show');
+        valid = false;
+      } else {
+        document.getElementById('situationError').classList.remove('show');
+      }
+
+      if (valid) {
+        const selectedPlayer = document.getElementById('player').options[document.getElementById('player').selectedIndex].text;
+        const skill = document.querySelector('input[name="skill"]:checked');
+        const response = MockupApi.submitClip({
+          playerName: selectedPlayer,
+          situation,
+          skill: skill ? skill.nextElementSibling.textContent : 'General'
+        });
+
+        if (response.status >= 400) {
+          alert(response.message);
+          return;
+        }
+
+        alert(response.message);
+        document.getElementById('clipForm').reset();
+        document.getElementById('videoPreview').textContent = 'No video selected';
+        document.getElementById('videoPreview').classList.remove('active');
+      }
+    });
+
+    (function () {
+      const currentUser = MockupApi.getCurrentUser();
+      document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
+      const playerSelect = document.getElementById('player');
+      const players = MockupApi.listPlayers({ teamName: 'all' });
+      players.forEach(function (player) {
+        const option = document.createElement('option');
+        option.value = String(player.id);
+        option.textContent = player.name;
+        playerSelect.appendChild(option);
+      });
+    })();
+  </script>
+</body>
+</html>

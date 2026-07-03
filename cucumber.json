@@ -1,0 +1,15 @@
+{
+  "default": {
+    "paths": [
+      "tests/bdd/features/**/*.feature"
+    ],
+    "require": [
+      "tests/bdd/features/step_definitions/**/*.js",
+      "tests/bdd/features/support/**/*.js"
+    ],
+    "format": [
+      "progress"
+    ],
+    "publishQuiet": true
+  }
+}

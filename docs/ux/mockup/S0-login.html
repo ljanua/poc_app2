@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S0: Login — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <main class="auth-card">
+      <div class="auth-logo">⚡ VantageIQ</div>
+      <p class="auth-subtitle">Internal access for SystemAdmin and Coach roles.</p>
+
+      <form class="auth-form" id="loginForm">
+        <div>
+          <label class="form-label" for="email">Work Email</label>
+          <input id="email" type="text" placeholder="coach@vantageiq.club">
+        </div>
+
+        <div>
+          <label class="form-label" for="password">Password</label>
+          <input id="password" type="text" placeholder="Enter password">
+        </div>
+
+        <div class="hint-row">
+          <span>JWT access token issued on login</span>
+          <span>Session: short-lived</span>
+        </div>
+
+        <button class="btn btn-primary" type="submit">Sign In</button>
+        <button class="btn btn-secondary" type="button" id="quickAdminSignIn">Quick Sign-In as SystemAdmin</button>
+      </form>
+
+      <p class="error-msg" id="loginError" style="margin-top:0.7rem;">You do not have permission to perform this action.</p>
+
+      <div class="notice" style="margin-top: 1rem;">
+        Demo role switch: <strong>Coach</strong> can access player/team/video features. <strong>SystemAdmin</strong> can manage users and role assignments.
+      </div>
+    </main>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const form = document.getElementById('loginForm');
+      const loginError = document.getElementById('loginError');
+      const quickAdminSignIn = document.getElementById('quickAdminSignIn');
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        loginError.classList.remove('show');
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const response = MockupApi.login(email, password);
+
+        if (response.status !== 200) {
+          loginError.textContent = response.message;
+          loginError.classList.add('show');
+          return;
+        }
+
+        if (response.role === 'SystemAdmin') {
+          window.location.href = './S7-admin-user-management.html';
+          return;
+        }
+
+        window.location.href = './S1-player-list.html';
+      });
+
+      quickAdminSignIn.addEventListener('click', function () {
+        loginError.classList.remove('show');
+        const response = MockupApi.login('maria@vantageiq.club', 'SecurePass123');
+        if (response.status !== 200 || response.role !== 'SystemAdmin') {
+          loginError.textContent = 'You do not have permission to perform this action.';
+          loginError.classList.add('show');
+          return;
+        }
+        window.location.href = './S7-admin-user-management.html';
+      });
+    })();
+  </script>
+</body>
+</html>

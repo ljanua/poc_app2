@@ -1,0 +1,66 @@
+components:
+  schemas:
+    Team:
+      type: object
+      required: [id, name, ageGroup, leadCoachName, leadCoachEmail]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        ageGroup:
+          type: string
+        leadCoachName:
+          type: string
+        leadCoachEmail:
+          type: string
+          format: email
+
+    TeamResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Team'
+
+    TeamListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Team'
+
+    CreateTeamRequest:
+      type: object
+      required: [name, ageGroup]
+      properties:
+        name:
+          type: string
+          minLength: 2
+        ageGroup:
+          type: string
+          minLength: 1
+        coachEmail:
+          type: string
+          format: email
+          description: Required for SystemAdmin actor; ignored for Coach actor.
+
+    ReassignTeamCoachRequest:
+      type: object
+      required: [coachEmail]
+      properties:
+        coachEmail:
+          type: string
+          format: email
+
+    TeamErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [validation_error, forbidden, not_found, conflict]
+        message:
+          type: string

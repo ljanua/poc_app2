@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S1: Player List — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">⚡ VantageIQ</div>
+      <input id="playerSearch" type="text" class="search-bar" placeholder="Search players, positions...">
+      <div class="role-badge" id="roleBadge">Coach</div>
+    </header>
+
+    <div class="content">
+      <div class="toolbar">
+        <select id="teamFilter" class="pill-select" aria-label="Filter by team">
+          <option value="all">All Teams</option>
+          <option value="U17 Elite">U17 Elite</option>
+          <option value="U19 Prime">U19 Prime</option>
+          <option value="Senior Squad">Senior Squad</option>
+        </select>
+        <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
+        <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
+        <a class="btn btn-secondary" href="./S7-admin-user-management.html">Admin Users</a>
+      </div>
+
+      <div class="add-player-panel" id="addPlayerPanel" hidden>
+        <div class="add-player-grid">
+          <div>
+            <label class="form-label" for="addPlayerInput">Player name</label>
+            <input id="addPlayerInput" type="text" list="addPlayerOptions" placeholder="Type player name...">
+            <datalist id="addPlayerOptions"></datalist>
+          </div>
+          <div class="inline-actions">
+            <button id="addPlayerSubmit" class="btn btn-primary" type="button">Add to Team</button>
+            <button id="addPlayerCancel" class="btn btn-secondary" type="button">Cancel</button>
+          </div>
+        </div>
+        <p id="addPlayerHint" class="validation-hint"></p>
+        <div id="createPreview" class="notice" hidden></div>
+        <label class="checkbox-label" id="createConfirmWrap" hidden style="margin-top:0.65rem;">
+          <input id="createConfirm" type="checkbox">
+          <span>I confirm create-on-no-match for this player.</span>
+        </label>
+        <div id="duplicateAction" class="notice" hidden style="margin-top:0.65rem; display:flex; justify-content:space-between; gap:0.6rem; align-items:center;">
+          <span id="duplicateActionText"></span>
+          <button id="assignExistingBtn" class="mini-btn positive" type="button">Assign Existing</button>
+        </div>
+      </div>
+
+      <div class="notice list-status" id="playerListStatus">Showing all assigned players.</div>
+
+      <div id="playerGrid" class="player-grid"></div>
+      <div id="emptyState" class="notice empty-state" hidden>No players are assigned to this team yet.</div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+      <a class="nav-item active" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./js/mockup-api-client.js"></script>
+
+  <script>
+    (function () {
+      const state = {
+        selectedTeam: 'all',
+        searchQuery: '',
+        duplicatePlayer: null,
+        confirmCreate: true
+      };
+
+      const playerGrid = document.getElementById('playerGrid');
+      const emptyState = document.getElementById('emptyState');
+      const playerSearch = document.getElementById('playerSearch');
+      const teamFilter = document.getElementById('teamFilter');
+      const playerListStatus = document.getElementById('playerListStatus');
+      const roleBadge = document.getElementById('roleBadge');
+
+      const addPlayerPanel = document.getElementById('addPlayerPanel');
+      const toggleAddPlayer = document.getElementById('toggleAddPlayer');
+      const addPlayerCancel = document.getElementById('addPlayerCancel');
+      const addPlayerSubmit = document.getElementById('addPlayerSubmit');
+      const addPlayerInput = document.getElementById('addPlayerInput');
+      const addPlayerOptions = document.getElementById('addPlayerOptions');
+      const addPlayerHint = document.getElementById('addPlayerHint');
+      const createPreview = document.getElementById('createPreview');
+      const createConfirm = document.getElementById('createConfirm');
+      const createConfirmWrap = document.getElementById('createConfirmWrap');
+      const duplicateAction = document.getElementById('duplicateAction');
+      const duplicateActionText = document.getElementById('duplicateActionText');
+      const assignExistingBtn = document.getElementById('assignExistingBtn');
+
+      const toast = document.getElementById('toast');
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(function () {
+          toast.classList.remove('show');
+        }, 2400);
+      }
+
+      function trendLabel(trend) {
+        if (trend === 'improving') return { text: 'Improving', className: 'trend-improving', icon: '↑' };
+        if (trend === 'declining') return { text: 'Declining', className: 'trend-declining', icon: '↓' };
+        return { text: 'Plateau', className: 'trend-plateau', icon: '→' };
+      }
+
+      function normalize(value) {
+        return String(value || '').trim().toLowerCase();
+      }
+
+      function resolveInitialTeam() {
+        const params = new URLSearchParams(window.location.search || '');
+        const requestedTeam = (params.get('team') || '').trim();
+        if (!requestedTeam) {
+          return 'all';
+        }
+
+        const validTeams = Array.from(teamFilter.options).map(function (option) {
+          return option.value;
+        });
+        return validTeams.indexOf(requestedTeam) >= 0 ? requestedTeam : 'all';
+      }
+
+      function hydrateActor() {
+        const currentUser = MockupApi.getCurrentUser();
+        roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
+      }
+
+      function getVisiblePlayers() {
+        return MockupApi.listPlayers({ teamName: state.selectedTeam, query: state.searchQuery });
+      }
+
+      function updateListStatus(visiblePlayers) {
+        if (state.selectedTeam === 'all') {
+          playerListStatus.textContent = 'Showing all assigned players (' + visiblePlayers.length + ').';
+          return;
+        }
+        playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players assigned to ' + state.selectedTeam + '.';
+      }
+
+      function renderPlayers() {
+        const visiblePlayers = getVisiblePlayers();
+        playerGrid.innerHTML = '';
+
+        visiblePlayers.forEach(function (player) {
+          const trend = trendLabel(player.trend);
+          const card = document.createElement('div');
+          card.className = 'player-card';
+          card.innerHTML =
+            '<div class="player-image">⚽</div>' +
+            '<div class="player-info">' +
+            '<div class="player-name">' + player.name + '</div>' +
+            '<div class="player-position">' + player.position + '</div>' +
+            '<div class="player-meta">' +
+            '<span class="team-chip">' + player.teamName + '</span>' +
+            player.updated +
+            '<span class="trend-badge ' + trend.className + '">' + trend.icon + ' ' + trend.text + '</span>' +
+            '</div>' +
+            '</div>' +
+            '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(player.name) + '">View</a>';
+          playerGrid.appendChild(card);
+        });
+
+        emptyState.hidden = visiblePlayers.length > 0;
+        updateListStatus(visiblePlayers);
+      }
+
+      function getSuggestionCandidates(searchText) {
+        return MockupApi.getSuggestions(state.selectedTeam, searchText || '');
+      }
+
+      function resetTransientPanels() {
+        state.duplicatePlayer = null;
+        duplicateAction.hidden = true;
+        createPreview.hidden = true;
+        createConfirmWrap.hidden = true;
+        createConfirm.checked = state.confirmCreate;
+      }
+
+      function renderCreatePreview() {
+        duplicateAction.hidden = true;
+        createPreview.hidden = true;
+        createConfirmWrap.hidden = true;
+        state.duplicatePlayer = null;
+
+        const lookup = addPlayerInput.value;
+        if (!lookup.trim()) {
+          addPlayerSubmit.disabled = true;
+          return;
+        }
+
+        const suggestions = getSuggestionCandidates(lookup);
+        const hasExactSuggestion = suggestions.some(function (player) {
+          return normalize(player.name) === normalize(lookup);
+        });
+
+        if (hasExactSuggestion) {
+          addPlayerSubmit.disabled = false;
+          return;
+        }
+
+        const preview = MockupApi.previewCreate(lookup, state.selectedTeam);
+        if (!preview.ok) {
+          addPlayerHint.textContent = preview.message;
+          addPlayerSubmit.disabled = true;
+          return;
+        }
+
+        if (preview.duplicatePlayer) {
+          addPlayerHint.textContent = 'Duplicate detected. Use quick action to assign existing player.';
+          duplicateActionText.textContent = preview.duplicatePlayer.name + ' already exists.';
+          duplicateAction.hidden = false;
+          state.duplicatePlayer = preview.duplicatePlayer;
+          addPlayerSubmit.disabled = true;
+          return;
+        }
+
+        createPreview.textContent = 'Create new player "' + preview.normalizedName + '" for ' + preview.teamName + '.';
+        createPreview.hidden = false;
+        createConfirmWrap.hidden = false;
+        createConfirm.checked = state.confirmCreate;
+        addPlayerHint.textContent = 'No exact match found. Confirm create-on-no-match before submit.';
+        addPlayerSubmit.disabled = false;
+      }
+
+      function renderSuggestions() {
+        addPlayerOptions.innerHTML = '';
+        addPlayerSubmit.disabled = false;
+
+        if (state.selectedTeam === 'all') {
+          addPlayerHint.textContent = 'Select a specific team before adding players.';
+          addPlayerSubmit.disabled = true;
+          resetTransientPanels();
+          return;
+        }
+
+        const candidates = getSuggestionCandidates(addPlayerInput.value);
+        addPlayerHint.textContent = candidates.length
+          ? 'Matching players: ' + candidates.length
+          : 'No matching players found for this team.';
+
+        candidates.slice(0, 8).forEach(function (player) {
+          const option = document.createElement('option');
+          option.value = player.name;
+          addPlayerOptions.appendChild(option);
+        });
+
+        renderCreatePreview();
+      }
+
+      function executeAddPlayer(confirmCreate) {
+        const response = MockupApi.addPlayerFlow({
+          teamName: state.selectedTeam,
+          lookup: addPlayerInput.value,
+          confirmCreate: Boolean(confirmCreate)
+        });
+
+        if (response.status === 409 && response.duplicatePlayer) {
+          state.duplicatePlayer = response.duplicatePlayer;
+          duplicateActionText.textContent = response.duplicatePlayer.name + ' already exists.';
+          duplicateAction.hidden = false;
+          addPlayerHint.textContent = 'Duplicate detected. Use quick action to assign existing player.';
+          addPlayerSubmit.disabled = true;
+          return;
+        }
+
+        if (response.status >= 400) {
+          if (response.code === 'validation_error' && response.message.indexOf('Explicit confirmation') >= 0) {
+            addPlayerHint.textContent = 'Choose a player from the dropdown matches.';
+            return;
+          }
+          addPlayerHint.textContent = response.message;
+          return;
+        }
+
+        addPlayerInput.value = '';
+        renderSuggestions();
+        renderPlayers();
+        showToast(response.message);
+      }
+
+      function toggleAddPlayerPanel(show) {
+        addPlayerPanel.hidden = !show;
+        if (show) {
+          resetTransientPanels();
+          renderSuggestions();
+          addPlayerInput.focus();
+        }
+      }
+
+      playerSearch.addEventListener('input', function () {
+        state.searchQuery = playerSearch.value;
+        renderPlayers();
+      });
+
+      teamFilter.addEventListener('change', function () {
+        state.selectedTeam = teamFilter.value;
+        renderPlayers();
+        renderSuggestions();
+      });
+
+      toggleAddPlayer.addEventListener('click', function () {
+        toggleAddPlayerPanel(addPlayerPanel.hidden);
+      });
+
+      addPlayerCancel.addEventListener('click', function () {
+        toggleAddPlayerPanel(false);
+      });
+
+      addPlayerInput.addEventListener('input', function () {
+        renderSuggestions();
+      });
+
+      createConfirm.addEventListener('change', function () {
+        state.confirmCreate = createConfirm.checked;
+      });
+
+      assignExistingBtn.addEventListener('click', function () {
+        if (!state.duplicatePlayer) {
+          return;
+        }
+        const assignResponse = MockupApi.assignExistingPlayer(state.duplicatePlayer.id, state.selectedTeam);
+        if (assignResponse.status >= 400) {
+          addPlayerHint.textContent = assignResponse.message;
+          return;
+        }
+        addPlayerInput.value = '';
+        renderSuggestions();
+        renderPlayers();
+        showToast(assignResponse.message);
+      });
+
+      addPlayerSubmit.addEventListener('click', function () {
+        if (state.selectedTeam === 'all') {
+          addPlayerHint.textContent = 'Pick a team before adding players.';
+          return;
+        }
+        if (!addPlayerInput.value.trim()) {
+          addPlayerHint.textContent = 'Enter a player name to continue.';
+          return;
+        }
+        executeAddPlayer(createConfirm.checked);
+      });
+
+      state.selectedTeam = resolveInitialTeam();
+      teamFilter.value = state.selectedTeam;
+
+      hydrateActor();
+      renderPlayers();
+      renderSuggestions();
+    })();
+  </script>
+</body>
+</html>

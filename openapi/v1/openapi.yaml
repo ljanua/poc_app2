@@ -1,0 +1,251 @@
+openapi: 3.0.3
+info:
+  title: VantageIQ API
+  version: 1.0.0
+  description: Phase-1 API contract including SystemAdmin user lifecycle operations.
+servers:
+  - url: /v1
+paths:
+  /users:
+    get:
+      summary: List users
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/UserListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+    post:
+      summary: Create user
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/users.yaml#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+  /users/{userId}/role:
+    patch:
+      summary: Change user role
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/users.yaml#/components/schemas/ChangeRoleRequest'
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/UserResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+  /users/{userId}/password:
+    patch:
+      summary: Change user password
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/users.yaml#/components/schemas/ChangePasswordRequest'
+      responses:
+        '204':
+          description: Password updated
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/users.yaml#/components/schemas/ErrorResponse'
+
+  /teams:
+    get:
+      summary: List teams
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Team list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+    post:
+      summary: Create team
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/teams.yaml#/components/schemas/CreateTeamRequest'
+      responses:
+        '201':
+          description: Team created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+
+  /teams/{teamId}/coach:
+    patch:
+      summary: Reassign team coach
+      tags: [Teams]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/teams.yaml#/components/schemas/ReassignTeamCoachRequest'
+      responses:
+        '200':
+          description: Team coach updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
