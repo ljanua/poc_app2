@@ -113,6 +113,47 @@
     return { actorUser, role };
   }
 
+  function shouldForceLocalMode() {
+    return window.__USE_MOCK_LOCAL__ === true;
+  }
+
+  function shouldUseBackendPlayersMode() {
+    return !shouldForceLocalMode() && window.__USE_BACKEND__ === true;
+  }
+
+  function backendRequest(method, endpoint, payload) {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, '/api/v1' + endpoint, false);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (payload && method !== 'GET') {
+      xhr.setRequestHeader('Content-Type', 'application/json');
+    }
+
+    try {
+      xhr.send(payload ? JSON.stringify(payload) : null);
+    } catch (error) {
+      return {
+        status: 0,
+        body: {
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        }
+      };
+    }
+
+    let parsed = {};
+    try {
+      parsed = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+    } catch (error) {
+      parsed = {};
+    }
+
+    return {
+      status: xhr.status,
+      body: parsed
+    };
+  }
+
   function findPlayerByName(store, name) {
     const normalized = normalizeComparable(name);
     return store.players.find((player) => player.normalizedName === normalized) || null;
@@ -223,6 +264,21 @@
     },
 
     listPlayers(options) {
+      if (shouldUseBackendPlayersMode()) {
+        const filters = options || {};
+        const params = new URLSearchParams();
+        if (filters.teamName) params.set('teamName', filters.teamName);
+        if (filters.query) params.set('query', filters.query);
+
+        const response = backendRequest('GET', '/players?' + params.toString());
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
       const store = loadStore();
       const filters = options || {};
       const teamName = filters.teamName || 'all';
@@ -238,6 +294,20 @@
     },
 
     getSuggestions(teamName, lookup) {
+      if (shouldUseBackendPlayersMode()) {
+        if (!teamName || teamName === 'all') {
+          return [];
+        }
+
+        const query = normalizeComparable(lookup);
+        const allPlayers = this.listPlayers({ teamName: 'all', query: query });
+        return clone(
+          allPlayers
+            .filter((player) => player.teamName !== teamName)
+            .filter((player) => !query || normalizeComparable(player.name).includes(query))
+        );
+      }
+
       const store = loadStore();
       if (!teamName || teamName === 'all') {
         return [];
@@ -251,6 +321,27 @@
     },
 
     previewCreate(lookup, teamName) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/players/preview-create', {
+          name: lookup,
+          teamName: teamName
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return {
+            ok: true,
+            normalizedName: response.body.data.normalizedName,
+            teamName: response.body.data.teamName,
+            duplicatePlayer: response.body.data.duplicatePlayer || null
+          };
+        }
+
+        return {
+          ok: false,
+          code: (response.body && response.body.code) || 'service_unavailable',
+          message: (response.body && response.body.message) || 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
       const normalizedName = toTitleCase(lookup);
       const comparable = normalizeComparable(lookup);
       const validChars = /^[A-Za-z' -]+$/;
@@ -274,6 +365,23 @@
     },
 
     addPlayerFlow(payload) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/players', {
+          name: payload.lookup,
+          teamName: payload.teamName,
+          confirmCreate: Boolean(payload.confirmCreate)
+        });
+        if (response.status === 200 || response.status === 201 || response.status === 400 || response.status === 404 || response.status === 409) {
+          return clone(response.body);
+        }
+
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
       const store = loadStore();
       const teamName = payload.teamName;
       const lookup = payload.lookup;
@@ -333,6 +441,21 @@
     },
 
     assignExistingPlayer(playerId, teamName) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/players/' + encodeURIComponent(playerId) + '/assign', {
+          teamName: teamName
+        });
+        if (response.status === 200 || response.status === 400 || response.status === 404) {
+          return clone(response.body);
+        }
+
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
       const store = loadStore();
       const player = store.players.find((entry) => entry.id === playerId);
       if (!player) {

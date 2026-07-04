@@ -31,3 +31,12 @@ From repository root:
 
 Run only admin feature:
 - npm run bdd:test:admin
+
+## credentials for demo and test
+SystemAdmin
+Email: maria@vantageiq.club
+Password: SecurePass123
+
+Coach
+Email: joao@vantageiq.club
+Password: SecurePass123

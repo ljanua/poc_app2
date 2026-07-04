@@ -1,0 +1,115 @@
+components:
+  schemas:
+    Player:
+      type: object
+      required: [id, name, normalizedName, teamName, position, trend, updated]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        normalizedName:
+          type: string
+        teamName:
+          type: string
+        position:
+          type: string
+        trend:
+          type: string
+          enum: [improving, plateau, declining]
+        updated:
+          type: string
+
+    PlayerResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Player'
+
+    PlayerListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+
+    PreviewCreateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [normalizedName, teamName]
+          properties:
+            normalizedName:
+              type: string
+            teamName:
+              type: string
+            duplicatePlayer:
+              allOf:
+                - $ref: '#/components/schemas/Player'
+              nullable: true
+
+    CreatePlayerRequest:
+      type: object
+      required: [name, teamName]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        teamName:
+          type: string
+        confirmCreate:
+          type: boolean
+
+    AssignPlayerRequest:
+      type: object
+      required: [teamName]
+      properties:
+        teamName:
+          type: string
+
+    CreateOrAssignResponse:
+      type: object
+      required: [status, code, message, player]
+      properties:
+        status:
+          type: integer
+        code:
+          type: string
+          enum: [ok, created]
+        moved:
+          type: boolean
+        message:
+          type: string
+        player:
+          $ref: '#/components/schemas/Player'
+
+    DuplicateConflictResponse:
+      type: object
+      required: [status, code, message, duplicatePlayer]
+      properties:
+        status:
+          type: integer
+          enum: [409]
+        code:
+          type: string
+          enum: [conflict]
+        message:
+          type: string
+        duplicatePlayer:
+          $ref: '#/components/schemas/Player'
+
+    PlayerErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [validation_error, forbidden, not_found, conflict]
+        message:
+          type: string

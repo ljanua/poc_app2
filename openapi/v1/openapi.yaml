@@ -6,6 +6,157 @@ info:
 servers:
   - url: /v1
 paths:
+  /players:
+    get:
+      summary: List players
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamName
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Player list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerListResponse'
+    post:
+      summary: Create player or assign existing
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/players.yaml#/components/schemas/CreatePlayerRequest'
+      responses:
+        '200':
+          description: Assigned existing player
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/CreateOrAssignResponse'
+        '201':
+          description: Player created and assigned
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/CreateOrAssignResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '409':
+          description: Duplicate conflict
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/DuplicateConflictResponse'
+
+  /players/preview-create:
+    post:
+      summary: Preview no-match create payload and duplicate check
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/players.yaml#/components/schemas/CreatePlayerRequest'
+      responses:
+        '200':
+          description: Preview create payload
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PreviewCreateResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+
+  /players/{playerId}:
+    get:
+      summary: Get player by id
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Player detail
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+
+  /players/{playerId}/assign:
+    post:
+      summary: Assign existing player to team (strict move)
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/players.yaml#/components/schemas/AssignPlayerRequest'
+      responses:
+        '200':
+          description: Assigned or no-op assignment
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/CreateOrAssignResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+
   /users:
     get:
       summary: List users

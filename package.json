@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "BDD test runner for admin user management and auth-role flows",
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
   "scripts": {
+    "db:bootstrap": "node scripts/db-bootstrap.js",
     "build": "npm run build:solution",
     "build:solution": "npm run bdd:smoke",
     "serve:mockup": "node scripts/serve-mockup.js",
@@ -12,7 +16,8 @@
     "pw:test:s1": "playwright test tests/playwright/s1-player-list.spec.js",
     "bdd:smoke": "node scripts/bdd-smoke.js",
     "bdd:test": "npm run bdd:smoke && cucumber-js --config cucumber.json",
-    "bdd:test:admin": "cucumber-js tests/bdd/features/admin-user-management.feature --require tests/bdd/features/step_definitions/**/*.js --require tests/bdd/features/support/**/*.js"
+    "bdd:test:admin": "cucumber-js tests/bdd/features/admin-user-management.feature --require tests/bdd/features/step_definitions/**/*.js --require tests/bdd/features/support/**/*.js",
+    "ci:e2e": "npx playwright install --with-deps && npx playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.0",
