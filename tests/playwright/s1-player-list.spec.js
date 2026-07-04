@@ -2,6 +2,11 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('S1 Player List team filter and add-player flow', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+
     await page.goto('/S0-login.html');
     await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
     await page.goto('/S1-player-list.html');
@@ -87,5 +92,11 @@ test.describe('S1 Player List team filter and add-player flow', () => {
 
     await expect(page.locator('#addPlayerHint')).toContainText('Select a specific team before adding players.');
     await expect(page.getByRole('button', { name: 'Add to Team' })).toBeDisabled();
+  });
+
+  test('keeps explicit mock-local behavior for offline regression runs', async ({ page }) => {
+    await expect(page.locator('.player-card .player-name')).toHaveCount(4);
+    await page.selectOption('#teamFilter', 'Senior Squad');
+    await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
   });
 });

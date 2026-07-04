@@ -1,4 +1,7 @@
--- Canonical source-of-record schema for current mockup and API flows.
+-- Full idempotent PostgreSQL deployment script.
+-- Purpose: provision all required database objects in a single execution.
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -64,3 +67,5 @@ CREATE TABLE IF NOT EXISTS clips (
 
 CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);
 CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
+
+COMMIT;
