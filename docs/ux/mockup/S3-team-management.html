@@ -135,6 +135,8 @@
 
   <script src="./js/mockup-api-client.js"></script>
   <script>
+    window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
+
     (function () {
       const roleBadge = document.getElementById('roleBadge');
       const tableBody = document.querySelector('.data-table tbody');

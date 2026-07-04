@@ -18,9 +18,6 @@
       <div class="toolbar">
         <select id="teamFilter" class="pill-select" aria-label="Filter by team">
           <option value="all">All Teams</option>
-          <option value="U17 Elite">U17 Elite</option>
-          <option value="U19 Prime">U19 Prime</option>
-          <option value="Senior Squad">Senior Squad</option>
         </select>
         <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
         <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
@@ -135,15 +132,69 @@
         return String(value || '').trim().toLowerCase();
       }
 
-      function resolveInitialTeam() {
+      function getAvailableTeams(currentUser) {
+        const allTeams = MockupApi.listTeams() || [];
+
+        if (!currentUser || currentUser.status !== 'active') {
+          return allTeams;
+        }
+
+        if (currentUser.role === 'SystemAdmin') {
+          return allTeams;
+        }
+
+        if (currentUser.role === 'Coach') {
+          return allTeams.filter(function (team) {
+            const teamCoachEmail = normalize(team.leadCoachEmail || '');
+            const currentCoachEmail = normalize(currentUser.email || '');
+            if (teamCoachEmail && currentCoachEmail && teamCoachEmail === currentCoachEmail) {
+              return true;
+            }
+
+            const teamCoachName = normalize(team.leadCoach || '');
+            const currentCoachName = normalize(currentUser.name || '');
+            return teamCoachName && currentCoachName && teamCoachName === currentCoachName;
+          });
+        }
+
+        return allTeams;
+      }
+
+      function renderTeamFilterOptions(availableTeams) {
+        const teamNames = availableTeams.map(function (team) {
+          return team.name;
+        });
+
+        teamFilter.innerHTML = '';
+
+        const allOption = document.createElement('option');
+        allOption.value = 'all';
+        allOption.textContent = 'All Teams';
+        teamFilter.appendChild(allOption);
+
+        teamNames.forEach(function (teamName) {
+          const option = document.createElement('option');
+          option.value = teamName;
+          option.textContent = teamName;
+          teamFilter.appendChild(option);
+        });
+
+        if (state.selectedTeam !== 'all' && teamNames.indexOf(state.selectedTeam) < 0) {
+          state.selectedTeam = 'all';
+        }
+
+        teamFilter.value = state.selectedTeam;
+      }
+
+      function resolveInitialTeam(availableTeams) {
         const params = new URLSearchParams(window.location.search || '');
         const requestedTeam = (params.get('team') || '').trim();
         if (!requestedTeam) {
           return 'all';
         }
 
-        const validTeams = Array.from(teamFilter.options).map(function (option) {
-          return option.value;
+        const validTeams = availableTeams.map(function (team) {
+          return team.name;
         });
         return validTeams.indexOf(requestedTeam) >= 0 ? requestedTeam : 'all';
       }
@@ -369,10 +420,11 @@
         executeAddPlayer(createConfirm.checked);
       });
 
-      state.selectedTeam = resolveInitialTeam();
-      teamFilter.value = state.selectedTeam;
-
-      hydrateActor();
+      const currentUser = MockupApi.getCurrentUser();
+      const initialTeams = getAvailableTeams(currentUser);
+      state.selectedTeam = resolveInitialTeam(initialTeams);
+      renderTeamFilterOptions(initialTeams);
+      roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
       renderPlayers();
       renderSuggestions();
     })();

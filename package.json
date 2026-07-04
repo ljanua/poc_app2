@@ -4,6 +4,7 @@
   "private": true,
   "description": "BDD test runner for admin user management and auth-role flows",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "pg": "^8.16.3"
   },
   "scripts": {
@@ -20,7 +21,8 @@
     "ci:e2e": "npx playwright install --with-deps && npx playwright test"
   },
   "devDependencies": {
+    "@cucumber/cucumber": "^11.0.0",
     "@playwright/test": "^1.53.0",
-    "@cucumber/cucumber": "^11.0.0"
+    "vitest": "^4.1.9"
   }
 }

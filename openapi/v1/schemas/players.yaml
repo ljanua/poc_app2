@@ -113,3 +113,104 @@ components:
           enum: [validation_error, forbidden, not_found, conflict]
         message:
           type: string
+
+    PlayerDashboardStats:
+      type: object
+      required: [growthStatus, currentLevel, fitness, skillProgress, totalMinutes, appearances, recentAvg, trend, clipSubmittedCount, clipAssessedCount, clipPendingCount]
+      properties:
+        growthStatus:
+          type: string
+          enum: [on_track, watch, at_risk]
+        currentLevel:
+          type: string
+        fitness:
+          type: string
+        skillProgress:
+          type: string
+        totalMinutes:
+          type: integer
+        appearances:
+          type: integer
+        recentAvg:
+          type: string
+        averageScore:
+          type: number
+          nullable: true
+        trend:
+          type: string
+          enum: [improving, plateau, declining]
+        lastMatchScore:
+          type: number
+          nullable: true
+        lastMatchSummary:
+          type: string
+          nullable: true
+        clipSubmittedCount:
+          type: integer
+        clipAssessedCount:
+          type: integer
+        clipPendingCount:
+          type: integer
+        missingDataMessage:
+          type: string
+          nullable: true
+
+    PlayerDashboardResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [player, stats, metrics, matchTime, performance, clipStats]
+          properties:
+            player:
+              $ref: '#/components/schemas/Player'
+            stats:
+              $ref: '#/components/schemas/PlayerDashboardStats'
+            metrics:
+              type: object
+              required: [currentLevel, fitness, skillProgress]
+              properties:
+                currentLevel:
+                  type: string
+                fitness:
+                  type: string
+                skillProgress:
+                  type: string
+            matchTime:
+              type: object
+              required: [totalMinutes, appearances, recentAvg]
+              properties:
+                totalMinutes:
+                  type: integer
+                appearances:
+                  type: integer
+                recentAvg:
+                  type: string
+            performance:
+              type: object
+              required: [averageScore, trend, lastMatchScore]
+              properties:
+                averageScore:
+                  type: string
+                trend:
+                  type: string
+                  enum: [improving, plateau, declining]
+                lastMatchScore:
+                  type: string
+                lastMatchSummary:
+                  type: string
+                  nullable: true
+                missingDataMessage:
+                  type: string
+                  nullable: true
+            clipStats:
+              type: object
+              required: [submitted, assessed, pending]
+              properties:
+                submitted:
+                  type: integer
+                assessed:
+                  type: integer
+                pending:
+                  type: integer

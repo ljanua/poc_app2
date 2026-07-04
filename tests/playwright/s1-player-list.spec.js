@@ -49,6 +49,27 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toHaveCount(0);
   });
 
+  test('shows only coach-assigned teams in the dropdown for coach sessions', async ({ page }) => {
+    await page.evaluate(() => window.localStorage.setItem('vantageiq_current_user_email', 'joao@vantageiq.club'));
+    await page.reload();
+
+    await expect(page.locator('#teamFilter option')).toHaveCount(2);
+    await expect(page.locator('#teamFilter')).toContainText('All Teams');
+    await expect(page.locator('#teamFilter')).toContainText('U19 Prime');
+    await expect(page.locator('#teamFilter')).not.toContainText('Senior Squad');
+  });
+
+  test('shows all available teams in the dropdown for system admin sessions', async ({ page }) => {
+    await page.evaluate(() => window.localStorage.setItem('vantageiq_current_user_email', 'maria@vantageiq.club'));
+    await page.reload();
+
+    await expect(page.locator('#teamFilter option')).toHaveCount(4);
+    await expect(page.locator('#teamFilter')).toContainText('All Teams');
+    await expect(page.locator('#teamFilter')).toContainText('U17 Elite');
+    await expect(page.locator('#teamFilter')).toContainText('U19 Prime');
+    await expect(page.locator('#teamFilter')).toContainText('Senior Squad');
+  });
+
   test('falls back to all teams when query string team is invalid', async ({ page }) => {
     await page.goto('/S1-player-list.html?team=Unknown%20Team');
 

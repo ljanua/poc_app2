@@ -4,6 +4,8 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { Pool } = require('pg');
 
+require('dotenv').config({ path: path.join(process.cwd(), '.env') });
+
 const host = process.env.MOCKUP_HOST || '0.0.0.0';
 const port = Number(process.env.MOCKUP_PORT || 5500);
 const root = path.join(process.cwd(), 'docs', 'ux', 'mockup');
@@ -64,6 +66,323 @@ function toPlayerPayload(row) {
     position: row.position,
     trend: row.trend,
     updated: 'Updated just now'
+  };
+}
+
+function mapTrendToGrowthStatus(trend) {
+  if (trend === 'improving') {
+    return 'on_track';
+  }
+
+  if (trend === 'declining') {
+    return 'at_risk';
+  }
+
+  return 'watch';
+}
+
+function buildDefaultDashboardStats(trend) {
+  if (trend === 'improving') {
+    return {
+      growthStatus: 'on_track',
+      currentLevel: '92%',
+      fitness: '87%',
+      skillProgress: '94%',
+      totalMinutes: 2340,
+      appearances: 26,
+      recentAvg: "90'",
+      averageScore: 8.8,
+      lastMatchScore: 8.5,
+      lastMatchSummary: 'Confident execution under pressure.',
+      clipSubmittedCount: 4,
+      clipAssessedCount: 3,
+      clipPendingCount: 1,
+      missingDataMessage: null
+    };
+  }
+
+  if (trend === 'declining') {
+    return {
+      growthStatus: 'at_risk',
+      currentLevel: '81%',
+      fitness: '79%',
+      skillProgress: '86%',
+      totalMinutes: 420,
+      appearances: 12,
+      recentAvg: "70'",
+      averageScore: null,
+      lastMatchScore: null,
+      lastMatchSummary: null,
+      clipSubmittedCount: 2,
+      clipAssessedCount: 0,
+      clipPendingCount: 2,
+      missingDataMessage: 'Performance metrics are not available yet.'
+    };
+  }
+
+  return {
+    growthStatus: 'watch',
+    currentLevel: '87%',
+    fitness: '87%',
+    skillProgress: '86%',
+    totalMinutes: 540,
+    appearances: 8,
+    recentAvg: "72'",
+    averageScore: 7.1,
+    lastMatchScore: 7.1,
+    lastMatchSummary: 'Pace was strong, timing can improve.',
+    clipSubmittedCount: 3,
+    clipAssessedCount: 2,
+    clipPendingCount: 1,
+    missingDataMessage: null
+  };
+}
+
+function buildNewPlayerDashboardStats(trend) {
+  return {
+    growthStatus: mapTrendToGrowthStatus(trend),
+    currentLevel: trend === 'declining' ? '81%' : trend === 'improving' ? '92%' : '87%',
+    fitness: trend === 'declining' ? '79%' : '87%',
+    skillProgress: trend === 'improving' ? '94%' : '86%',
+    totalMinutes: 0,
+    appearances: 0,
+    recentAvg: 'N/A',
+    averageScore: null,
+    lastMatchScore: null,
+    lastMatchSummary: null,
+    clipSubmittedCount: 0,
+    clipAssessedCount: 0,
+    clipPendingCount: 0,
+    missingDataMessage: 'Performance metrics are not available yet.'
+  };
+}
+
+function getSeedDashboardStats(normalizedName, trend) {
+  if (normalizedName === 'lionel messi') {
+    return {
+      growthStatus: 'on_track',
+      currentLevel: '92%',
+      fitness: '87%',
+      skillProgress: '94%',
+      totalMinutes: 540,
+      appearances: 26,
+      recentAvg: "90'",
+      averageScore: 8.8,
+      lastMatchScore: 8.5,
+      lastMatchSummary: 'Confident execution under pressure.',
+      clipSubmittedCount: 4,
+      clipAssessedCount: 3,
+      clipPendingCount: 1,
+      missingDataMessage: null
+    };
+  }
+
+  if (normalizedName === 'cristiano ronaldo') {
+    return {
+      growthStatus: 'watch',
+      currentLevel: '81%',
+      fitness: '79%',
+      skillProgress: '86%',
+      totalMinutes: 420,
+      appearances: 18,
+      recentAvg: "70'",
+      averageScore: 7.1,
+      lastMatchScore: 7.1,
+      lastMatchSummary: 'Pace was strong, timing can improve.',
+      clipSubmittedCount: 3,
+      clipAssessedCount: 2,
+      clipPendingCount: 1,
+      missingDataMessage: null
+    };
+  }
+
+  if (normalizedName === 'neymar jr') {
+    return {
+      growthStatus: 'at_risk',
+      currentLevel: '87%',
+      fitness: '83%',
+      skillProgress: '90%',
+      totalMinutes: 0,
+      appearances: 0,
+      recentAvg: 'N/A',
+      averageScore: null,
+      lastMatchScore: null,
+      lastMatchSummary: null,
+      clipSubmittedCount: 1,
+      clipAssessedCount: 0,
+      clipPendingCount: 1,
+      missingDataMessage: 'Performance metrics are not available yet.'
+    };
+  }
+
+  if (normalizedName === 'kylian mbappe') {
+    return {
+      growthStatus: 'on_track',
+      currentLevel: '94%',
+      fitness: '91%',
+      skillProgress: '95%',
+      totalMinutes: 1980,
+      appearances: 24,
+      recentAvg: "88'",
+      averageScore: 8.5,
+      lastMatchScore: 8.9,
+      lastMatchSummary: 'Strong finishing and recovery runs.',
+      clipSubmittedCount: 2,
+      clipAssessedCount: 1,
+      clipPendingCount: 1,
+      missingDataMessage: null
+    };
+  }
+
+  return buildDefaultDashboardStats(trend);
+}
+
+function toDashboardPayload(row) {
+  const averageScore = row.averageScore === null || row.averageScore === undefined ? 'N/A' : Number(row.averageScore).toFixed(1);
+  const lastMatchScore = row.lastMatchScore === null || row.lastMatchScore === undefined ? 'N/A' : Number(row.lastMatchScore).toFixed(1);
+
+  return {
+    player: {
+      id: row.id,
+      name: row.name,
+      normalizedName: row.normalizedName,
+      teamName: row.teamName,
+      position: row.position,
+      trend: row.trend,
+      updated: 'Updated just now'
+    },
+    stats: {
+      growthStatus: row.growthStatus || mapTrendToGrowthStatus(row.trend),
+      currentLevel: row.currentLevel || 'N/A',
+      fitness: row.fitness || 'N/A',
+      skillProgress: row.skillProgress || 'N/A',
+      totalMinutes: Number(row.totalMinutes || 0),
+      appearances: Number(row.appearances || 0),
+      recentAvg: row.recentAvg || 'N/A',
+      averageScore: row.averageScore === null || row.averageScore === undefined ? null : Number(row.averageScore),
+      trend: row.trend,
+      lastMatchScore: row.lastMatchScore === null || row.lastMatchScore === undefined ? null : Number(row.lastMatchScore),
+      lastMatchSummary: row.lastMatchSummary || null,
+      clipSubmittedCount: Number(row.clipSubmittedCount || 0),
+      clipAssessedCount: Number(row.clipAssessedCount || 0),
+      clipPendingCount: Number(row.clipPendingCount || 0),
+      missingDataMessage: row.missingDataMessage || null
+    },
+    metrics: {
+      currentLevel: row.currentLevel || 'N/A',
+      fitness: row.fitness || 'N/A',
+      skillProgress: row.skillProgress || 'N/A'
+    },
+    matchTime: {
+      totalMinutes: Number(row.totalMinutes || 0),
+      appearances: Number(row.appearances || 0),
+      recentAvg: row.recentAvg || 'N/A'
+    },
+    performance: {
+      averageScore,
+      trend: row.trend || 'plateau',
+      lastMatchScore,
+      lastMatchSummary: row.lastMatchSummary || null,
+      missingDataMessage: row.missingDataMessage || null
+    },
+    clipStats: {
+      submitted: Number(row.clipSubmittedCount || 0),
+      assessed: Number(row.clipAssessedCount || 0),
+      pending: Number(row.clipPendingCount || 0)
+    }
+  };
+}
+
+async function upsertPlayerStats(executor, playerId, stats) {
+  await executor.query(
+    `
+      INSERT INTO player_stats (
+        player_id,
+        growth_status,
+        current_level,
+        fitness,
+        skill_progress,
+        total_minutes,
+        appearances,
+        recent_avg,
+        average_score,
+        trend,
+        last_match_score,
+        last_match_summary,
+        clip_submitted_count,
+        clip_assessed_count,
+        clip_pending_count,
+        missing_data_message,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+      ON CONFLICT (player_id) DO UPDATE SET
+        growth_status = EXCLUDED.growth_status,
+        current_level = EXCLUDED.current_level,
+        fitness = EXCLUDED.fitness,
+        skill_progress = EXCLUDED.skill_progress,
+        total_minutes = EXCLUDED.total_minutes,
+        appearances = EXCLUDED.appearances,
+        recent_avg = EXCLUDED.recent_avg,
+        average_score = EXCLUDED.average_score,
+        trend = EXCLUDED.trend,
+        last_match_score = EXCLUDED.last_match_score,
+        last_match_summary = EXCLUDED.last_match_summary,
+        clip_submitted_count = EXCLUDED.clip_submitted_count,
+        clip_assessed_count = EXCLUDED.clip_assessed_count,
+        clip_pending_count = EXCLUDED.clip_pending_count,
+        missing_data_message = EXCLUDED.missing_data_message,
+        updated_at = NOW()
+    `,
+    [
+      playerId,
+      stats.growthStatus,
+      stats.currentLevel,
+      stats.fitness,
+      stats.skillProgress,
+      stats.totalMinutes,
+      stats.appearances,
+      stats.recentAvg,
+      stats.averageScore,
+      stats.trend,
+      stats.lastMatchScore,
+      stats.lastMatchSummary,
+      stats.clipSubmittedCount,
+      stats.clipAssessedCount,
+      stats.clipPendingCount,
+      stats.missingDataMessage
+    ]
+  );
+}
+
+async function syncDefaultDashboardStats(executor) {
+  const result = await executor.query(`SELECT id, name, normalized_name AS "normalizedName", trend FROM players ORDER BY name ASC`);
+  for (const player of result.rows) {
+    await upsertPlayerStats(executor, player.id, getSeedDashboardStats(player.normalizedName, player.trend));
+  }
+}
+
+function toUserPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    lastLogin: row.lastLogin || row.last_login_label || row.lastLoginLabel || null,
+    password: row.password || row.password_hash || row.passwordHash || ''
+  };
+}
+
+function toTeamPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    ageGroup: row.ageGroup || row.age_group,
+    leadCoach: row.leadCoach || row.lead_coach,
+    leadCoachEmail: row.leadCoachEmail || row.lead_coach_email || null,
+    leadCoachUserId: row.leadCoachUserId || row.lead_coach_user_id || null,
+    playerCount: Number(row.playerCount || 0)
   };
 }
 
@@ -132,6 +451,7 @@ async function ensureDatabase() {
       role TEXT NOT NULL CHECK (role IN ('SystemAdmin', 'Coach')),
       status TEXT NOT NULL DEFAULT 'active',
       password_hash TEXT,
+      last_login_label TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       deactivated_at TIMESTAMPTZ
@@ -188,58 +508,81 @@ async function ensureDatabase() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_stats (
+      player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+      growth_status TEXT,
+      current_level TEXT,
+      fitness TEXT,
+      skill_progress TEXT,
+      total_minutes INTEGER NOT NULL DEFAULT 0,
+      appearances INTEGER NOT NULL DEFAULT 0,
+      recent_avg TEXT,
+      average_score NUMERIC(4,2),
+      trend TEXT NOT NULL CHECK (trend IN ('improving', 'plateau', 'declining')),
+      last_match_score NUMERIC(4,2),
+      last_match_summary TEXT,
+      clip_submitted_count INTEGER NOT NULL DEFAULT 0,
+      clip_assessed_count INTEGER NOT NULL DEFAULT 0,
+      clip_pending_count INTEGER NOT NULL DEFAULT 0,
+      missing_data_message TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_trend ON player_stats(trend);`);
 
-  if (!seedDatabase) {
-    return;
+  if (seedDatabase) {
+    await pool.query(`
+      INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
+      VALUES
+        ('u_admin_maria', 'Maria Alves', 'maria@vantageiq.club', 'SystemAdmin', 'active', 'SecurePass123', 'Today, 08:31'),
+        ('u_coach_joao', 'Joao Lima', 'joao@vantageiq.club', 'Coach', 'active', 'SecurePass123', 'Yesterday'),
+        ('u_coach_ana', 'Ana Costa', 'ana@vantageiq.club', 'Coach', 'inactive', 'SecurePass123', '6 days ago')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    await pool.query(`
+      INSERT INTO teams (id, name, age_group, lead_coach_user_id)
+      VALUES
+        ('t_u17', 'U17 Elite', 'U17', 'u_coach_ana'),
+        ('t_u19', 'U19 Prime', 'U19', 'u_coach_joao'),
+        ('t_senior', 'Senior Squad', '18+', 'u_admin_maria')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    await pool.query(`
+      INSERT INTO players (id, name, normalized_name, position, trend)
+      VALUES
+        ('p_10', 'Lionel Messi', 'lionel messi', 'Forward - Left Wing', 'improving'),
+        ('p_11', 'Cristiano Ronaldo', 'cristiano ronaldo', 'Forward - Center Forward', 'plateau'),
+        ('p_12', 'Neymar Jr', 'neymar jr', 'Forward - Right Wing', 'declining'),
+        ('p_13', 'Kylian Mbappe', 'kylian mbappe', 'Forward - Center Forward', 'improving')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    await pool.query(`
+      INSERT INTO player_team_assignments (player_id, team_id)
+      VALUES
+        ('p_10', 't_u19'),
+        ('p_11', 't_senior'),
+        ('p_12', 't_u17'),
+        ('p_13', 't_senior')
+      ON CONFLICT (player_id) DO NOTHING;
+    `);
+
+    await pool.query(`
+      INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill)
+      VALUES
+        ('c_1', 'p_10', 'Penalty kick attempt, 3rd minute', 'assessed', 4.2, 'Confident execution under pressure.', '2 hours ago', 'Decision-making'),
+        ('c_2', 'p_11', 'Counter-attack, left wing run', 'assessed', 3.8, 'Pace was strong, timing can improve.', '5 hours ago', 'Pace & Agility'),
+        ('c_3', 'p_12', 'One-on-one with goalkeeper', 'assessed', 4.5, 'Excellent control and composure.', '1 day ago', 'Technical Skill'),
+        ('c_4', 'p_13', 'Sprint and finish, 45th minute', 'pending', NULL, '', 'Submitted 1 hour ago', 'Pace & Agility')
+      ON CONFLICT (id) DO NOTHING;
+    `);
   }
 
-  await pool.query(`
-    INSERT INTO users (id, name, email, role, status)
-    VALUES
-      ('u_admin_maria', 'Maria Alves', 'maria@vantageiq.club', 'SystemAdmin', 'active'),
-      ('u_coach_joao', 'Joao Lima', 'joao@vantageiq.club', 'Coach', 'active'),
-      ('u_coach_ana', 'Ana Costa', 'ana@vantageiq.club', 'Coach', 'inactive')
-    ON CONFLICT (id) DO NOTHING;
-  `);
-
-  await pool.query(`
-    INSERT INTO teams (id, name, age_group, lead_coach_user_id)
-    VALUES
-      ('t_u17', 'U17 Elite', 'U17', 'u_coach_ana'),
-      ('t_u19', 'U19 Prime', 'U19', 'u_coach_joao'),
-      ('t_senior', 'Senior Squad', '18+', 'u_admin_maria')
-    ON CONFLICT (id) DO NOTHING;
-  `);
-
-  await pool.query(`
-    INSERT INTO players (id, name, normalized_name, position, trend)
-    VALUES
-      ('p_10', 'Lionel Messi', 'lionel messi', 'Forward - Left Wing', 'improving'),
-      ('p_11', 'Cristiano Ronaldo', 'cristiano ronaldo', 'Forward - Center Forward', 'plateau'),
-      ('p_12', 'Neymar Jr', 'neymar jr', 'Forward - Right Wing', 'declining'),
-      ('p_13', 'Kylian Mbappe', 'kylian mbappe', 'Forward - Center Forward', 'improving')
-    ON CONFLICT (id) DO NOTHING;
-  `);
-
-  await pool.query(`
-    INSERT INTO player_team_assignments (player_id, team_id)
-    VALUES
-      ('p_10', 't_u19'),
-      ('p_11', 't_senior'),
-      ('p_12', 't_u17'),
-      ('p_13', 't_senior')
-    ON CONFLICT (player_id) DO NOTHING;
-  `);
-
-  await pool.query(`
-    INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill)
-    VALUES
-      ('c_1', 'p_10', 'Penalty kick attempt, 3rd minute', 'assessed', 4.2, 'Confident execution under pressure.', '2 hours ago', 'Decision-making'),
-      ('c_2', 'p_11', 'Counter-attack, left wing run', 'assessed', 3.8, 'Pace was strong, timing can improve.', '5 hours ago', 'Pace & Agility'),
-      ('c_3', 'p_12', 'One-on-one with goalkeeper', 'assessed', 4.5, 'Excellent control and composure.', '1 day ago', 'Technical Skill'),
-      ('c_4', 'p_13', 'Sprint and finish, 45th minute', 'pending', NULL, '', 'Submitted 1 hour ago', 'Pace & Agility')
-    ON CONFLICT (id) DO NOTHING;
-  `);
+  await syncDefaultDashboardStats(pool);
 }
 
 async function listPlayers(teamName, query) {
@@ -306,6 +649,8 @@ async function findPlayerById(playerId, executor = pool) {
 }
 
 async function handlePlayersApi(req, res, requestUrl) {
+  console.log('API request', req.method, requestUrl.pathname);
+
   if (!pool) {
     sendJson(res, 503, appError(503, 'service_unavailable', 'DATABASE_URL is not configured for backend persistence.'));
     return;
@@ -313,6 +658,463 @@ async function handlePlayersApi(req, res, requestUrl) {
 
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/health`) {
     sendJson(res, 200, { status: 'ok', mode: 'database' });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/players/dashboard`) {
+    const playerName = normalizeLookup(requestUrl.searchParams.get('playerName') || requestUrl.searchParams.get('player') || '');
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+
+    const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
+    const actor = actorResult.rows[0] || null;
+    if (!actor || actor.role !== 'Coach' || actor.status !== 'active') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const dashboardRows = await pool.query(
+      `
+        SELECT
+          p.id,
+          p.name,
+          p.normalized_name AS "normalizedName",
+          t.name AS "teamName",
+          p.position,
+          p.trend,
+          ps.growth_status AS "growthStatus",
+          ps.current_level AS "currentLevel",
+          ps.fitness,
+          ps.skill_progress AS "skillProgress",
+          ps.total_minutes AS "totalMinutes",
+          ps.appearances,
+          ps.recent_avg AS "recentAvg",
+          ps.average_score AS "averageScore",
+          ps.last_match_score AS "lastMatchScore",
+          ps.last_match_summary AS "lastMatchSummary",
+          ps.clip_submitted_count AS "clipSubmittedCount",
+          ps.clip_assessed_count AS "clipAssessedCount",
+          ps.clip_pending_count AS "clipPendingCount",
+          ps.missing_data_message AS "missingDataMessage"
+        FROM players p
+        JOIN player_team_assignments a ON a.player_id = p.id
+        JOIN teams t ON t.id = a.team_id
+        JOIN users coach ON coach.id = t.lead_coach_user_id
+        LEFT JOIN player_stats ps ON ps.player_id = p.id
+        WHERE coach.id = $2
+          AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
+        ORDER BY p.name ASC
+        LIMIT 1
+      `,
+      [playerName, actor.id]
+    );
+
+    if (!dashboardRows.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    sendJson(res, 200, { data: toDashboardPayload(dashboardRows.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/teams`) {
+    const teamRows = await pool.query(`
+      SELECT
+        t.id,
+        t.name,
+        t.age_group AS "ageGroup",
+        t.lead_coach_user_id AS "leadCoachUserId",
+        u.name AS "leadCoach",
+        u.email AS "leadCoachEmail",
+        COUNT(a.player_id) AS "playerCount"
+      FROM teams t
+      LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN player_team_assignments a ON a.team_id = t.id
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      ORDER BY t.name ASC
+    `);
+
+    sendJson(res, 200, { data: teamRows.rows.map(toTeamPayload) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/teams`) {
+    const payload = await readJsonBody(req);
+    const actorEmail = String(payload.actorEmail || '').trim().toLowerCase();
+    const actorRole = String(payload.actorRole || '').trim();
+    const teamName = toTitleCase(payload.name);
+    const ageGroup = normalizeLookup(payload.ageGroup);
+
+    let actorUser = null;
+    if (actorEmail) {
+      const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
+      actorUser = actorResult.rows[0] || null;
+    }
+
+    const effectiveRole = actorUser ? actorUser.role : actorRole;
+    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    if (!teamName || teamName.length < 2 || !ageGroup) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const duplicate = await pool.query(`SELECT id FROM teams WHERE LOWER(name) = LOWER($1) LIMIT 1`, [teamName]);
+    if (duplicate.rows[0]) {
+      sendJson(res, 409, appError(409, 'conflict', 'A user with the same identifier already exists.'));
+      return;
+    }
+
+    let leadCoachUserId = actorUser.id;
+    if (effectiveRole === 'SystemAdmin') {
+      const selectedCoachEmail = String(payload.coachEmail || '').trim().toLowerCase();
+      if (!selectedCoachEmail) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+        return;
+      }
+
+      const selectedCoach = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) AND role = 'Coach' AND status = 'active' LIMIT 1`, [selectedCoachEmail]);
+      if (!selectedCoach.rows[0]) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+        return;
+      }
+
+      leadCoachUserId = selectedCoach.rows[0].id;
+    }
+
+    const teamId = `t_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    await pool.query(
+      `INSERT INTO teams (id, name, age_group, lead_coach_user_id) VALUES ($1, $2, $3, $4)`,
+      [teamId, teamName, ageGroup, leadCoachUserId]
+    );
+
+    const created = await pool.query(`
+      SELECT
+        t.id,
+        t.name,
+        t.age_group AS "ageGroup",
+        t.lead_coach_user_id AS "leadCoachUserId",
+        u.name AS "leadCoach",
+        u.email AS "leadCoachEmail",
+        COUNT(a.player_id) AS "playerCount"
+      FROM teams t
+      LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN player_team_assignments a ON a.team_id = t.id
+      WHERE t.id = $1
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      LIMIT 1
+    `, [teamId]);
+
+    sendJson(res, 201, { data: toTeamPayload(created.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/teams/coach`) {
+    const payload = await readJsonBody(req);
+    const actorEmail = String(payload.actorEmail || '').trim().toLowerCase();
+    const actorRole = String(payload.actorRole || '').trim();
+    const teamName = normalizeLookup(payload.teamName);
+    const coachEmail = String(payload.coachEmail || '').trim().toLowerCase();
+
+    let actorUser = null;
+    if (actorEmail) {
+      const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
+      actorUser = actorResult.rows[0] || null;
+    }
+
+    const effectiveRole = actorUser ? actorUser.role : actorRole;
+    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    if (!teamName || !coachEmail) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const coach = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) AND role = 'Coach' AND status = 'active' LIMIT 1`, [coachEmail]);
+    if (!coach.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const team = await pool.query(`SELECT id, name, age_group AS "ageGroup", lead_coach_user_id AS "leadCoachUserId" FROM teams WHERE LOWER(name) = LOWER($1) LIMIT 1`, [teamName]);
+    if (!team.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected team was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    await pool.query(`UPDATE teams SET lead_coach_user_id = $1, updated_at = NOW() WHERE id = $2`, [coach.rows[0].id, team.rows[0].id]);
+
+    const updated = await pool.query(`
+      SELECT
+        t.id,
+        t.name,
+        t.age_group AS "ageGroup",
+        t.lead_coach_user_id AS "leadCoachUserId",
+        u.name AS "leadCoach",
+        u.email AS "leadCoachEmail",
+        COUNT(a.player_id) AS "playerCount"
+      FROM teams t
+      LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN player_team_assignments a ON a.team_id = t.id
+      WHERE t.id = $1
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      LIMIT 1
+    `, [team.rows[0].id]);
+
+    sendJson(res, 200, { data: toTeamPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/users`) {
+    const requestedEmail = (requestUrl.searchParams.get('email') || '').trim().toLowerCase();
+    const userRows = await pool.query(`
+      SELECT
+        id,
+        name,
+        email,
+        role,
+        status,
+        password_hash AS "passwordHash",
+        last_login_label AS "lastLogin"
+      FROM users
+      ${requestedEmail ? `WHERE LOWER(email) = LOWER($1)` : ''}
+      ORDER BY name ASC
+    `, requestedEmail ? [requestedEmail] : []);
+
+    sendJson(res, 200, { data: userRows.rows.map(toUserPayload) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/users`) {
+    const payload = await readJsonBody(req);
+    const actorRole = String(payload.actorRole || '').trim();
+    if (actorRole !== 'SystemAdmin') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const email = String(payload.email || '').trim().toLowerCase();
+    const name = normalizeLookup(payload.name);
+    const role = String(payload.role || '').trim();
+    const password = String(payload.password || '').trim();
+    const hasNumber = /\d/.test(password);
+
+    if (!name || !email.includes('@') || !['SystemAdmin', 'Coach'].includes(role) || password.length < 10 || !hasNumber) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const existing = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    if (existing.rows[0]) {
+      sendJson(res, 409, appError(409, 'conflict', 'A user with the same identifier already exists.'));
+      return;
+    }
+
+    const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    await pool.query(`
+      INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
+      VALUES ($1, $2, $3, $4, 'active', $5, 'Just now')
+    `, [userId, name, email, role, password]);
+
+    const created = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE id = $1 LIMIT 1`, [userId]);
+    sendJson(res, 201, { data: toUserPayload(created.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/role$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/role$/);
+    const email = decodeURIComponent(match[1]);
+    const payload = await readJsonBody(req);
+    const actorRole = String(payload.actorRole || '').trim();
+    if (actorRole !== 'SystemAdmin') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const role = String(payload.role || '').trim();
+    if (!['SystemAdmin', 'Coach'].includes(role)) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const updated = await pool.query(`UPDATE users SET role = $1, updated_at = NOW() WHERE LOWER(email) = LOWER($2) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [role, email]);
+    if (!updated.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/password$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/password$/);
+    const email = decodeURIComponent(match[1]);
+    const payload = await readJsonBody(req);
+    const actorRole = String(payload.actorRole || '').trim();
+    if (actorRole !== 'SystemAdmin') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const password = String(payload.password || '').trim();
+    const confirmPassword = String(payload.confirmPassword || '').trim();
+    const hasNumber = /\d/.test(password);
+
+    if (password.length < 10 || !hasNumber || password !== confirmPassword) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const updated = await pool.query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE LOWER(email) = LOWER($2) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [password, email]);
+    if (!updated.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/deactivate$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/deactivate$/);
+    const email = decodeURIComponent(match[1]);
+    const payload = await readJsonBody(req);
+    const actorRole = String(payload.actorRole || '').trim();
+    if (actorRole !== 'SystemAdmin') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const updated = await pool.query(`UPDATE users SET status = 'inactive', updated_at = NOW() WHERE LOWER(email) = LOWER($1) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [email]);
+    if (!updated.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/reactivate$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/reactivate$/);
+    const email = decodeURIComponent(match[1]);
+    const payload = await readJsonBody(req);
+    const actorRole = String(payload.actorRole || '').trim();
+    if (actorRole !== 'SystemAdmin') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const updated = await pool.query(`UPDATE users SET status = 'active', updated_at = NOW() WHERE LOWER(email) = LOWER($1) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [email]);
+    if (!updated.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/auth/login`) {
+    const payload = await readJsonBody(req);
+    const email = String(payload.email || '').trim().toLowerCase();
+    const password = String(payload.password || '').trim();
+    const row = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+
+    if (!row.rows[0] || row.rows[0].status !== 'active' || row.rows[0].passwordHash !== password) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    await pool.query(`UPDATE users SET last_login_label = $1, updated_at = NOW() WHERE id = $2`, ['Just now', row.rows[0].id]);
+    const user = toUserPayload({ ...row.rows[0], lastLogin: 'Just now' });
+    sendJson(res, 200, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/clips`) {
+    const teamName = normalizeLookup(requestUrl.searchParams.get('teamName') || 'all');
+    const status = normalizeLookup(requestUrl.searchParams.get('status') || 'all');
+    const query = `
+      SELECT
+        c.id,
+        c.player_id AS "playerId",
+        c.situation,
+        c.status,
+        c.score,
+        c.summary,
+        c.submitted_at_label AS "submittedAt",
+        c.skill,
+        p.name AS "playerName",
+        t.name AS "teamName"
+      FROM clips c
+      JOIN players p ON p.id = c.player_id
+      LEFT JOIN player_team_assignments a ON a.player_id = p.id
+      LEFT JOIN teams t ON t.id = a.team_id
+      ${teamName !== 'all' ? `WHERE LOWER(t.name) = LOWER($1)` : ''}
+      ${status !== 'all' ? `${teamName !== 'all' ? 'AND' : 'WHERE'} LOWER(c.status) = LOWER($${teamName !== 'all' ? 2 : 1})` : ''}
+      ORDER BY c.created_at DESC
+    `;
+    const values = teamName !== 'all' ? [teamName] : [];
+    if (status !== 'all') {
+      values.push(status);
+    }
+    const clipRows = await pool.query(query, values);
+    sendJson(res, 200, { data: clipRows.rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/clips`) {
+    const payload = await readJsonBody(req);
+    const playerName = normalizeLookup(payload.playerName);
+    const situation = normalizeLookup(payload.situation);
+    const skill = normalizeLookup(payload.skill || 'General');
+
+    if (!playerName || !situation) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const player = await pool.query(`SELECT id FROM players WHERE LOWER(name) = LOWER($1) LIMIT 1`, [playerName]);
+    if (!player.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const clipId = `c_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    await pool.query(`
+      INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill)
+      VALUES ($1, $2, $3, 'pending', NULL, '', 'Submitted just now', $4)
+    `, [clipId, player.rows[0].id, situation, skill]);
+
+    const created = await pool.query(`
+      SELECT
+        c.id,
+        c.player_id AS "playerId",
+        c.situation,
+        c.status,
+        c.score,
+        c.summary,
+        c.submitted_at_label AS "submittedAt",
+        c.skill,
+        p.name AS "playerName",
+        t.name AS "teamName"
+      FROM clips c
+      JOIN players p ON p.id = c.player_id
+      LEFT JOIN player_team_assignments a ON a.player_id = p.id
+      LEFT JOIN teams t ON t.id = a.team_id
+      WHERE c.id = $1
+      LIMIT 1
+    `, [clipId]);
+
+    sendJson(res, 202, { data: created.rows[0] });
     return;
   }
 
@@ -473,6 +1275,7 @@ async function handlePlayersApi(req, res, requestUrl) {
         `,
         [playerId, team.id]
       );
+      await upsertPlayerStats(client, playerId, buildNewPlayerDashboardStats('plateau'));
 
       const created = await findPlayerById(playerId, client);
       await client.query('COMMIT');

@@ -64,3 +64,26 @@ CREATE TABLE IF NOT EXISTS clips (
 
 CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);
 CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
+
+CREATE TABLE IF NOT EXISTS player_stats (
+  player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+  growth_status TEXT,
+  current_level TEXT,
+  fitness TEXT,
+  skill_progress TEXT,
+  total_minutes INTEGER NOT NULL DEFAULT 0,
+  appearances INTEGER NOT NULL DEFAULT 0,
+  recent_avg TEXT,
+  average_score NUMERIC(4,2),
+  trend TEXT NOT NULL CHECK (trend IN ('improving', 'plateau', 'declining')),
+  last_match_score NUMERIC(4,2),
+  last_match_summary TEXT,
+  clip_submitted_count INTEGER NOT NULL DEFAULT 0,
+  clip_assessed_count INTEGER NOT NULL DEFAULT 0,
+  clip_pending_count INTEGER NOT NULL DEFAULT 0,
+  missing_data_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_stats_trend ON player_stats(trend);

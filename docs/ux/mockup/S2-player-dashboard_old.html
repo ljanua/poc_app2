@@ -24,8 +24,6 @@
         <a class="btn btn-secondary" href="./S1-player-list.html">Back to Player List</a>
       </div>
 
-      <div class="notice" id="dashboardNotice" hidden></div>
-
       <div class="player-summary">
         <div class="player-avatar">⚽</div>
         <div class="player-details">
@@ -113,7 +111,6 @@
             <div class="metric-status" id="metricLastMatchSub">vs Barcelona</div>
           </div>
         </div>
-        <div class="notice" id="metricMissingData" hidden style="margin-top: 0.8rem;"></div>
       </div>
 
       <div class="section">
@@ -159,19 +156,10 @@
       const params = new URLSearchParams(window.location.search);
       const selectedPlayer = params.get('player') || '';
       const dashboard = MockupApi.getDashboardPlayer(selectedPlayer);
-      const dashboardNotice = document.getElementById('dashboardNotice');
-      const metricMissingData = document.getElementById('metricMissingData');
 
       if (!dashboard) {
-        dashboardNotice.textContent = (window.__MOCK_API_LAST_ERROR__ && window.__MOCK_API_LAST_ERROR__.message) || 'Dashboard data is unavailable right now.';
-        dashboardNotice.hidden = false;
-        document.querySelectorAll('.toolbar, .player-summary, .section, .cta-buttons').forEach(function (element) {
-          element.hidden = true;
-        });
         return;
       }
-
-      dashboardNotice.hidden = true;
 
       const player = dashboard.player;
       const trend = dashboard.performance.trend || 'plateau';
@@ -200,14 +188,8 @@
       trendTextNode.className = 'badge ' + trendClass;
       trendTextNode.textContent = trendText;
 
-      document.getElementById('metricLastMatch').textContent = dashboard.performance.lastMatchScore === 'N/A' ? '-' : dashboard.performance.lastMatchScore;
-      document.getElementById('metricLastMatchSub').textContent = dashboard.performance.lastMatchSummary || 'From latest assessed clips';
-      if (dashboard.performance.missingDataMessage) {
-        metricMissingData.textContent = dashboard.performance.missingDataMessage;
-        metricMissingData.hidden = false;
-      } else {
-        metricMissingData.hidden = true;
-      }
+      document.getElementById('metricLastMatch').textContent = dashboard.performance.averageScore === 'N/A' ? '-' : dashboard.performance.averageScore;
+      document.getElementById('metricLastMatchSub').textContent = 'From latest assessed clips';
       document.getElementById('dashboardClipSummary').textContent = dashboard.clipStats.submitted + ' clips submitted • ' + dashboard.clipStats.assessed + ' assessed • ' + dashboard.clipStats.pending + ' pending';
     })();
   </script>

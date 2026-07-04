@@ -119,6 +119,43 @@ paths:
               schema:
                 $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
 
+  /players/dashboard:
+    get:
+      summary: Get player development dashboard
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: playerName
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actorEmail
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerDashboardResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+
   /players/{playerId}/assign:
     post:
       summary: Assign existing player to team (strict move)

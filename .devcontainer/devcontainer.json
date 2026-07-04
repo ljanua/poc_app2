@@ -21,7 +21,8 @@
       }
     }
   },
-  "forwardPorts": [3000, 5500],
-  "postCreateCommand": "npm install",
+  "forwardPorts": [3000, 5432, 5500],
+  "postCreateCommand": "sudo service postgresql start && sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'postgres';\" && npm install",
+  "postStartCommand": "sudo service postgresql start",
   "remoteUser": "node"
 }

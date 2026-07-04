@@ -118,7 +118,7 @@
   }
 
   function shouldUseBackendPlayersMode() {
-    return !shouldForceLocalMode() && window.__USE_BACKEND__ === true;
+    return !shouldForceLocalMode() && window.__USE_BACKEND__ !== false;
   }
 
   function backendRequest(method, endpoint, payload) {
@@ -168,6 +168,55 @@
     return { moved: true, message: player.name + ' moved to ' + teamName + '.' };
   }
 
+  function buildDashboardSnapshot(store, selected) {
+    const clips = store.clips.filter((clip) => clip.playerId === selected.id);
+    const assessed = clips.filter((clip) => clip.status === 'assessed');
+    const pending = clips.filter((clip) => clip.status === 'pending');
+
+    return clone({
+      player: selected,
+      stats: {
+        growthStatus: selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch',
+        currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
+        fitness: selected.trend === 'declining' ? '79%' : '87%',
+        skillProgress: selected.trend === 'improving' ? '94%' : '86%',
+        totalMinutes: clips.length ? 2340 : 0,
+        appearances: clips.length ? 26 : 0,
+        recentAvg: clips.length ? "90'" : 'N/A',
+        averageScore: assessed.length ? Number((assessed.reduce((sum, clip) => sum + clip.score, 0) / assessed.length).toFixed(1)) : null,
+        trend: selected.trend,
+        lastMatchScore: assessed.length ? assessed[0].score : null,
+        lastMatchSummary: assessed.length ? assessed[0].summary : null,
+        clipSubmittedCount: clips.length,
+        clipAssessedCount: assessed.length,
+        clipPendingCount: pending.length,
+        missingDataMessage: assessed.length ? null : 'Performance metrics are not available yet.'
+      },
+      metrics: {
+        currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
+        fitness: selected.trend === 'declining' ? '79%' : '87%',
+        skillProgress: selected.trend === 'improving' ? '94%' : '86%'
+      },
+      matchTime: {
+        totalMinutes: clips.length ? 2340 : 0,
+        appearances: clips.length ? 26 : 0,
+        recentAvg: clips.length ? "90'" : 'N/A'
+      },
+      performance: {
+        averageScore: assessed.length ? (assessed.reduce((sum, clip) => sum + clip.score, 0) / assessed.length).toFixed(1) : 'N/A',
+        trend: selected.trend,
+        lastMatchScore: assessed.length ? assessed[0].score.toFixed(1) : 'N/A',
+        lastMatchSummary: assessed.length ? assessed[0].summary : null,
+        missingDataMessage: assessed.length ? null : 'Performance metrics are not available yet.'
+      },
+      clipStats: {
+        submitted: clips.length,
+        assessed: assessed.length,
+        pending: pending.length
+      }
+    });
+  }
+
   const MockupApi = {
     reset() {
       const seed = createSeed();
@@ -176,20 +225,74 @@
     },
 
     listTeams() {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('GET', '/teams');
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
       return clone(loadStore().teams);
     },
 
     listActiveCoaches() {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('GET', '/users');
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data.filter((user) => user.role === 'Coach' && user.status === 'active'));
+        }
+
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
       return clone(listActiveCoachesInternal(loadStore()));
     },
 
     getCurrentUser() {
+      if (shouldUseBackendPlayersMode()) {
+        const sessionEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        if (!sessionEmail) {
+          return null;
+        }
+
+        const response = backendRequest('GET', '/users?email=' + encodeURIComponent(sessionEmail));
+        if (response.status === 200 && response.body && Array.isArray(response.body.data) && response.body.data[0]) {
+          return clone(response.body.data[0]);
+        }
+
+        return null;
+      }
+
       const store = loadStore();
       const user = getSessionUser(store);
       return user ? clone(user) : null;
     },
 
     createTeam(payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/teams', {
+          name: payload && payload.name,
+          ageGroup: payload && payload.ageGroup,
+          coachEmail: payload && payload.coachEmail,
+          actorRole,
+          actorEmail
+        });
+
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', team: clone(response.body.data) };
+        }
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', team: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       const store = loadStore();
       const actor = resolveActorContext(store, actorRole, actorEmail);
       const role = actor.role;
@@ -237,6 +340,21 @@
     },
 
     reassignTeamCoach(teamName, coachEmail, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/teams/coach', {
+          teamName,
+          coachEmail,
+          actorRole,
+          actorEmail
+        });
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', team: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       const store = loadStore();
       const actor = resolveActorContext(store, actorRole, actorEmail);
       const role = actor.role;
@@ -468,6 +586,20 @@
     },
 
     listTeamSummary() {
+      if (shouldUseBackendPlayersMode()) {
+        const teams = this.listTeams();
+        return clone(
+          teams.map((team) => ({
+            id: team.id,
+            name: team.name,
+            ageGroup: team.ageGroup,
+            leadCoach: team.leadCoach,
+            leadCoachEmail: team.leadCoachEmail || null,
+            playerCount: Number(team.playerCount || 0)
+          }))
+        );
+      }
+
       const store = loadStore();
       return clone(
         store.teams.map((team) => {
@@ -485,36 +617,33 @@
     },
 
     getDashboardPlayer(playerName) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'GET',
+          '/players/dashboard?playerName=' + encodeURIComponent(normalizeLookup(playerName || '')) + (actorEmail ? '&actorEmail=' + encodeURIComponent(actorEmail) : '')
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return clone(response.body.data);
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          window.__MOCK_API_LAST_ERROR__ = response.body;
+          return null;
+        }
+
+        const store = loadStore();
+        const selected = playerName ? findPlayerByName(store, playerName) : store.players[0];
+        return selected ? buildDashboardSnapshot(store, selected) : null;
+      }
+
       const store = loadStore();
       const selected = playerName ? findPlayerByName(store, playerName) : store.players[0];
       if (!selected) {
         return null;
       }
-      const clips = store.clips.filter((clip) => clip.playerId === selected.id);
-      const assessed = clips.filter((clip) => clip.status === 'assessed');
-      const pending = clips.filter((clip) => clip.status === 'pending');
-      return clone({
-        player: selected,
-        metrics: {
-          currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
-          fitness: selected.trend === 'declining' ? '79%' : '87%',
-          skillProgress: selected.trend === 'improving' ? '94%' : '86%'
-        },
-        matchTime: {
-          totalMinutes: clips.length ? 2340 : 540,
-          appearances: clips.length ? 26 : 6,
-          recentAvg: clips.length ? "90'" : "72'"
-        },
-        performance: {
-          averageScore: assessed.length ? (assessed.reduce((sum, clip) => sum + clip.score, 0) / assessed.length).toFixed(1) : 'N/A',
-          trend: selected.trend
-        },
-        clipStats: {
-          submitted: clips.length,
-          assessed: assessed.length,
-          pending: pending.length
-        }
-      });
+      return buildDashboardSnapshot(store, selected);
     },
 
     listClips(filters) {
@@ -568,10 +697,44 @@
     },
 
     listUsers() {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('GET', '/users');
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data.map((user) => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            status: user.status,
+            password: user.password || '',
+            lastLogin: user.lastLogin || 'Unknown'
+          })));
+        }
+
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
       return clone(loadStore().users);
     },
 
     createUser(payload, actorRole) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users', {
+          name: payload && payload.name,
+          email: payload && payload.email,
+          role: payload && payload.role,
+          password: payload && payload.password,
+          actorRole
+        });
+
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', user: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       if (actorRole !== 'SystemAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
@@ -607,6 +770,19 @@
     },
 
     changeRole(email, role, actorRole) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/role', {
+          role,
+          actorRole
+        });
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', user: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       if (actorRole !== 'SystemAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
@@ -626,6 +802,20 @@
     },
 
     changePassword(email, password, confirmPassword, actorRole) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/password', {
+          password,
+          confirmPassword,
+          actorRole
+        });
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', user: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       if (actorRole !== 'SystemAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
@@ -647,6 +837,18 @@
     },
 
     deactivateUser(email, actorRole) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/deactivate', {
+          actorRole
+        });
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', user: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       if (actorRole !== 'SystemAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
@@ -663,6 +865,18 @@
     },
 
     reactivateUser(email, actorRole) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/reactivate', {
+          actorRole
+        });
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', user: clone(response.body.data) };
+        }
+
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
+      }
+
       if (actorRole !== 'SystemAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
@@ -679,6 +893,17 @@
     },
 
     login(email, password) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/auth/login', { email, password });
+        if (response.status === 200 && response.body && response.body.user) {
+          setSessionEmail(response.body.user.email);
+          return { status: 200, token: response.body.token, role: response.body.role, user: clone(response.body.user) };
+        }
+
+        setSessionEmail('');
+        return clone(response.body || { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+      }
+
       const store = loadStore();
       const user = store.users.find((entry) => entry.email.toLowerCase() === String(email || '').trim().toLowerCase());
       if (!user || user.status !== 'active' || user.password !== password) {

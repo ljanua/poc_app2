@@ -5,11 +5,19 @@ ALTER TABLE IF EXISTS users
   ADD COLUMN IF NOT EXISTS password_plaintext TEXT,
   ADD COLUMN IF NOT EXISTS last_login_label TEXT;
 
-ALTER TABLE IF EXISTS users
-  DROP CONSTRAINT IF EXISTS users_status_check;
-
-ALTER TABLE IF EXISTS users
-  ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'inactive'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.table_constraints
+    WHERE constraint_schema = 'public'
+      AND table_name = 'users'
+      AND constraint_name = 'users_status_check'
+  ) THEN
+    ALTER TABLE users
+      ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'inactive'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS clips (
   id TEXT PRIMARY KEY,

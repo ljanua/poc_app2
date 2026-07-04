@@ -12,6 +12,7 @@ describe('db bootstrap artifacts', () => {
     expect(deploy).toContain('CREATE TABLE IF NOT EXISTS players');
     expect(deploy).toContain('CREATE TABLE IF NOT EXISTS player_team_assignments');
     expect(deploy).toContain('CREATE TABLE IF NOT EXISTS clips');
+    expect(deploy).toContain('CREATE TABLE IF NOT EXISTS player_stats');
   });
 
   it('includes canonical tables for users, teams, players, assignments, and clips', () => {
@@ -23,6 +24,7 @@ describe('db bootstrap artifacts', () => {
     expect(schema).toContain('CREATE TABLE IF NOT EXISTS players');
     expect(schema).toContain('CREATE TABLE IF NOT EXISTS player_team_assignments');
     expect(schema).toContain('CREATE TABLE IF NOT EXISTS clips');
+    expect(schema).toContain('CREATE TABLE IF NOT EXISTS player_stats');
   });
 
   it('has migration for clips and user status parity', () => {
@@ -31,5 +33,15 @@ describe('db bootstrap artifacts', () => {
 
     expect(migration).toContain('ALTER TABLE IF EXISTS users');
     expect(migration).toContain('CREATE TABLE IF NOT EXISTS clips');
+    expect(migration).toContain('DO $$');
+  });
+
+  it('has migration for player stats backfill', () => {
+    const migrationPath = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'migrations', '008_player_stats_source_of_record.sql');
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS player_stats');
+    expect(migration).toContain('INSERT INTO player_stats');
+    expect(migration).toContain('ON CONFLICT (player_id) DO UPDATE');
   });
 });
