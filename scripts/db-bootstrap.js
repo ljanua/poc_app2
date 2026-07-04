@@ -49,7 +49,10 @@ async function runSqlFiles(connectionString) {
   await client.connect();
 
   try {
-    const schemaPath = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'schema', 'tables.sql');
+    const schemaDir = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'schema');
+    const deployPath = path.join(schemaDir, 'deploy.sql');
+    const fallbackPath = path.join(schemaDir, 'tables.sql');
+    const schemaPath = fs.existsSync(deployPath) ? deployPath : fallbackPath;
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
     await client.query(schemaSql);
     console.log(`Applied schema: ${schemaPath}`);
