@@ -30,11 +30,12 @@
         { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club' }
       ],
       players: [
-        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago' },
-        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago' },
-        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago' },
-        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago' }
+        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null },
+        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null },
+        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null },
+        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null }
       ],
+      playerAvatars: {},
       clips: [
         { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'assessed', score: 4.2, summary: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
         { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'assessed', score: 3.8, summary: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
@@ -373,13 +374,17 @@
   }
 
   function buildDashboardSnapshot(store, selected) {
-    const stored = getStoredStats(store, selected.id);
+    const avatars = store.playerAvatars || {};
+    const avatarUrl = avatars[selected.id] || avatars[String(selected.id)] || selected.avatarUrl || null;
+    const selectedWithAvatar = Object.assign({}, selected, { avatarUrl: avatarUrl });
+
+    const stored = getStoredStats(store, selectedWithAvatar.id);
     if (stored) {
-      return composeDashboardPayload(selected, stored);
+      return composeDashboardPayload(selectedWithAvatar, stored);
     }
 
-    if (!isNamedReferenceProfile(selected)) {
-      return buildNoStatsDashboardSnapshot(store, selected);
+    if (!isNamedReferenceProfile(selectedWithAvatar)) {
+      return buildNoStatsDashboardSnapshot(store, selectedWithAvatar);
     }
 
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
@@ -538,8 +543,10 @@
     var skillProgress = toNullableStringValue(payload && payload.skillProgress);
     var hasRating = [currentLevel, fitness, skillProgress].some(function (v) { return v !== null; });
 
+    var avatarUrl = (payload && payload.avatarUrl !== undefined) ? String(payload.avatarUrl || '').trim() || null : null;
+
     return {
-      identity: { name: name, normalizedName: normalizeComparable(name), teamName: teamName, position: position, trend: trend },
+      identity: { name: name, normalizedName: normalizeComparable(name), teamName: teamName, position: position, trend: trend, avatarUrl: avatarUrl },
       stats: {
         growthStatus: growthStatus,
         currentLevel: currentLevel,
@@ -749,11 +756,17 @@
       const query = normalizeComparable(filters.query || '');
 
       return clone(
-        store.players.filter((player) => {
-          const teamMatches = teamName === 'all' || player.teamName === teamName;
-          const queryMatches = !query || normalizeComparable(player.name).includes(query) || normalizeComparable(player.position).includes(query);
-          return teamMatches && queryMatches;
-        })
+        store.players
+          .filter((player) => {
+            const teamMatches = teamName === 'all' || player.teamName === teamName;
+            const queryMatches = !query || normalizeComparable(player.name).includes(query) || normalizeComparable(player.position).includes(query);
+            return teamMatches && queryMatches;
+          })
+          .map((player) => {
+            const avatars = store.playerAvatars || {};
+            const storedAvatar = avatars[player.id] || avatars[String(player.id)] || null;
+            return Object.assign({}, player, { avatarUrl: storedAvatar });
+          })
       );
     },
 
@@ -1082,12 +1095,53 @@
       player.teamName = team.name;
       player.updated = 'Updated just now';
 
+      if (parsed.identity.avatarUrl !== undefined && parsed.identity.avatarUrl !== null) {
+        store.playerAvatars = store.playerAvatars || {};
+        store.playerAvatars[player.id] = parsed.identity.avatarUrl;
+      }
+
       store.playerStats = store.playerStats || {};
       store.playerStats[player.id] = clone(parsed.stats);
       saveStore(store);
 
       const snapshot = buildDashboardSnapshot(store, player);
       return { status: 200, code: 'ok', data: { player: snapshot.player, stats: snapshot.stats } };
+    },
+
+    updatePlayerAvatar(playerId, avatarDataUrl) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'PATCH',
+          '/players/' + encodeURIComponent(playerId) + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
+          { avatarUrl: avatarDataUrl }
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', avatarUrl: response.body.data.player ? response.body.data.player.avatarUrl : avatarDataUrl };
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      store.playerAvatars = store.playerAvatars || {};
+      store.playerAvatars[player.id] = avatarDataUrl;
+      saveStore(store);
+      return { status: 200, code: 'ok', avatarUrl: avatarDataUrl };
     },
 
     listClips(filters) {

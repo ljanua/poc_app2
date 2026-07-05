@@ -339,6 +339,7 @@ function toDashboardPayload(row) {
       id: row.id,
       name: row.name,
       normalizedName: row.normalizedName,
+      avatarUrl: row.avatarUrl || null,
       teamName: row.teamName,
       position: row.position,
       trend: row.trend,
@@ -794,6 +795,7 @@ async function listPlayers(teamName, query) {
         p.id,
         p.name,
         p.normalized_name AS "normalizedName",
+        p.player_avatar_url AS "avatarUrl",
         t.name AS "teamName",
         p.position,
         p.trend
@@ -821,6 +823,7 @@ async function findPlayerById(playerId, executor = pool) {
         p.id,
         p.name,
         p.normalized_name AS "normalizedName",
+        p.player_avatar_url AS "avatarUrl",
         t.name AS "teamName",
         p.position,
         p.trend
@@ -864,6 +867,7 @@ async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
         p.id,
         p.name,
         p.normalized_name AS "normalizedName",
+        p.player_avatar_url AS "avatarUrl",
         t.name AS "teamName",
         p.position,
         p.trend,
@@ -1011,8 +1015,10 @@ function parseUpdateProfilePayload(payload) {
   const skillProgress = toNullableString(payload.skillProgress);
   const hasRating = [currentLevel, fitness, skillProgress].some(function (v) { return v !== null; });
 
+  const avatarUrl = (payload && payload.avatarUrl !== undefined) ? String(payload.avatarUrl || '').trim() || null : null;
+
   return {
-    identity: { name, normalizedName: normalizeComparable(name), teamName, position, trend },
+    identity: { name, normalizedName: normalizeComparable(name), teamName, position, trend, avatarUrl },
     stats: {
       growthStatus,
       currentLevel,
@@ -1066,6 +1072,7 @@ async function handlePlayersApi(req, res, requestUrl) {
           p.id,
           p.name,
           p.normalized_name AS "normalizedName",
+          p.player_avatar_url AS "avatarUrl",
           t.name AS "teamName",
           p.position,
           p.trend,
@@ -1826,10 +1833,10 @@ async function handlePlayersApi(req, res, requestUrl) {
       await client.query(
         `
           UPDATE players
-          SET name = $1, normalized_name = $2, position = $3, trend = $4, updated_at = NOW()
-          WHERE id = $5
+          SET name = $1, normalized_name = $2, position = $3, trend = $4, player_avatar_url = $5, updated_at = NOW()
+          WHERE id = $6
         `,
-        [parsed.identity.name, parsed.identity.normalizedName, parsed.identity.position, parsed.identity.trend, playerId]
+        [parsed.identity.name, parsed.identity.normalizedName, parsed.identity.position, parsed.identity.trend, parsed.identity.avatarUrl, playerId]
       );
 
       await client.query(

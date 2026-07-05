@@ -19,6 +19,12 @@ components:
           enum: [improving, plateau, declining]
         updated:
           type: string
+        avatarUrl:
+          type: string
+          nullable: true
+          description: >-
+            URL or data-URI of the player's avatar image. Always 100x100 JPEG.
+            Null when no avatar has been uploaded.
 
     PlayerResponse:
       type: object
@@ -297,6 +303,13 @@ components:
         trend:
           type: string
           enum: [improving, plateau, declining]
+        avatarUrl:
+          type: string
+          nullable: true
+          description: >-
+            URL or data-URI for the player's avatar. When set, the image
+            replaces the default player icon across all surfaces. Stored as a
+            100x100 JPEG.
         growthStatus:
           type: string
           nullable: true
