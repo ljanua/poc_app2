@@ -294,7 +294,90 @@
     });
   }
 
+  // Coach-saved stats overrides, keyed by player id. When present they take
+  // precedence over the derived snapshots below, so an offline/local edit
+  // round-trips through the dashboard read the same way the backend PATCH
+  // would (including leaving the "no stats yet" state).
+  function getStoredStats(store, playerId) {
+    if (!store.playerStats) {
+      return null;
+    }
+    return store.playerStats[playerId] || store.playerStats[String(playerId)] || null;
+  }
+
+  function growthStatusForTrend(trend) {
+    return trend === 'improving' ? 'on_track' : trend === 'declining' ? 'at_risk' : 'watch';
+  }
+
+  // Builds the full dashboard payload from a canonical stats object (the same
+  // shape the backend stores/returns), mirroring toDashboardPayload in
+  // scripts/serve-mockup.js so a coach-saved override renders identically.
+  function composeDashboardPayload(player, stats) {
+    const currentLevel = stats.currentLevel || 'N/A';
+    const fitness = stats.fitness || 'N/A';
+    const skillProgress = stats.skillProgress || 'N/A';
+    const averageScoreDisplay = stats.averageScore === null || stats.averageScore === undefined ? 'N/A' : Number(stats.averageScore).toFixed(1);
+    const lastMatchScoreDisplay = stats.lastMatchScore === null || stats.lastMatchScore === undefined ? 'N/A' : Number(stats.lastMatchScore).toFixed(1);
+    const currentLevelChange = stats.currentLevelChange || null;
+    const fitnessChange = stats.fitnessChange || null;
+    const skillProgressChange = stats.skillProgressChange || null;
+
+    return clone({
+      player,
+      stats: {
+        growthStatus: stats.growthStatus || growthStatusForTrend(player.trend),
+        currentLevel,
+        fitness,
+        skillProgress,
+        totalMinutes: Number(stats.totalMinutes || 0),
+        appearances: Number(stats.appearances || 0),
+        recentAvg: stats.recentAvg || 'N/A',
+        averageScore: stats.averageScore === null || stats.averageScore === undefined ? null : Number(stats.averageScore),
+        trend: player.trend,
+        lastMatchScore: stats.lastMatchScore === null || stats.lastMatchScore === undefined ? null : Number(stats.lastMatchScore),
+        lastMatchSummary: stats.lastMatchSummary || null,
+        clipSubmittedCount: Number(stats.clipSubmittedCount || 0),
+        clipAssessedCount: Number(stats.clipAssessedCount || 0),
+        clipPendingCount: Number(stats.clipPendingCount || 0),
+        missingDataMessage: stats.missingDataMessage || null,
+        currentLevelChange,
+        fitnessChange,
+        skillProgressChange
+      },
+      metrics: {
+        currentLevel,
+        fitness,
+        skillProgress,
+        currentLevelChange,
+        fitnessChange,
+        skillProgressChange
+      },
+      matchTime: {
+        totalMinutes: Number(stats.totalMinutes || 0),
+        appearances: Number(stats.appearances || 0),
+        recentAvg: stats.recentAvg || 'N/A'
+      },
+      performance: {
+        averageScore: averageScoreDisplay,
+        trend: player.trend || 'plateau',
+        lastMatchScore: lastMatchScoreDisplay,
+        lastMatchSummary: stats.lastMatchSummary || null,
+        missingDataMessage: stats.missingDataMessage || null
+      },
+      clipStats: {
+        submitted: Number(stats.clipSubmittedCount || 0),
+        assessed: Number(stats.clipAssessedCount || 0),
+        pending: Number(stats.clipPendingCount || 0)
+      }
+    });
+  }
+
   function buildDashboardSnapshot(store, selected) {
+    const stored = getStoredStats(store, selected.id);
+    if (stored) {
+      return composeDashboardPayload(selected, stored);
+    }
+
     if (!isNamedReferenceProfile(selected)) {
       return buildNoStatsDashboardSnapshot(store, selected);
     }
@@ -352,6 +435,127 @@
         pending: pending.length
       }
     });
+  }
+
+  const TREND_VALUES = ['improving', 'plateau', 'declining'];
+  const GROWTH_STATUS_VALUES = ['on_track', 'watch', 'at_risk'];
+
+  function toNullableStringValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const text = String(value).trim();
+    return text.length ? text : null;
+  }
+
+  function toCountValue(value, fallback) {
+    if (value === null || value === undefined || value === '') {
+      return fallback;
+    }
+    const num = Number(value);
+    if (!Number.isFinite(num) || num < 0) {
+      return NaN;
+    }
+    return Math.floor(num);
+  }
+
+  function toNullableNumberValue(value) {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : NaN;
+  }
+
+  function parseMetricChangeValue(value) {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    if (typeof value !== 'object') {
+      return 'invalid';
+    }
+    const label = toNullableStringValue(value.label);
+    if (label === null) {
+      return null;
+    }
+    const trend = String(value.trend || '').trim();
+    if (TREND_VALUES.indexOf(trend) === -1) {
+      return 'invalid';
+    }
+    return { label: label, trend: trend };
+  }
+
+  // Client-side mirror of parseUpdateProfilePayload in scripts/serve-mockup.js
+  // so offline/local edits enforce the same rules the backend would.
+  function parseUpdateProfilePayload(payload) {
+    const validChars = /^[A-Za-z' -]+$/;
+    const name = toTitleCase(payload && payload.name);
+    if (!name || name.length < 2 || name.length > 60 || !validChars.test(name)) {
+      return { error: 'Player name must be 2-60 chars and use letters, spaces, apostrophe, or hyphen.' };
+    }
+
+    const teamName = normalizeLookup(payload && payload.teamName);
+    if (!teamName || teamName.toLowerCase() === 'all') {
+      return { error: 'Pick a team before saving.' };
+    }
+
+    const trend = String((payload && payload.trend) || '').trim();
+    if (TREND_VALUES.indexOf(trend) === -1) {
+      return { error: 'Trend must be one of improving, plateau, or declining.' };
+    }
+
+    const position = toNullableStringValue(payload && payload.position) || 'Position not set';
+
+    const growthStatus = toNullableStringValue(payload && payload.growthStatus);
+    if (growthStatus !== null && GROWTH_STATUS_VALUES.indexOf(growthStatus) === -1) {
+      return { error: 'Growth status must be on_track, watch, at_risk, or empty.' };
+    }
+
+    const totalMinutes = toCountValue(payload && payload.totalMinutes, 0);
+    const appearances = toCountValue(payload && payload.appearances, 0);
+    const clipSubmittedCount = toCountValue(payload && payload.clipSubmittedCount, 0);
+    const clipAssessedCount = toCountValue(payload && payload.clipAssessedCount, 0);
+    const clipPendingCount = toCountValue(payload && payload.clipPendingCount, 0);
+    if ([totalMinutes, appearances, clipSubmittedCount, clipAssessedCount, clipPendingCount].some(function (value) { return Number.isNaN(value); })) {
+      return { error: 'Minutes, appearances, and clip counts must be non-negative whole numbers.' };
+    }
+
+    const averageScore = toNullableNumberValue(payload && payload.averageScore);
+    const lastMatchScore = toNullableNumberValue(payload && payload.lastMatchScore);
+    if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
+      return { error: 'Scores must be numeric or left blank.' };
+    }
+
+    const currentLevelChange = parseMetricChangeValue(payload && payload.currentLevelChange);
+    const fitnessChange = parseMetricChangeValue(payload && payload.fitnessChange);
+    const skillProgressChange = parseMetricChangeValue(payload && payload.skillProgressChange);
+    if ([currentLevelChange, fitnessChange, skillProgressChange].indexOf('invalid') !== -1) {
+      return { error: 'Each metric change needs a label and a valid trend, or leave it blank.' };
+    }
+
+    return {
+      identity: { name: name, normalizedName: normalizeComparable(name), teamName: teamName, position: position, trend: trend },
+      stats: {
+        growthStatus: growthStatus,
+        currentLevel: toNullableStringValue(payload && payload.currentLevel),
+        fitness: toNullableStringValue(payload && payload.fitness),
+        skillProgress: toNullableStringValue(payload && payload.skillProgress),
+        totalMinutes: totalMinutes,
+        appearances: appearances,
+        recentAvg: toNullableStringValue(payload && payload.recentAvg) || 'N/A',
+        averageScore: averageScore,
+        trend: trend,
+        lastMatchScore: lastMatchScore,
+        lastMatchSummary: toNullableStringValue(payload && payload.lastMatchSummary),
+        clipSubmittedCount: clipSubmittedCount,
+        clipAssessedCount: clipAssessedCount,
+        clipPendingCount: clipPendingCount,
+        missingDataMessage: null,
+        currentLevelChange: currentLevelChange,
+        fitnessChange: fitnessChange,
+        skillProgressChange: skillProgressChange
+      }
+    };
   }
 
   const MockupApi = {
@@ -781,6 +985,104 @@
         return null;
       }
       return buildDashboardSnapshot(store, selected);
+    },
+
+    getPlayerProfile(playerId) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'GET',
+          '/players/' + encodeURIComponent(playerId) + '/profile' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '')
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, data: clone(response.body.data) };
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          window.__MOCK_API_LAST_ERROR__ = response.body;
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+
+        const fallbackStore = loadStore();
+        const fallbackPlayer = fallbackStore.players.find(function (entry) { return String(entry.id) === String(playerId); });
+        if (!fallbackPlayer) {
+          return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+        }
+        const fallbackSnapshot = buildDashboardSnapshot(fallbackStore, fallbackPlayer);
+        return { status: 200, data: { player: fallbackSnapshot.player, stats: fallbackSnapshot.stats } };
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const snapshot = buildDashboardSnapshot(store, player);
+      return { status: 200, data: { player: snapshot.player, stats: snapshot.stats } };
+    },
+
+    updatePlayerProfile(playerId, payload) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'PATCH',
+          '/players/' + encodeURIComponent(playerId) + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
+          payload
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', data: clone(response.body.data) };
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
+      const parsed = parseUpdateProfilePayload(payload);
+      if (parsed.error) {
+        return { status: 400, code: 'validation_error', message: parsed.error };
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const team = findTeamByName(store, parsed.identity.teamName);
+      if (!team) {
+        return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+      }
+
+      const conflict = store.players.find(function (entry) {
+        return entry.normalizedName === parsed.identity.normalizedName && String(entry.id) !== String(playerId);
+      });
+      if (conflict) {
+        return { status: 409, code: 'conflict', message: 'Another player already uses that name.' };
+      }
+
+      player.name = parsed.identity.name;
+      player.normalizedName = parsed.identity.normalizedName;
+      player.position = parsed.identity.position;
+      player.trend = parsed.identity.trend;
+      player.teamName = team.name;
+      player.updated = 'Updated just now';
+
+      store.playerStats = store.playerStats || {};
+      store.playerStats[player.id] = clone(parsed.stats);
+      saveStore(store);
+
+      const snapshot = buildDashboardSnapshot(store, player);
+      return { status: 200, code: 'ok', data: { player: snapshot.player, stats: snapshot.stats } };
     },
 
     listClips(filters) {
