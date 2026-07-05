@@ -387,13 +387,13 @@
       return buildNoStatsDashboardSnapshot(store, selectedWithAvatar);
     }
 
-    const clips = store.clips.filter((clip) => clip.playerId === selectedWithAvatar.id);
+    const clips = store.clips.filter((clip) => clip.playerId === selected.id);
     const assessed = clips.filter((clip) => clip.status === 'assessed');
     const pending = clips.filter((clip) => clip.status === 'pending');
-    const metricChanges = getMetricChangeIndicators(selectedWithAvatar);
+    const metricChanges = getMetricChangeIndicators(selected);
 
     return clone({
-      player: selectedWithAvatar,
+      player: selected,
       stats: {
         growthStatus: selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch',
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
@@ -1186,7 +1186,41 @@
       });
     },
 
-    listClips(filters) {
+    /**
+     * Applies avatarUrl to an avatar container.
+     * @param {string} imgElId - The id of the <img> element (e.g. 'playerAvatarImg'
+     *   or 's5AvatarImg'). The function derives the emoji span id by stripping
+     *   the 'Img' suffix and appending 'Emoji'.
+     * @param {string|null} avatarUrl
+     */
+    applyAvatar(imgElId, avatarUrl) {
+      if (!imgElId) return;
+      var emojiId = imgElId.replace(/Img$/, 'Emoji');
+      var imgEl = document.getElementById(imgElId);
+      var emojiEl = document.getElementById(emojiId);
+      if (!imgEl || !emojiEl) return;
+      if (avatarUrl) {
+        imgEl.src = avatarUrl;
+        imgEl.style.display = 'block';
+        emojiEl.style.display = 'none';
+      } else {
+        imgEl.style.display = 'none';
+        emojiEl.style.display = '';
+      }
+    },
+
+    /**
+     * Wires mouseenter/mouseleave on the avatar container to show/hide the
+     * camera-overlay div. Pass the container element or its ID.
+     */
+    initAvatarHover(containerEl) {
+      var el = typeof containerEl === 'string' ? document.getElementById(containerEl) : containerEl;
+      if (!el) return;
+      var overlay = el.querySelector('[id$="Overlay"]') || document.getElementById(el.id + 'Overlay');
+      if (!overlay) return;
+      el.addEventListener('mouseenter', function () { overlay.style.display = 'flex'; });
+      el.addEventListener('mouseleave', function () { overlay.style.display = 'none'; });
+    },
       const store = loadStore();
       const options = filters || {};
       const teamName = options.teamName || 'all';

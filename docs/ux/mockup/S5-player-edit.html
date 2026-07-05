@@ -581,23 +581,8 @@
         setValue('fieldGrowthStatus', stats.growthStatus || '');
 
         // Avatar display and hover overlay
-        var avatarUrl = player.avatarUrl || null;
-        var img = document.getElementById('s5AvatarImg');
-        var emoji = document.getElementById('s5AvatarEmoji');
-        var overlay = document.getElementById('s5AvatarOverlay');
-        if (avatarUrl) {
-          img.src = avatarUrl;
-          img.style.display = 'block';
-          emoji.style.display = 'none';
-        } else {
-          img.style.display = 'none';
-          emoji.style.display = '';
-        }
-        var s5AvatarContainer = document.getElementById('s5AvatarContainer');
-        if (s5AvatarContainer) {
-          s5AvatarContainer.addEventListener('mouseenter', function () { if (overlay) overlay.style.display = 'flex'; });
-          s5AvatarContainer.addEventListener('mouseleave', function () { if (overlay) overlay.style.display = 'none'; });
-        }
+        MockupApi.applyAvatar('s5AvatarImg', player.avatarUrl || null);
+        MockupApi.initAvatarHover('s5AvatarContainer');
 
         controls.currentLevel.setState(parseRating(stats.currentLevel));
         controls.fitness.setState(parseRating(stats.fitness));
@@ -689,10 +674,7 @@
           return;
         }
         if (result && result.avatarUrl) {
-          var img = document.getElementById('s5AvatarImg');
-          var emoji = document.getElementById('s5AvatarEmoji');
-          if (img) { img.src = result.avatarUrl; img.style.display = 'block'; }
-          if (emoji) emoji.style.display = 'none';
+          MockupApi.applyAvatar('s5AvatarImg', result.avatarUrl);
           showToast('Photo updated.');
         }
       });

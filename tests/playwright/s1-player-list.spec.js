@@ -137,8 +137,7 @@ test.describe('S1 Player List team filter and add-player flow', () => {
       window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
     });
     await page.reload();
-    // .player-card > .player-image > img  — navigate from the card level
-    const messiAvatar = page.locator('.player-card').filter({ hasText: 'Lionel Messi' }).locator('.player-image img');
-    await expect(messiAvatar).toBeVisible();
+    const messiCard = page.locator('.player-card .player-name', { hasText: 'Lionel Messi' }).locator('..').locator('.player-image');
+    await expect(messiCard.locator('img')).toBeVisible();
   });
 });

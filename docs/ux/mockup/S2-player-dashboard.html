@@ -207,33 +207,8 @@
       }
 
       // Avatar: show uploaded image or ⚽ fallback; hover shows camera overlay.
-      function applyAvatar(avatarUrl) {
-        var img = document.getElementById('playerAvatarImg');
-        var emoji = document.getElementById('playerAvatarEmoji');
-        var overlay = document.getElementById('playerAvatarOverlay');
-        if (avatarUrl) {
-          img.src = avatarUrl;
-          img.style.display = 'block';
-          emoji.style.display = 'none';
-        } else {
-          img.style.display = 'none';
-          emoji.style.display = '';
-        }
-      }
-      function showAvatarOverlay() {
-        var overlay = document.getElementById('playerAvatarOverlay');
-        if (overlay) overlay.style.display = 'flex';
-      }
-      function hideAvatarOverlay() {
-        var overlay = document.getElementById('playerAvatarOverlay');
-        if (overlay) overlay.style.display = 'none';
-      }
-      var avatarContainer = document.getElementById('playerAvatarContainer');
-      if (avatarContainer) {
-        avatarContainer.addEventListener('mouseenter', showAvatarOverlay);
-        avatarContainer.addEventListener('mouseleave', hideAvatarOverlay);
-      }
-      applyAvatar(player.avatarUrl || null);
+      MockupApi.applyAvatar('playerAvatarImg', player.avatarUrl || null);
+      MockupApi.initAvatarHover('playerAvatarContainer');
 
       // A player with no real recorded stats yet must never show fabricated
       // or borrowed numbers. Show the identity card plus a single clear
@@ -315,10 +290,7 @@
           return;
         }
         if (result && result.avatarUrl) {
-          var img = document.getElementById('playerAvatarImg');
-          var emoji = document.getElementById('playerAvatarEmoji');
-          if (img) { img.src = result.avatarUrl; img.style.display = 'block'; }
-          if (emoji) emoji.style.display = 'none';
+          MockupApi.applyAvatar('playerAvatarImg', result.avatarUrl);
           var toast = document.getElementById('toast') || document.createElement('div');
           toast.id = 'toast';
           toast.className = 'toast';
