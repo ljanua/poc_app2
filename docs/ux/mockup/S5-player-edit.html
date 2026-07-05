@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S5: Edit Player — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+  <style>
+    input[type="number"] {
+      width: 100%;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--surface-1);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-md);
+      padding: 0.8rem 1rem;
+      transition: all var(--t-fast);
+    }
+    input[type="number"]:focus {
+      outline: none;
+      border-color: rgba(198, 255, 58, 0.5);
+      box-shadow: 0 0 0 4px rgba(198, 255, 58, 0.12);
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem 1.25rem;
+    }
+    .form-field { display: flex; flex-direction: column; }
+    .form-field .form-label { margin-bottom: 0.45rem; }
+    .metric-change-row { display: grid; grid-template-columns: 2fr 1fr; gap: 0.6rem; }
+    @media (max-width: 640px) {
+      .form-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S1-player-list.html">←</a>
+      <div class="header-title">Edit Player</div>
+      <div class="header-meta">Coach View</div>
+    </header>
+
+    <div class="content">
+      <div class="notice" id="editNotice" hidden></div>
+
+      <form id="playerEditForm">
+        <div class="section">
+          <div class="section-title">Identity</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="fieldName">Name <span class="required">*</span></label>
+              <input id="fieldName" type="text" required>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldTeam">Team <span class="required">*</span></label>
+              <select id="fieldTeam"></select>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldPosition">Position</label>
+              <input id="fieldPosition" type="text">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldTrend">Trend <span class="required">*</span></label>
+              <select id="fieldTrend">
+                <option value="improving">Improving</option>
+                <option value="plateau">Plateau</option>
+                <option value="declining">Declining</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Development Progress</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="fieldGrowthStatus">Growth Status</label>
+              <select id="fieldGrowthStatus">
+                <option value="">Not set</option>
+                <option value="on_track">On track</option>
+                <option value="watch">Watch</option>
+                <option value="at_risk">At risk</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldCurrentLevel">Current Level</label>
+              <input id="fieldCurrentLevel" type="text" placeholder="e.g. 92%">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldFitness">Fitness</label>
+              <input id="fieldFitness" type="text" placeholder="e.g. 87%">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldSkillProgress">Skill Progress</label>
+              <input id="fieldSkillProgress" type="text" placeholder="e.g. 94%">
+            </div>
+          </div>
+
+          <div style="margin-top: 1.1rem;">
+            <label class="form-label" for="fieldCurrentLevelChangeLabel">Current Level Change</label>
+            <div class="metric-change-row">
+              <input id="fieldCurrentLevelChangeLabel" type="text" placeholder="Label, e.g. Up 5%" aria-label="Current level change label">
+              <select id="fieldCurrentLevelChangeTrend" aria-label="Current level change trend">
+                <option value="">No change</option>
+                <option value="improving">Improving</option>
+                <option value="plateau">Plateau</option>
+                <option value="declining">Declining</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top: 0.9rem;">
+            <label class="form-label" for="fieldFitnessChangeLabel">Fitness Change</label>
+            <div class="metric-change-row">
+              <input id="fieldFitnessChangeLabel" type="text" placeholder="Label, e.g. Stable" aria-label="Fitness change label">
+              <select id="fieldFitnessChangeTrend" aria-label="Fitness change trend">
+                <option value="">No change</option>
+                <option value="improving">Improving</option>
+                <option value="plateau">Plateau</option>
+                <option value="declining">Declining</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top: 0.9rem;">
+            <label class="form-label" for="fieldSkillProgressChangeLabel">Skill Progress Change</label>
+            <div class="metric-change-row">
+              <input id="fieldSkillProgressChangeLabel" type="text" placeholder="Label, e.g. Up 3%" aria-label="Skill progress change label">
+              <select id="fieldSkillProgressChangeTrend" aria-label="Skill progress change trend">
+                <option value="">No change</option>
+                <option value="improving">Improving</option>
+                <option value="plateau">Plateau</option>
+                <option value="declining">Declining</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Match Time History</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="fieldTotalMinutes">Total Minutes</label>
+              <input id="fieldTotalMinutes" type="number" min="0" step="1">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldAppearances">Appearances</label>
+              <input id="fieldAppearances" type="number" min="0" step="1">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldRecentAvg">Recent Avg</label>
+              <input id="fieldRecentAvg" type="text" placeholder="e.g. 90'">
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Recent Performance</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="fieldAverageScore">Average Score</label>
+              <input id="fieldAverageScore" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldLastMatchScore">Last Match Score</label>
+              <input id="fieldLastMatchScore" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0">
+            </div>
+          </div>
+          <div class="form-field" style="margin-top: 1rem;">
+            <label class="form-label" for="fieldLastMatchSummary">Last Match Summary</label>
+            <textarea id="fieldLastMatchSummary" placeholder="Short note on the latest match"></textarea>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Video Assessments</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label" for="fieldClipSubmitted">Clips Submitted</label>
+              <input id="fieldClipSubmitted" type="number" min="0" step="1">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldClipAssessed">Clips Assessed</label>
+              <input id="fieldClipAssessed" type="number" min="0" step="1">
+            </div>
+            <div class="form-field">
+              <label class="form-label" for="fieldClipPending">Clips Pending</label>
+              <input id="fieldClipPending" type="number" min="0" step="1">
+            </div>
+          </div>
+        </div>
+
+        <p id="editFormError" class="error-msg">Please review the form fields and try again.</p>
+
+        <div class="cta-buttons">
+          <a class="btn btn-secondary" id="cancelEdit" href="./S1-player-list.html">Cancel</a>
+          <button class="btn btn-primary" type="submit" id="saveEdit">Save Player</button>
+        </div>
+      </form>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item active" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
+
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const playerId = params.get('playerId') || '';
+
+      const editNotice = document.getElementById('editNotice');
+      const form = document.getElementById('playerEditForm');
+      const formError = document.getElementById('editFormError');
+      const cancelEdit = document.getElementById('cancelEdit');
+      const toast = document.getElementById('toast');
+
+      function showNotice(message) {
+        editNotice.textContent = message;
+        editNotice.hidden = false;
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(function () {
+          toast.classList.remove('show');
+        }, 2400);
+      }
+
+      function showError(message) {
+        formError.textContent = message || 'Please review the form fields and try again.';
+        formError.classList.add('show');
+      }
+
+      function hideError() {
+        formError.classList.remove('show');
+      }
+
+      function hideForm() {
+        form.hidden = true;
+      }
+
+      function value(id) {
+        return document.getElementById(id).value;
+      }
+
+      function setValue(id, val) {
+        document.getElementById(id).value = val === null || val === undefined ? '' : val;
+      }
+
+      // Stats read as "N/A" (the dashboard placeholder) surface as empty inputs
+      // so the coach edits real values, not a placeholder string.
+      function displayText(val) {
+        return val === null || val === undefined || val === 'N/A' ? '' : val;
+      }
+
+      function fillTeamOptions(selectedTeamName) {
+        const teams = MockupApi.listTeams();
+        const select = document.getElementById('fieldTeam');
+        select.innerHTML = '';
+        teams.forEach(function (team) {
+          const option = document.createElement('option');
+          option.value = team.name;
+          option.textContent = team.name;
+          if (team.name === selectedTeamName) {
+            option.selected = true;
+          }
+          select.appendChild(option);
+        });
+        // Preserve the player's current team even if it is not in the coach's
+        // visible team list, so saving does not silently reassign them.
+        if (selectedTeamName && !teams.some(function (team) { return team.name === selectedTeamName; })) {
+          const option = document.createElement('option');
+          option.value = selectedTeamName;
+          option.textContent = selectedTeamName;
+          option.selected = true;
+          select.appendChild(option);
+        }
+      }
+
+      function fillMetricChange(prefix, change) {
+        setValue('field' + prefix + 'Label', change ? change.label : '');
+        setValue('field' + prefix + 'Trend', change ? change.trend : '');
+      }
+
+      function readMetricChange(prefix) {
+        const label = value('field' + prefix + 'Label').trim();
+        if (!label) {
+          return null;
+        }
+        return { label: label, trend: value('field' + prefix + 'Trend') || 'plateau' };
+      }
+
+      function populate(profile) {
+        const player = profile.player;
+        const stats = profile.stats;
+
+        setValue('fieldName', player.name);
+        setValue('fieldPosition', player.position === 'Position not set' ? '' : player.position);
+        setValue('fieldTrend', player.trend || 'plateau');
+        fillTeamOptions(player.teamName);
+
+        setValue('fieldGrowthStatus', stats.growthStatus || '');
+        setValue('fieldCurrentLevel', displayText(stats.currentLevel));
+        setValue('fieldFitness', displayText(stats.fitness));
+        setValue('fieldSkillProgress', displayText(stats.skillProgress));
+
+        fillMetricChange('CurrentLevelChange', stats.currentLevelChange);
+        fillMetricChange('FitnessChange', stats.fitnessChange);
+        fillMetricChange('SkillProgressChange', stats.skillProgressChange);
+
+        setValue('fieldTotalMinutes', Number(stats.totalMinutes || 0));
+        setValue('fieldAppearances', Number(stats.appearances || 0));
+        setValue('fieldRecentAvg', displayText(stats.recentAvg));
+
+        setValue('fieldAverageScore', stats.averageScore === null || stats.averageScore === undefined ? '' : stats.averageScore);
+        setValue('fieldLastMatchScore', stats.lastMatchScore === null || stats.lastMatchScore === undefined ? '' : stats.lastMatchScore);
+        setValue('fieldLastMatchSummary', stats.lastMatchSummary || '');
+
+        setValue('fieldClipSubmitted', Number(stats.clipSubmittedCount || 0));
+        setValue('fieldClipAssessed', Number(stats.clipAssessedCount || 0));
+        setValue('fieldClipPending', Number(stats.clipPendingCount || 0));
+      }
+
+      function buildPayload() {
+        return {
+          name: value('fieldName'),
+          teamName: value('fieldTeam'),
+          position: value('fieldPosition'),
+          trend: value('fieldTrend'),
+          growthStatus: value('fieldGrowthStatus'),
+          currentLevel: value('fieldCurrentLevel'),
+          fitness: value('fieldFitness'),
+          skillProgress: value('fieldSkillProgress'),
+          totalMinutes: value('fieldTotalMinutes'),
+          appearances: value('fieldAppearances'),
+          recentAvg: value('fieldRecentAvg'),
+          averageScore: value('fieldAverageScore'),
+          lastMatchScore: value('fieldLastMatchScore'),
+          lastMatchSummary: value('fieldLastMatchSummary'),
+          clipSubmittedCount: value('fieldClipSubmitted'),
+          clipAssessedCount: value('fieldClipAssessed'),
+          clipPendingCount: value('fieldClipPending'),
+          currentLevelChange: readMetricChange('CurrentLevelChange'),
+          fitnessChange: readMetricChange('FitnessChange'),
+          skillProgressChange: readMetricChange('SkillProgressChange')
+        };
+      }
+
+      if (!playerId) {
+        showNotice('No player was selected to edit. Return to the dashboard and choose a player.');
+        hideForm();
+        return;
+      }
+
+      const profileResponse = MockupApi.getPlayerProfile(playerId);
+      if (!profileResponse || profileResponse.status !== 200 || !profileResponse.data) {
+        showNotice((profileResponse && profileResponse.message) || 'This player profile is unavailable right now.');
+        hideForm();
+        return;
+      }
+
+      populate(profileResponse.data);
+      cancelEdit.href = './S2-player-dashboard.html?player=' + encodeURIComponent(profileResponse.data.player.name);
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        hideError();
+
+        const response = MockupApi.updatePlayerProfile(playerId, buildPayload());
+        if (!response || response.status >= 400 || !response.data) {
+          showError((response && response.message) || 'Unable to save this player right now.');
+          return;
+        }
+
+        showToast('Player saved successfully.');
+        window.location.href = './S2-player-dashboard.html?player=' + encodeURIComponent(response.data.player.name);
+      });
+    })();
+  </script>
+</body>
+</html>

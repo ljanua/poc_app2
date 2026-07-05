@@ -21,6 +21,7 @@
           <option>Team: U19 Prime</option>
           <option>Team: U17 Elite</option>
         </select>
+        <a class="btn btn-secondary" id="editPlayerLink" href="./S1-player-list.html" hidden>Edit Player</a>
         <a class="btn btn-secondary" href="./S1-player-list.html">Back to Player List</a>
       </div>
 
@@ -190,6 +191,15 @@
       const trendBadge = document.getElementById('dashboardTrendBadge');
       trendBadge.className = 'badge ' + trendClass;
       trendBadge.textContent = trendArrow + ' ' + trendText;
+
+      // Edit Player is available whenever the dashboard resolved a player --
+      // including the no-stats-yet state, where editing is the way to record
+      // the player's first real stats.
+      const editPlayerLink = document.getElementById('editPlayerLink');
+      if (editPlayerLink && player.id !== undefined && player.id !== null) {
+        editPlayerLink.href = './S5-player-edit.html?playerId=' + encodeURIComponent(player.id);
+        editPlayerLink.hidden = false;
+      }
 
       // A player with no real recorded stats yet must never show fabricated
       // or borrowed numbers. Show the identity card plus a single clear
