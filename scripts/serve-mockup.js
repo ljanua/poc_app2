@@ -182,14 +182,18 @@ function buildDefaultDashboardStats(trend) {
   };
 }
 
+// The genuine "no stats recorded yet" shape. Used both when a player is
+// first created and when syncDefaultDashboardStats backfills a missing row
+// for an existing player -- never fabricated archetype numbers borrowed
+// from another player.
 function buildNewPlayerDashboardStats(trend) {
   const normalizedTrend = normalizeTrendValue(trend);
 
   return {
-    growthStatus: mapTrendToGrowthStatus(normalizedTrend),
-    currentLevel: normalizedTrend === 'declining' ? '81%' : normalizedTrend === 'improving' ? '92%' : '87%',
-    fitness: normalizedTrend === 'declining' ? '79%' : '87%',
-    skillProgress: normalizedTrend === 'improving' ? '94%' : '86%',
+    growthStatus: null,
+    currentLevel: null,
+    fitness: null,
+    skillProgress: null,
     totalMinutes: 0,
     appearances: 0,
     recentAvg: 'N/A',
@@ -201,9 +205,16 @@ function buildNewPlayerDashboardStats(trend) {
     clipAssessedCount: 0,
     clipPendingCount: 0,
     missingDataMessage: 'Performance metrics are not available yet.',
-    ...getDefaultMetricChangeIndicators(normalizedTrend)
+    currentLevelChange: null,
+    fitnessChange: null,
+    skillProgressChange: null
   };
 }
+
+// The four demo/reference profiles that intentionally carry curated,
+// hand-picked stats. Every other player must never have their stats
+// overwritten with data borrowed from one of these profiles.
+const NAMED_REFERENCE_PROFILES = new Set(['lionel messi', 'cristiano ronaldo', 'neymar jr', 'kylian mbappe']);
 
 function getSeedDashboardStats(normalizedName, trend) {
   const normalizedTrend = normalizeTrendValue(trend);
@@ -303,19 +314,25 @@ function getSeedDashboardStats(normalizedName, trend) {
   return buildDefaultDashboardStats(trend);
 }
 
-function toMetricChangeIndicator(label, trendValue, fallbackTrend) {
+// Returns null when there is genuinely no recorded change for this metric
+// (both DB columns are null together, by construction) rather than
+// papering over the gap with a placeholder value.
+function toMetricChangeIndicator(label, trendValue) {
+  if (label === null || label === undefined) {
+    return null;
+  }
   return {
-    label: label || 'N/A',
-    trend: trendValue || fallbackTrend || 'plateau'
+    label,
+    trend: trendValue || 'plateau'
   };
 }
 
 function toDashboardPayload(row) {
   const averageScore = row.averageScore === null || row.averageScore === undefined ? 'N/A' : Number(row.averageScore).toFixed(1);
   const lastMatchScore = row.lastMatchScore === null || row.lastMatchScore === undefined ? 'N/A' : Number(row.lastMatchScore).toFixed(1);
-  const currentLevelChange = toMetricChangeIndicator(row.currentLevelChangeLabel, row.currentLevelChangeTrend, row.trend);
-  const fitnessChange = toMetricChangeIndicator(row.fitnessChangeLabel, row.fitnessChangeTrend, row.trend);
-  const skillProgressChange = toMetricChangeIndicator(row.skillProgressChangeLabel, row.skillProgressChangeTrend, row.trend);
+  const currentLevelChange = toMetricChangeIndicator(row.currentLevelChangeLabel, row.currentLevelChangeTrend);
+  const fitnessChange = toMetricChangeIndicator(row.fitnessChangeLabel, row.fitnessChangeTrend);
+  const skillProgressChange = toMetricChangeIndicator(row.skillProgressChangeLabel, row.skillProgressChangeTrend);
 
   return {
     player: {
@@ -375,91 +392,146 @@ function toDashboardPayload(row) {
   };
 }
 
+const PLAYER_STATS_COLUMNS = [
+  'player_id', 'growth_status', 'current_level', 'fitness', 'skill_progress',
+  'total_minutes', 'appearances', 'recent_avg', 'average_score', 'trend',
+  'last_match_score', 'last_match_summary', 'clip_submitted_count',
+  'clip_assessed_count', 'clip_pending_count', 'missing_data_message',
+  'current_level_change_label', 'current_level_change_trend',
+  'fitness_change_label', 'fitness_change_trend',
+  'skill_progress_change_label', 'skill_progress_change_trend'
+];
+
+function playerStatsInsertValues(playerId, stats) {
+  return [
+    playerId,
+    stats.growthStatus,
+    stats.currentLevel,
+    stats.fitness,
+    stats.skillProgress,
+    stats.totalMinutes,
+    stats.appearances,
+    stats.recentAvg,
+    stats.averageScore,
+    stats.trend,
+    stats.lastMatchScore,
+    stats.lastMatchSummary,
+    stats.clipSubmittedCount,
+    stats.clipAssessedCount,
+    stats.clipPendingCount,
+    stats.missingDataMessage,
+    stats.currentLevelChange ? stats.currentLevelChange.label : null,
+    stats.currentLevelChange ? stats.currentLevelChange.trend : null,
+    stats.fitnessChange ? stats.fitnessChange.label : null,
+    stats.fitnessChange ? stats.fitnessChange.trend : null,
+    stats.skillProgressChange ? stats.skillProgressChange.label : null,
+    stats.skillProgressChange ? stats.skillProgressChange.trend : null
+  ];
+}
+
 async function upsertPlayerStats(executor, playerId, stats) {
+  const placeholders = PLAYER_STATS_COLUMNS.map((_, index) => `$${index + 1}`).join(', ');
+  const updateAssignments = PLAYER_STATS_COLUMNS.slice(1)
+    .map((column) => `${column} = EXCLUDED.${column}`)
+    .join(',\n        ');
+
   await executor.query(
     `
-      INSERT INTO player_stats (
-        player_id,
-        growth_status,
-        current_level,
-        fitness,
-        skill_progress,
-        total_minutes,
-        appearances,
-        recent_avg,
-        average_score,
-        trend,
-        last_match_score,
-        last_match_summary,
-        clip_submitted_count,
-        clip_assessed_count,
-        clip_pending_count,
-        missing_data_message,
-        current_level_change_label,
-        current_level_change_trend,
-        fitness_change_label,
-        fitness_change_trend,
-        skill_progress_change_label,
-        skill_progress_change_trend,
-        updated_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW())
+      INSERT INTO player_stats (${PLAYER_STATS_COLUMNS.join(', ')}, updated_at)
+      VALUES (${placeholders}, NOW())
       ON CONFLICT (player_id) DO UPDATE SET
-        growth_status = EXCLUDED.growth_status,
-        current_level = EXCLUDED.current_level,
-        fitness = EXCLUDED.fitness,
-        skill_progress = EXCLUDED.skill_progress,
-        total_minutes = EXCLUDED.total_minutes,
-        appearances = EXCLUDED.appearances,
-        recent_avg = EXCLUDED.recent_avg,
-        average_score = EXCLUDED.average_score,
-        trend = EXCLUDED.trend,
-        last_match_score = EXCLUDED.last_match_score,
-        last_match_summary = EXCLUDED.last_match_summary,
-        clip_submitted_count = EXCLUDED.clip_submitted_count,
-        clip_assessed_count = EXCLUDED.clip_assessed_count,
-        clip_pending_count = EXCLUDED.clip_pending_count,
-        missing_data_message = EXCLUDED.missing_data_message,
-        current_level_change_label = EXCLUDED.current_level_change_label,
-        current_level_change_trend = EXCLUDED.current_level_change_trend,
-        fitness_change_label = EXCLUDED.fitness_change_label,
-        fitness_change_trend = EXCLUDED.fitness_change_trend,
-        skill_progress_change_label = EXCLUDED.skill_progress_change_label,
-        skill_progress_change_trend = EXCLUDED.skill_progress_change_trend,
+        ${updateAssignments},
         updated_at = NOW()
     `,
-    [
-      playerId,
-      stats.growthStatus,
-      stats.currentLevel,
-      stats.fitness,
-      stats.skillProgress,
-      stats.totalMinutes,
-      stats.appearances,
-      stats.recentAvg,
-      stats.averageScore,
-      stats.trend,
-      stats.lastMatchScore,
-      stats.lastMatchSummary,
-      stats.clipSubmittedCount,
-      stats.clipAssessedCount,
-      stats.clipPendingCount,
-      stats.missingDataMessage,
-      stats.currentLevelChange ? stats.currentLevelChange.label : null,
-      stats.currentLevelChange ? stats.currentLevelChange.trend : null,
-      stats.fitnessChange ? stats.fitnessChange.label : null,
-      stats.fitnessChange ? stats.fitnessChange.trend : null,
-      stats.skillProgressChange ? stats.skillProgressChange.label : null,
-      stats.skillProgressChange ? stats.skillProgressChange.trend : null
-    ]
+    playerStatsInsertValues(playerId, stats)
+  );
+}
+
+// Insert-only variant: never overwrites an existing row. Used for any
+// player outside the named reference profiles, so a player's real (or
+// legitimately empty) stats are never clobbered by a backfill.
+async function ensurePlayerStatsRowExists(executor, playerId, stats) {
+  const placeholders = PLAYER_STATS_COLUMNS.map((_, index) => `$${index + 1}`).join(', ');
+
+  await executor.query(
+    `
+      INSERT INTO player_stats (${PLAYER_STATS_COLUMNS.join(', ')})
+      VALUES (${placeholders})
+      ON CONFLICT (player_id) DO NOTHING
+    `,
+    playerStatsInsertValues(playerId, stats)
   );
 }
 
 async function syncDefaultDashboardStats(executor) {
   const result = await executor.query(`SELECT id, name, normalized_name AS "normalizedName", trend FROM players ORDER BY name ASC`);
   for (const player of result.rows) {
-    await upsertPlayerStats(executor, player.id, getSeedDashboardStats(player.normalizedName, player.trend));
+    if (NAMED_REFERENCE_PROFILES.has(player.normalizedName)) {
+      await upsertPlayerStats(executor, player.id, getSeedDashboardStats(player.normalizedName, player.trend));
+    } else {
+      // Never fabricate archetype data for a real, non-demo player. Only
+      // backfill a genuine "no stats yet" row when one doesn't exist yet.
+      await ensurePlayerStatsRowExists(executor, player.id, buildNewPlayerDashboardStats(player.trend));
+    }
   }
+}
+
+// One-time cleanup for rows already corrupted by the fabrication bug fixed
+// above (see apps/api/src/db/migrations/010_reset_fabricated_player_stats.sql
+// for the full rationale). Only resets rows that exactly match one of the
+// three fabricated archetype signatures and belong to a non-named player --
+// never a blanket reset -- so it is safe to run on every server start.
+async function resetFabricatedPlayerStats(executor) {
+  await executor.query(`
+    UPDATE player_stats ps
+    SET
+      growth_status = NULL,
+      current_level = NULL,
+      fitness = NULL,
+      skill_progress = NULL,
+      total_minutes = 0,
+      appearances = 0,
+      recent_avg = 'N/A',
+      average_score = NULL,
+      last_match_score = NULL,
+      last_match_summary = NULL,
+      clip_submitted_count = 0,
+      clip_assessed_count = 0,
+      clip_pending_count = 0,
+      missing_data_message = 'Performance metrics are not available yet.',
+      current_level_change_label = NULL,
+      current_level_change_trend = NULL,
+      fitness_change_label = NULL,
+      fitness_change_trend = NULL,
+      skill_progress_change_label = NULL,
+      skill_progress_change_trend = NULL,
+      updated_at = NOW()
+    FROM players p
+    WHERE p.id = ps.player_id
+      AND p.normalized_name NOT IN ('lionel messi', 'cristiano ronaldo', 'neymar jr', 'kylian mbappe')
+      AND (
+        (
+          ps.growth_status = 'on_track' AND ps.current_level = '92%' AND ps.fitness = '87%' AND ps.skill_progress = '94%'
+          AND ps.total_minutes = 2340 AND ps.appearances = 26 AND ps.recent_avg = '90''' AND ps.average_score = 8.8
+          AND ps.last_match_score = 8.5 AND ps.last_match_summary = 'Confident execution under pressure.'
+          AND ps.clip_submitted_count = 4 AND ps.clip_assessed_count = 3 AND ps.clip_pending_count = 1
+        )
+        OR
+        (
+          ps.growth_status = 'at_risk' AND ps.current_level = '81%' AND ps.fitness = '79%' AND ps.skill_progress = '86%'
+          AND ps.total_minutes = 420 AND ps.appearances = 12 AND ps.recent_avg = '70''' AND ps.average_score IS NULL
+          AND ps.last_match_score IS NULL AND ps.last_match_summary IS NULL
+          AND ps.clip_submitted_count = 2 AND ps.clip_assessed_count = 0 AND ps.clip_pending_count = 2
+        )
+        OR
+        (
+          ps.growth_status = 'watch' AND ps.current_level = '87%' AND ps.fitness = '87%' AND ps.skill_progress = '86%'
+          AND ps.total_minutes = 540 AND ps.appearances = 8 AND ps.recent_avg = '72''' AND ps.average_score = 7.1
+          AND ps.last_match_score = 7.1 AND ps.last_match_summary = 'Pace was strong, timing can improve.'
+          AND ps.clip_submitted_count = 3 AND ps.clip_assessed_count = 2 AND ps.clip_pending_count = 1
+        )
+      )
+  `);
 }
 
 function toUserPayload(row) {
@@ -695,6 +767,7 @@ async function ensureDatabase() {
     `);
   }
 
+  await resetFabricatedPlayerStats(pool);
   await syncDefaultDashboardStats(pool);
 }
 

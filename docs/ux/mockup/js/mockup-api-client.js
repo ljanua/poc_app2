@@ -223,11 +223,82 @@
     }
   };
 
+  function isNamedReferenceProfile(selected) {
+    return Object.prototype.hasOwnProperty.call(SEEDED_METRIC_CHANGE_INDICATORS, selected.normalizedName);
+  }
+
   function getMetricChangeIndicators(selected) {
     return SEEDED_METRIC_CHANGE_INDICATORS[selected.normalizedName] || getDefaultMetricChangeIndicators(selected.trend);
   }
 
+  // Mirrors scripts/serve-mockup.js's buildNewPlayerDashboardStats: any
+  // player outside the four named reference profiles gets a genuine
+  // "no stats recorded yet" dashboard, never a generic trend-based
+  // approximation borrowed from another player's shape. Clip counts stay
+  // real (computed from this player's own clips) since that data is
+  // independently accurate in offline/local mode.
+  function buildNoStatsDashboardSnapshot(store, selected) {
+    const clips = store.clips.filter((clip) => clip.playerId === selected.id);
+    const assessed = clips.filter((clip) => clip.status === 'assessed');
+    const pending = clips.filter((clip) => clip.status === 'pending');
+    const growthStatus = selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch';
+    const missingDataMessage = 'Performance metrics are not available yet.';
+
+    return clone({
+      player: selected,
+      stats: {
+        growthStatus,
+        currentLevel: 'N/A',
+        fitness: 'N/A',
+        skillProgress: 'N/A',
+        totalMinutes: 0,
+        appearances: 0,
+        recentAvg: 'N/A',
+        averageScore: null,
+        trend: selected.trend,
+        lastMatchScore: null,
+        lastMatchSummary: null,
+        clipSubmittedCount: clips.length,
+        clipAssessedCount: assessed.length,
+        clipPendingCount: pending.length,
+        missingDataMessage,
+        currentLevelChange: null,
+        fitnessChange: null,
+        skillProgressChange: null
+      },
+      metrics: {
+        currentLevel: 'N/A',
+        fitness: 'N/A',
+        skillProgress: 'N/A',
+        currentLevelChange: null,
+        fitnessChange: null,
+        skillProgressChange: null
+      },
+      matchTime: {
+        totalMinutes: 0,
+        appearances: 0,
+        recentAvg: 'N/A'
+      },
+      performance: {
+        averageScore: 'N/A',
+        trend: selected.trend,
+        lastMatchScore: 'N/A',
+        lastMatchSummary: null,
+        missingDataMessage
+      },
+      clipStats: {
+        submitted: clips.length,
+        assessed: assessed.length,
+        pending: pending.length
+      }
+    });
+  }
+
   function buildDashboardSnapshot(store, selected) {
+    if (!isNamedReferenceProfile(selected)) {
+      return buildNoStatsDashboardSnapshot(store, selected);
+    }
+
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
     const assessed = clips.filter((clip) => clip.status === 'assessed');
     const pending = clips.filter((clip) => clip.status === 'pending');

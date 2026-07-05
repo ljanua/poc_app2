@@ -10,6 +10,7 @@ Feature: Coach player development dashboard
       | Lionel Messi      | on_track     | 540          | 8.8              | improving   | none        |
       | Cristiano Ronaldo | watch        | 420          | 7.1              | declining   | none        |
       | Neymar Jr         | at_risk      | 0            |                  | plateau     | performance |
+      | New Recruit       |              | 0            |                  | plateau     | all         |
     And the following metric change indicators exist:
       | player            | metric        | label  | trend     |
       | Lionel Messi      | currentLevel  | Up 5%  | improving |
@@ -36,6 +37,12 @@ Feature: Coach player development dashboard
   Scenario: Missing metrics are shown clearly
     When I open the development dashboard for player "Neymar Jr"
     Then the dashboard should show missing data message "Performance metrics are not available yet."
+
+  Scenario: Player with no recorded stats shows identity card only, never another player's borrowed data
+    When I open the development dashboard for player "New Recruit"
+    Then the operation status should be 200
+    And the dashboard should show missing data message "Performance metrics are not available yet."
+    And the dashboard should show only the player identity card with no stats
 
   Scenario: Coach can compare two players side by side
     Given I open the development dashboard for player "Lionel Messi"

@@ -38,7 +38,9 @@
         </div>
       </div>
 
-      <div class="section">
+      <div class="notice" id="noStatsNotice" hidden style="margin-top: 1rem;"></div>
+
+      <div class="section stats-section">
         <div class="section-title">Development Progress</div>
         <div class="metric-grid">
           <div class="metric">
@@ -66,7 +68,7 @@
         </div>
       </div>
 
-      <div class="section">
+      <div class="section stats-section">
         <div class="section-title">Match Time History</div>
         <div class="metric-grid">
           <div class="metric">
@@ -94,7 +96,7 @@
         </div>
       </div>
 
-      <div class="section">
+      <div class="section stats-section">
         <div class="section-title">Recent Performance</div>
         <div class="metric-grid">
           <div class="metric">
@@ -113,10 +115,9 @@
             <div class="metric-status" id="metricLastMatchSub">vs Barcelona</div>
           </div>
         </div>
-        <div class="notice" id="metricMissingData" hidden style="margin-top: 0.8rem;"></div>
       </div>
 
-      <div class="section">
+      <div class="section stats-section">
         <div class="section-title">Video Assessments</div>
         <div id="dashboardClipSummary" style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
           4 clips submitted • 3 assessed • 1 pending
@@ -160,7 +161,8 @@
       const selectedPlayer = params.get('player') || '';
       const dashboard = MockupApi.getDashboardPlayer(selectedPlayer);
       const dashboardNotice = document.getElementById('dashboardNotice');
-      const metricMissingData = document.getElementById('metricMissingData');
+      const noStatsNotice = document.getElementById('noStatsNotice');
+      const statsSections = document.querySelectorAll('.stats-section');
 
       if (!dashboard) {
         dashboardNotice.textContent = (window.__MOCK_API_LAST_ERROR__ && window.__MOCK_API_LAST_ERROR__.message) || 'Dashboard data is unavailable right now.';
@@ -179,6 +181,8 @@
       const trendText = trend === 'improving' ? 'Improving' : trend === 'declining' ? 'Declining' : 'Plateau';
       const trendClass = trend === 'improving' ? 'badge-improving' : trend === 'declining' ? 'badge-declining' : 'badge-plateau';
 
+      // Player identity always renders, even when this player has no real
+      // stats yet -- only the stats-derived sections below are conditional.
       document.getElementById('dashboardPlayerName').textContent = player.name;
       document.getElementById('dashboardPlayerMeta').textContent = player.position + ' • Age 24';
       document.getElementById('dashboardTeamChip').textContent = player.teamName;
@@ -186,6 +190,23 @@
       const trendBadge = document.getElementById('dashboardTrendBadge');
       trendBadge.className = 'badge ' + trendClass;
       trendBadge.textContent = trendArrow + ' ' + trendText;
+
+      // A player with no real recorded stats yet must never show fabricated
+      // or borrowed numbers. Show the identity card plus a single clear
+      // notice, and hide every stats-derived section as one unit.
+      if (dashboard.performance.missingDataMessage) {
+        noStatsNotice.textContent = dashboard.performance.missingDataMessage;
+        noStatsNotice.hidden = false;
+        statsSections.forEach(function (element) {
+          element.hidden = true;
+        });
+        return;
+      }
+
+      noStatsNotice.hidden = true;
+      statsSections.forEach(function (element) {
+        element.hidden = false;
+      });
 
       function bindMetricChange(elementId, change) {
         if (!change) {
@@ -216,12 +237,6 @@
 
       document.getElementById('metricLastMatch').textContent = dashboard.performance.lastMatchScore === 'N/A' ? '-' : dashboard.performance.lastMatchScore;
       document.getElementById('metricLastMatchSub').textContent = dashboard.performance.lastMatchSummary || 'From latest assessed clips';
-      if (dashboard.performance.missingDataMessage) {
-        metricMissingData.textContent = dashboard.performance.missingDataMessage;
-        metricMissingData.hidden = false;
-      } else {
-        metricMissingData.hidden = true;
-      }
       document.getElementById('dashboardClipSummary').textContent = dashboard.clipStats.submitted + ' clips submitted • ' + dashboard.clipStats.assessed + ' assessed • ' + dashboard.clipStats.pending + ' pending';
     })();
   </script>

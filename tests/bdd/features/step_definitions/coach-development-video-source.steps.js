@@ -65,15 +65,27 @@ When('I open the development dashboard for player {string}', function (playerNam
   }
 
   this.dashboardCurrentPlayer = playerName;
-  this.dashboardVisible = profile;
   this.dashboardTrend = profile.trend;
   this.dashboardMissingMessage =
-    profile.missingData === 'performance' ? 'Performance metrics are not available yet.' : null;
-  this.dashboardMetricChanges = {
-    currentLevel: this.metricChangeIndicators.get(playerName + '|currentLevel') || null,
-    fitness: this.metricChangeIndicators.get(playerName + '|fitness') || null,
-    skillProgress: this.metricChangeIndicators.get(playerName + '|skillProgress') || null
-  };
+    profile.missingData === 'performance' || profile.missingData === 'all'
+      ? 'Performance metrics are not available yet.'
+      : null;
+
+  if (profile.missingData === 'all') {
+    // Player exists but has no player_stats recorded yet: only the identity
+    // card (name, team, trend) may render -- every stats-derived field must
+    // be withheld rather than falling back to another player's numbers.
+    this.dashboardVisible = null;
+    this.dashboardMetricChanges = null;
+  } else {
+    this.dashboardVisible = profile;
+    this.dashboardMetricChanges = {
+      currentLevel: this.metricChangeIndicators.get(playerName + '|currentLevel') || null,
+      fitness: this.metricChangeIndicators.get(playerName + '|fitness') || null,
+      skillProgress: this.metricChangeIndicators.get(playerName + '|skillProgress') || null
+    };
+  }
+
   this.lastStatus = 200;
 });
 
@@ -110,6 +122,13 @@ Then('the dashboard should show trend indicator {string}', function (trend) {
 
 Then('the dashboard should show missing data message {string}', function (message) {
   assert.equal(this.dashboardMissingMessage, message);
+});
+
+Then('the dashboard should show only the player identity card with no stats', function () {
+  assert.equal(this.dashboardVisible, null, 'Expected no growth/match/performance stats to be exposed');
+  assert.equal(this.dashboardMetricChanges, null, 'Expected no metric change indicators to be exposed');
+  assert.ok(this.dashboardCurrentPlayer, 'Expected the player identity to still be resolved');
+  assert.ok(this.dashboardTrend, 'Expected the player trend badge to still be resolved');
 });
 
 Then(

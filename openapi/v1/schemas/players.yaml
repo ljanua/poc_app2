@@ -164,12 +164,26 @@ components:
         missingDataMessage:
           type: string
           nullable: true
+          description: >-
+            Set whenever this player has no genuinely recorded stats yet
+            (e.g. a newly added player with no matches or assessed clips).
+            This is the authoritative signal that every stat-derived field on
+            this response is a placeholder ("N/A" or zero) rather than real
+            data -- consumers should treat the player as having no
+            development, match-time, or performance history to display, not
+            just a note limited to recent-performance context.
         currentLevelChange:
-          $ref: '#/components/schemas/MetricChangeIndicator'
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
         fitnessChange:
-          $ref: '#/components/schemas/MetricChangeIndicator'
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
         skillProgressChange:
-          $ref: '#/components/schemas/MetricChangeIndicator'
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
 
     PlayerDashboardResponse:
       type: object
@@ -194,11 +208,17 @@ components:
                 skillProgress:
                   type: string
                 currentLevelChange:
-                  $ref: '#/components/schemas/MetricChangeIndicator'
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/MetricChangeIndicator'
                 fitnessChange:
-                  $ref: '#/components/schemas/MetricChangeIndicator'
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/MetricChangeIndicator'
                 skillProgressChange:
-                  $ref: '#/components/schemas/MetricChangeIndicator'
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/MetricChangeIndicator'
             matchTime:
               type: object
               required: [totalMinutes, appearances, recentAvg]
@@ -226,6 +246,10 @@ components:
                 missingDataMessage:
                   type: string
                   nullable: true
+                  description: >-
+                    See PlayerDashboardStats.missingDataMessage -- the same
+                    authoritative "no real stats yet" signal, mirrored here
+                    for consumers that only read the performance object.
             clipStats:
               type: object
               required: [submitted, assessed, pending]

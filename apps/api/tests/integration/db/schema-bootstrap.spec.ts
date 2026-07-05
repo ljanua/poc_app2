@@ -78,4 +78,27 @@ describe('db bootstrap artifacts', () => {
     expect(migration).toContain('ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS skill_progress_change_label');
     expect(migration).toContain("WHERE player_id = 'p_10'");
   });
+
+  it('has a migration that resets fabricated player_stats rows without touching named profiles', () => {
+    const migrationPath = path.join(
+      process.cwd(),
+      'apps',
+      'api',
+      'src',
+      'db',
+      'migrations',
+      '010_reset_fabricated_player_stats.sql'
+    );
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('UPDATE player_stats ps');
+    expect(migration).toContain("NOT IN ('lionel messi', 'cristiano ronaldo', 'neymar jr', 'kylian mbappe')");
+    expect(migration).toContain("missing_data_message = 'Performance metrics are not available yet.'");
+    expect(migration).toContain('current_level_change_label = NULL');
+    // The reset only targets rows matching one of the three known
+    // fabricated archetype signatures, not a blanket reset of every
+    // non-named player's stats.
+    expect(migration).toContain("ps.last_match_summary = 'Confident execution under pressure.'");
+    expect(migration).toContain("ps.last_match_summary = 'Pace was strong, timing can improve.'");
+  });
 });
