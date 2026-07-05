@@ -104,7 +104,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         '200':
           description: Player detail
@@ -112,6 +112,100 @@ paths:
             application/json:
               schema:
                 $ref: './schemas/players.yaml#/components/schemas/PlayerResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+    patch:
+      summary: Update full player profile (identity + stats)
+      description: >-
+        Coach-only. Updates identity, team assignment, and player_stats in a
+        single transaction and clears missingDataMessage on success.
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: actorEmail
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/players.yaml#/components/schemas/UpdatePlayerProfileRequest'
+      responses:
+        '200':
+          description: Updated player profile
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerProfileResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+        '409':
+          description: Duplicate conflict
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
+
+  /players/{playerId}/profile:
+    get:
+      summary: Get full editable player profile (identity + stats)
+      description: Coach-only. Returns the player identity and full stats for editing.
+      tags: [Players]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: playerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: actorEmail
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Player profile
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerProfileResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/players.yaml#/components/schemas/PlayerErrorResponse'
         '404':
           description: Not found
           content:

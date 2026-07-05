@@ -260,3 +260,87 @@ components:
                   type: integer
                 pending:
                   type: integer
+
+    PlayerProfileResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [player, stats]
+          properties:
+            player:
+              $ref: '#/components/schemas/Player'
+            stats:
+              $ref: '#/components/schemas/PlayerDashboardStats'
+
+    UpdatePlayerProfileRequest:
+      type: object
+      description: >-
+        Full coach-editable player profile. Identity fields update the
+        players/assignment records; the remaining fields update player_stats.
+        A successful update always clears missingDataMessage so the S2
+        dashboard leaves the "no stats yet" state. Clip counts
+        (clipSubmittedCount/clipAssessedCount/clipPendingCount) are a
+        coach-editable write-through cache and are intentionally not
+        reconciled against the clips table.
+      required: [name, teamName, position, trend]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        teamName:
+          type: string
+        position:
+          type: string
+        trend:
+          type: string
+          enum: [improving, plateau, declining]
+        growthStatus:
+          type: string
+          nullable: true
+          enum: [on_track, watch, at_risk, null]
+        currentLevel:
+          type: string
+          nullable: true
+        fitness:
+          type: string
+          nullable: true
+        skillProgress:
+          type: string
+          nullable: true
+        totalMinutes:
+          type: integer
+        appearances:
+          type: integer
+        recentAvg:
+          type: string
+          nullable: true
+        averageScore:
+          type: number
+          nullable: true
+        lastMatchScore:
+          type: number
+          nullable: true
+        lastMatchSummary:
+          type: string
+          nullable: true
+        clipSubmittedCount:
+          type: integer
+        clipAssessedCount:
+          type: integer
+        clipPendingCount:
+          type: integer
+        currentLevelChange:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
+        fitnessChange:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
+        skillProgressChange:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/MetricChangeIndicator'
