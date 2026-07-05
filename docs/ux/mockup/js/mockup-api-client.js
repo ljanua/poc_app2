@@ -533,13 +533,18 @@
       return { error: 'Each metric change needs a label and a valid trend, or leave it blank.' };
     }
 
+    var currentLevel = toNullableStringValue(payload && payload.currentLevel);
+    var fitness = toNullableStringValue(payload && payload.fitness);
+    var skillProgress = toNullableStringValue(payload && payload.skillProgress);
+    var hasRating = [currentLevel, fitness, skillProgress].some(function (v) { return v !== null; });
+
     return {
       identity: { name: name, normalizedName: normalizeComparable(name), teamName: teamName, position: position, trend: trend },
       stats: {
         growthStatus: growthStatus,
-        currentLevel: toNullableStringValue(payload && payload.currentLevel),
-        fitness: toNullableStringValue(payload && payload.fitness),
-        skillProgress: toNullableStringValue(payload && payload.skillProgress),
+        currentLevel: currentLevel,
+        fitness: fitness,
+        skillProgress: skillProgress,
         totalMinutes: totalMinutes,
         appearances: appearances,
         recentAvg: toNullableStringValue(payload && payload.recentAvg) || 'N/A',
@@ -550,7 +555,7 @@
         clipSubmittedCount: clipSubmittedCount,
         clipAssessedCount: clipAssessedCount,
         clipPendingCount: clipPendingCount,
-        missingDataMessage: null,
+        missingDataMessage: hasRating ? null : 'Performance metrics are not available yet.',
         currentLevelChange: currentLevelChange,
         fitnessChange: fitnessChange,
         skillProgressChange: skillProgressChange

@@ -55,6 +55,15 @@ Feature: Coach player development dashboard
     And the dashboard should show performance score 7.5
     And the dashboard should not show a missing data message
 
+  Scenario: Saving with no ratings recorded keeps the no-stats notice
+    When I open the development dashboard for player "New Recruit"
+    Then the dashboard should show only the player identity card with no stats
+    When I save player "New Recruit" with no development ratings recorded
+    Then the operation status should be 200
+    When I open the development dashboard for player "New Recruit"
+    Then the dashboard should show missing data message "Performance metrics are not available yet."
+    And the dashboard should show only the player identity card with no stats
+
   Scenario: Non-coach role cannot save player profile changes
     Given I am authenticated as "SystemAdmin"
     When I save player "New Recruit" with growth status "on_track", match minutes 120, and performance score 7.5

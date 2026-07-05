@@ -1006,13 +1006,18 @@ function parseUpdateProfilePayload(payload) {
     return { error: 'Each metric change needs a label and a valid trend, or leave it blank.' };
   }
 
+  const currentLevel = toNullableString(payload.currentLevel);
+  const fitness = toNullableString(payload.fitness);
+  const skillProgress = toNullableString(payload.skillProgress);
+  const hasRating = [currentLevel, fitness, skillProgress].some(function (v) { return v !== null; });
+
   return {
     identity: { name, normalizedName: normalizeComparable(name), teamName, position, trend },
     stats: {
       growthStatus,
-      currentLevel: toNullableString(payload.currentLevel),
-      fitness: toNullableString(payload.fitness),
-      skillProgress: toNullableString(payload.skillProgress),
+      currentLevel,
+      fitness,
+      skillProgress,
       totalMinutes,
       appearances,
       recentAvg: toNullableString(payload.recentAvg) || 'N/A',
@@ -1023,8 +1028,7 @@ function parseUpdateProfilePayload(payload) {
       clipSubmittedCount,
       clipAssessedCount,
       clipPendingCount,
-      // A coach-initiated save always leaves the "no stats yet" state.
-      missingDataMessage: null,
+      missingDataMessage: hasRating ? null : 'Performance metrics are not available yet.',
       currentLevelChange,
       fitnessChange,
       skillProgressChange

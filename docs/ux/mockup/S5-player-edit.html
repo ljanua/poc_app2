@@ -33,6 +33,89 @@
     @media (max-width: 640px) {
       .form-grid { grid-template-columns: 1fr; }
     }
+    /* Slider control (slider + number box + "not recorded" toggle) */
+    .ctrl-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.45rem;
+    }
+    .ctrl-toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+    }
+    .ctrl-toggle {
+      accent-color: var(--lime);
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+    }
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .ctrl-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border-strong);
+      outline: none;
+      cursor: pointer;
+    }
+    .ctrl-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--lime);
+      cursor: pointer;
+      transition: transform 0.15s;
+    }
+    .ctrl-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .ctrl-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      background: var(--lime);
+      cursor: pointer;
+    }
+    .ctrl-slider:disabled,
+    .ctrl-box:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .ctrl-box {
+      width: 4.5rem;
+      font-family: var(--font-body);
+      font-size: 0.9rem;
+      color: var(--text);
+      background: var(--surface-1);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-md);
+      padding: 0.45rem 0.6rem;
+      text-align: center;
+      transition: all var(--t-fast);
+    }
+    .ctrl-box:focus {
+      outline: none;
+      border-color: rgba(198, 255, 58, 0.5);
+      box-shadow: 0 0 0 4px rgba(198, 255, 58, 0.12);
+    }
+    .ctrl-suffix {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      min-width: 0.8rem;
+    }
+    .ctrl-row.ctrl-disabled .ctrl-suffix { opacity: 0.35; }
   </style>
 </head>
 <body>
@@ -85,17 +168,47 @@
                 <option value="at_risk">At risk</option>
               </select>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="fieldCurrentLevel">Current Level</label>
-              <input id="fieldCurrentLevel" type="text" placeholder="e.g. 92%">
+            <div class="form-field" id="ctrlCurrentLevel">
+              <div class="ctrl-header">
+                <span class="form-label">Current Level</span>
+                <label class="ctrl-toggle-label">
+                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Current Level">
+                  <span>Record</span>
+                </label>
+              </div>
+              <div class="ctrl-row">
+                <input type="range" class="ctrl-slider" min="0" max="100" step="1" aria-label="Current Level slider" disabled>
+                <input type="number" class="ctrl-box" min="0" max="100" step="1" aria-label="Current Level value" disabled>
+                <span class="ctrl-suffix">%</span>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="fieldFitness">Fitness</label>
-              <input id="fieldFitness" type="text" placeholder="e.g. 87%">
+            <div class="form-field" id="ctrlFitness">
+              <div class="ctrl-header">
+                <span class="form-label">Fitness</span>
+                <label class="ctrl-toggle-label">
+                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Fitness">
+                  <span>Record</span>
+                </label>
+              </div>
+              <div class="ctrl-row">
+                <input type="range" class="ctrl-slider" min="0" max="100" step="1" aria-label="Fitness slider" disabled>
+                <input type="number" class="ctrl-box" min="0" max="100" step="1" aria-label="Fitness value" disabled>
+                <span class="ctrl-suffix">%</span>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="fieldSkillProgress">Skill Progress</label>
-              <input id="fieldSkillProgress" type="text" placeholder="e.g. 94%">
+            <div class="form-field" id="ctrlSkillProgress">
+              <div class="ctrl-header">
+                <span class="form-label">Skill Progress</span>
+                <label class="ctrl-toggle-label">
+                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Skill Progress">
+                  <span>Record</span>
+                </label>
+              </div>
+              <div class="ctrl-row">
+                <input type="range" class="ctrl-slider" min="0" max="100" step="1" aria-label="Skill Progress slider" disabled>
+                <input type="number" class="ctrl-box" min="0" max="100" step="1" aria-label="Skill Progress value" disabled>
+                <span class="ctrl-suffix">%</span>
+              </div>
             </div>
           </div>
 
@@ -160,13 +273,33 @@
         <div class="section">
           <div class="section-title">Recent Performance</div>
           <div class="form-grid">
-            <div class="form-field">
-              <label class="form-label" for="fieldAverageScore">Average Score</label>
-              <input id="fieldAverageScore" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0">
+            <div class="form-field" id="ctrlAverageScore">
+              <div class="ctrl-header">
+                <span class="form-label">Average Score</span>
+                <label class="ctrl-toggle-label">
+                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Average Score">
+                  <span>Record</span>
+                </label>
+              </div>
+              <div class="ctrl-row">
+                <input type="range" class="ctrl-slider" min="0" max="10" step="0.1" aria-label="Average Score slider" disabled>
+                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Average Score value" disabled>
+                <span class="ctrl-suffix"></span>
+              </div>
             </div>
-            <div class="form-field">
-              <label class="form-label" for="fieldLastMatchScore">Last Match Score</label>
-              <input id="fieldLastMatchScore" type="number" min="0" max="10" step="0.1" placeholder="0.0 - 10.0">
+            <div class="form-field" id="ctrlLastMatchScore">
+              <div class="ctrl-header">
+                <span class="form-label">Last Match Score</span>
+                <label class="ctrl-toggle-label">
+                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Last Match Score">
+                  <span>Record</span>
+                </label>
+              </div>
+              <div class="ctrl-row">
+                <input type="range" class="ctrl-slider" min="0" max="10" step="0.1" aria-label="Last Match Score slider" disabled>
+                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Last Match Score value" disabled>
+                <span class="ctrl-suffix"></span>
+              </div>
             </div>
           </div>
           <div class="form-field" style="margin-top: 1rem;">
@@ -278,6 +411,118 @@
         return val === null || val === undefined || val === 'N/A' ? '' : val;
       }
 
+      // Builds a slider + number box + "not recorded" toggle control.
+      // Returns { getState(), setState(value) } for load/save round-trips.
+      function buildSliderControl(containerId, opts) {
+        var container = document.getElementById(containerId);
+        if (!container) { return { getState: function () { return null; }, setState: function () {} }; }
+        var toggle = container.querySelector('.ctrl-toggle');
+        var slider = container.querySelector('.ctrl-slider');
+        var box = container.querySelector('.ctrl-box');
+        var row = container.querySelector('.ctrl-row');
+        var midpoint = opts.midpoint !== undefined ? opts.midpoint : (opts.min + opts.max) / 2;
+
+        var lastValid = midpoint;
+        var prevBlur = midpoint;
+
+        function clamp(v) {
+          return Math.min(opts.max, Math.max(opts.min, v));
+        }
+
+        function roundToStep(v) {
+          var inv = 1 / opts.step;
+          return Math.round(v * inv) / inv;
+        }
+
+        function syncTo(v) {
+          slider.value = v;
+          box.value = v;
+          prevBlur = v;
+        }
+
+        function setEnabled(on) {
+          slider.disabled = !on;
+          box.disabled = !on;
+          slider.setAttribute('aria-disabled', String(!on));
+          box.setAttribute('aria-disabled', String(!on));
+          if (row) { row.classList.toggle('ctrl-disabled', !on); }
+        }
+
+        toggle.addEventListener('change', function () {
+          var on = toggle.checked;
+          setEnabled(on);
+          if (on) { syncTo(lastValid); }
+        });
+
+        slider.addEventListener('input', function () {
+          var v = roundToStep(Number(slider.value));
+          box.value = v;
+          lastValid = v;
+          prevBlur = v;
+        });
+
+        box.addEventListener('input', function () {
+          var v = Number(box.value);
+          if (Number.isFinite(v)) { slider.value = clamp(v); }
+        });
+
+        box.addEventListener('blur', function () {
+          if (!toggle.checked) { return; }
+          var raw = String(box.value).trim();
+          if (raw === '') { syncTo(prevBlur); return; }
+          var v = Number(raw);
+          if (!Number.isFinite(v)) { syncTo(prevBlur); return; }
+          var c = roundToStep(clamp(v));
+          syncTo(c);
+          lastValid = c;
+        });
+
+        setEnabled(false);
+        slider.value = midpoint;
+        box.value = midpoint;
+
+        return {
+          getState: function () {
+            if (!toggle.checked) { return null; }
+            return roundToStep(clamp(Number(box.value)));
+          },
+          setState: function (v) {
+            if (v === null || v === undefined) {
+              toggle.checked = false;
+              setEnabled(false);
+              slider.value = midpoint;
+              box.value = midpoint;
+              lastValid = midpoint;
+              prevBlur = midpoint;
+            } else {
+              var num = roundToStep(clamp(Number(v)));
+              toggle.checked = true;
+              setEnabled(true);
+              syncTo(num);
+              lastValid = num;
+            }
+          }
+        };
+      }
+
+      function parseRating(str) {
+        if (str === null || str === undefined || str === 'N/A' || str === '') { return null; }
+        var num = parseFloat(String(str));
+        return Number.isFinite(num) ? num : null;
+      }
+
+      function formatRating(v) {
+        return v === null ? null : String(Math.round(v)) + '%';
+      }
+
+      var controls = {
+        currentLevel: buildSliderControl('ctrlCurrentLevel', { min: 0, max: 100, step: 1, midpoint: 50 }),
+        fitness: buildSliderControl('ctrlFitness', { min: 0, max: 100, step: 1, midpoint: 50 }),
+        skillProgress: buildSliderControl('ctrlSkillProgress', { min: 0, max: 100, step: 1, midpoint: 50 }),
+        averageScore: buildSliderControl('ctrlAverageScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 }),
+        lastMatchScore: buildSliderControl('ctrlLastMatchScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 })
+      };
+
       function fillTeamOptions(selectedTeamName) {
         const teams = MockupApi.listTeams();
         const select = document.getElementById('fieldTeam');
@@ -325,9 +570,9 @@
         fillTeamOptions(player.teamName);
 
         setValue('fieldGrowthStatus', stats.growthStatus || '');
-        setValue('fieldCurrentLevel', displayText(stats.currentLevel));
-        setValue('fieldFitness', displayText(stats.fitness));
-        setValue('fieldSkillProgress', displayText(stats.skillProgress));
+        controls.currentLevel.setState(parseRating(stats.currentLevel));
+        controls.fitness.setState(parseRating(stats.fitness));
+        controls.skillProgress.setState(parseRating(stats.skillProgress));
 
         fillMetricChange('CurrentLevelChange', stats.currentLevelChange);
         fillMetricChange('FitnessChange', stats.fitnessChange);
@@ -337,8 +582,8 @@
         setValue('fieldAppearances', Number(stats.appearances || 0));
         setValue('fieldRecentAvg', displayText(stats.recentAvg));
 
-        setValue('fieldAverageScore', stats.averageScore === null || stats.averageScore === undefined ? '' : stats.averageScore);
-        setValue('fieldLastMatchScore', stats.lastMatchScore === null || stats.lastMatchScore === undefined ? '' : stats.lastMatchScore);
+        controls.averageScore.setState(stats.averageScore === null || stats.averageScore === undefined ? null : Number(stats.averageScore));
+        controls.lastMatchScore.setState(stats.lastMatchScore === null || stats.lastMatchScore === undefined ? null : Number(stats.lastMatchScore));
         setValue('fieldLastMatchSummary', stats.lastMatchSummary || '');
 
         setValue('fieldClipSubmitted', Number(stats.clipSubmittedCount || 0));
@@ -353,14 +598,14 @@
           position: value('fieldPosition'),
           trend: value('fieldTrend'),
           growthStatus: value('fieldGrowthStatus'),
-          currentLevel: value('fieldCurrentLevel'),
-          fitness: value('fieldFitness'),
-          skillProgress: value('fieldSkillProgress'),
+          currentLevel: formatRating(controls.currentLevel.getState()),
+          fitness: formatRating(controls.fitness.getState()),
+          skillProgress: formatRating(controls.skillProgress.getState()),
           totalMinutes: value('fieldTotalMinutes'),
           appearances: value('fieldAppearances'),
           recentAvg: value('fieldRecentAvg'),
-          averageScore: value('fieldAverageScore'),
-          lastMatchScore: value('fieldLastMatchScore'),
+          averageScore: controls.averageScore.getState(),
+          lastMatchScore: controls.lastMatchScore.getState(),
           lastMatchSummary: value('fieldLastMatchSummary'),
           clipSubmittedCount: value('fieldClipSubmitted'),
           clipAssessedCount: value('fieldClipAssessed'),

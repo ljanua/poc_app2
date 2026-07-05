@@ -45,10 +45,12 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#fieldName')).toHaveValue('Rookie Carter');
     await expect(page.locator('#fieldTeam')).toHaveValue('U19 Prime');
     await expect(page.locator('#fieldTrend')).toHaveValue('plateau');
-    // No stats yet: numeric fields default to zero and text ratings are blank.
+    // No stats yet: rating and score controls show toggles off and inputs disabled.
     await expect(page.locator('#fieldTotalMinutes')).toHaveValue('0');
-    await expect(page.locator('#fieldCurrentLevel')).toHaveValue('');
-    await expect(page.locator('#fieldAverageScore')).toHaveValue('');
+    await expect(page.locator('#ctrlCurrentLevel .ctrl-toggle')).not.toBeChecked();
+    await expect(page.locator('#ctrlCurrentLevel .ctrl-box')).toBeDisabled();
+    await expect(page.locator('#ctrlAverageScore .ctrl-toggle')).not.toBeChecked();
+    await expect(page.locator('#ctrlAverageScore .ctrl-box')).toBeDisabled();
   });
 
   test('saving stats clears the no-stats notice and shows full dashboard on return', async ({ page }) => {
@@ -56,14 +58,19 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#playerEditForm')).toBeVisible();
 
     await page.locator('#fieldGrowthStatus').selectOption('on_track');
-    await page.locator('#fieldCurrentLevel').fill('80%');
-    await page.locator('#fieldFitness').fill('75%');
-    await page.locator('#fieldSkillProgress').fill('82%');
+    await page.locator('#ctrlCurrentLevel .ctrl-toggle').check();
+    await page.locator('#ctrlCurrentLevel .ctrl-box').fill('80');
+    await page.locator('#ctrlFitness .ctrl-toggle').check();
+    await page.locator('#ctrlFitness .ctrl-box').fill('75');
+    await page.locator('#ctrlSkillProgress .ctrl-toggle').check();
+    await page.locator('#ctrlSkillProgress .ctrl-box').fill('82');
     await page.locator('#fieldTotalMinutes').fill('120');
     await page.locator('#fieldAppearances').fill('4');
     await page.locator('#fieldRecentAvg').fill("30'");
-    await page.locator('#fieldAverageScore').fill('7.5');
-    await page.locator('#fieldLastMatchScore').fill('8');
+    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
+    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
+    await page.locator('#ctrlLastMatchScore .ctrl-toggle').check();
+    await page.locator('#ctrlLastMatchScore .ctrl-box').fill('8');
     await page.locator('#fieldLastMatchSummary').fill('Sharp movement off the ball.');
 
     await page.locator('#saveEdit').click();
@@ -107,5 +114,83 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#editFormError')).toContainText('already uses that name');
     // Stayed on the edit page rather than navigating away on failure.
     await expect(page).toHaveURL(/S5-player-edit\.html/);
+  });
+
+  test('toggling a rating on seeds midpoint (50), not zero (U1)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    const toggle = page.locator('#ctrlCurrentLevel .ctrl-toggle');
+    const box = page.locator('#ctrlCurrentLevel .ctrl-box');
+    await expect(box).toBeDisabled();
+    await toggle.check();
+    await expect(box).toBeEnabled();
+    const v = await box.inputValue();
+    expect(Number(v)).toBeGreaterThan(0);
+  });
+
+  test('filling the rating box syncs the slider value (AE1)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await page.locator('#ctrlCurrentLevel .ctrl-toggle').check();
+    const slider = page.locator('#ctrlCurrentLevel .ctrl-slider');
+    const box = page.locator('#ctrlCurrentLevel .ctrl-box');
+    await box.fill('75');
+    const sliderVal = await slider.inputValue();
+    expect(Number(sliderVal)).toBe(75);
+  });
+
+  test('out-of-range rating clamps to upper bound on blur (AE5)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await page.locator('#ctrlCurrentLevel .ctrl-toggle').check();
+    const box = page.locator('#ctrlCurrentLevel .ctrl-box');
+    await box.fill('140');
+    await box.blur();
+    await expect(box).toHaveValue('100');
+  });
+
+  test('rating set to 0 with toggle on serializes as "0%" not null (AE3)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await page.locator('#ctrlCurrentLevel .ctrl-toggle').check();
+    const box = page.locator('#ctrlCurrentLevel .ctrl-box');
+    await box.fill('0');
+    await box.blur();
+    await page.locator('#saveEdit').click();
+    const saved = await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      return (store.playerStats && store.playerStats[999]) ? store.playerStats[999].currentLevel : undefined;
+    });
+    expect(saved).toBe('0%');
+  });
+
+  test('score control clears to null when toggle is off (AE4)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    // Enable score and fill a value, then clear it via the toggle
+    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
+    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
+    await page.locator('#ctrlAverageScore .ctrl-toggle').uncheck();
+    await page.locator('#saveEdit').click();
+    const saved = await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      return (store.playerStats && store.playerStats[999]) ? store.playerStats[999].averageScore : 'missing';
+    });
+    expect(saved).toBeNull();
+  });
+
+  test('saving without any rating recorded keeps the no-stats notice on S2 (R8)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await expect(page.locator('#playerEditForm')).toBeVisible();
+    // Save with all rating toggles off (no development ratings recorded)
+    await page.locator('#saveEdit').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
+    await expect(page.locator('#noStatsNotice')).toBeVisible();
+  });
+
+  test('save with score but no rating keeps the no-stats notice (score-only edge case)', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await expect(page.locator('#playerEditForm')).toBeVisible();
+    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
+    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
+    await page.locator('#saveEdit').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
+    // Score recorded but no development ratings: notice stays visible
+    await expect(page.locator('#noStatsNotice')).toBeVisible();
   });
 });

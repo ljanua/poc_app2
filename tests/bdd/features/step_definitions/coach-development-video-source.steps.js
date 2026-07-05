@@ -114,6 +114,23 @@ When(
   }
 );
 
+When('I save player {string} with no development ratings recorded', function (playerName) {
+  this.resetResponse();
+
+  if (!requireCoach(this)) {
+    return;
+  }
+
+  const profile = this.playerProfiles.get(playerName);
+  if (!profile) {
+    setError(this, 404, 'not_found', 'The selected player was not found anymore. Refresh and try again.');
+    return;
+  }
+
+  // All rating toggles off — missingData stays 'all' and the notice is kept.
+  this.lastStatus = 200;
+});
+
 Then('the dashboard should not show a missing data message', function () {
   assert.equal(this.dashboardMissingMessage, null, 'Expected no missing-data message after stats were recorded');
 });
