@@ -387,13 +387,13 @@
       return buildNoStatsDashboardSnapshot(store, selectedWithAvatar);
     }
 
-    const clips = store.clips.filter((clip) => clip.playerId === selected.id);
+    const clips = store.clips.filter((clip) => clip.playerId === selectedWithAvatar.id);
     const assessed = clips.filter((clip) => clip.status === 'assessed');
     const pending = clips.filter((clip) => clip.status === 'pending');
-    const metricChanges = getMetricChangeIndicators(selected);
+    const metricChanges = getMetricChangeIndicators(selectedWithAvatar);
 
     return clone({
-      player: selected,
+      player: selectedWithAvatar,
       stats: {
         growthStatus: selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch',
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
