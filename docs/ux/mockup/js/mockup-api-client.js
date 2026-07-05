@@ -168,10 +168,70 @@
     return { moved: true, message: player.name + ' moved to ' + teamName + '.' };
   }
 
+  // Mirrors the trend-branch metric change indicators computed server-side in
+  // scripts/serve-mockup.js's getDefaultMetricChangeIndicators, so the
+  // offline/local fallback path renders the same badge shape as the backend.
+  function getDefaultMetricChangeIndicators(trend) {
+    if (trend === 'improving') {
+      return {
+        currentLevelChange: { label: 'Up 5%', trend: 'improving' },
+        fitnessChange: { label: 'Up 2%', trend: 'improving' },
+        skillProgressChange: { label: 'Up 3%', trend: 'improving' }
+      };
+    }
+
+    if (trend === 'declining') {
+      return {
+        currentLevelChange: { label: 'Down 3%', trend: 'declining' },
+        fitnessChange: { label: 'Down 2%', trend: 'declining' },
+        skillProgressChange: { label: 'Down 1%', trend: 'declining' }
+      };
+    }
+
+    return {
+      currentLevelChange: { label: 'Stable', trend: 'plateau' },
+      fitnessChange: { label: 'Stable', trend: 'plateau' },
+      skillProgressChange: { label: 'Up 1%', trend: 'improving' }
+    };
+  }
+
+  // Per-player overrides for the four named seed profiles, mirroring the exact
+  // literal values backfilled server-side (getSeedDashboardStats in
+  // scripts/serve-mockup.js and the 009 migration), so offline/demo mode shows
+  // the same badges a real deployment would rather than only the generic
+  // trend-based approximation.
+  const SEEDED_METRIC_CHANGE_INDICATORS = {
+    'lionel messi': {
+      currentLevelChange: { label: 'Up 5%', trend: 'improving' },
+      fitnessChange: { label: 'Stable', trend: 'plateau' },
+      skillProgressChange: { label: 'Up 3%', trend: 'improving' }
+    },
+    'cristiano ronaldo': {
+      currentLevelChange: { label: 'Stable', trend: 'plateau' },
+      fitnessChange: { label: 'Down 2%', trend: 'declining' },
+      skillProgressChange: { label: 'Up 1%', trend: 'improving' }
+    },
+    'neymar jr': {
+      currentLevelChange: { label: 'Down 3%', trend: 'declining' },
+      fitnessChange: { label: 'Down 4%', trend: 'declining' },
+      skillProgressChange: { label: 'Stable', trend: 'plateau' }
+    },
+    'kylian mbappe': {
+      currentLevelChange: { label: 'Up 4%', trend: 'improving' },
+      fitnessChange: { label: 'Up 2%', trend: 'improving' },
+      skillProgressChange: { label: 'Up 4%', trend: 'improving' }
+    }
+  };
+
+  function getMetricChangeIndicators(selected) {
+    return SEEDED_METRIC_CHANGE_INDICATORS[selected.normalizedName] || getDefaultMetricChangeIndicators(selected.trend);
+  }
+
   function buildDashboardSnapshot(store, selected) {
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
     const assessed = clips.filter((clip) => clip.status === 'assessed');
     const pending = clips.filter((clip) => clip.status === 'pending');
+    const metricChanges = getMetricChangeIndicators(selected);
 
     return clone({
       player: selected,
@@ -190,12 +250,18 @@
         clipSubmittedCount: clips.length,
         clipAssessedCount: assessed.length,
         clipPendingCount: pending.length,
-        missingDataMessage: assessed.length ? null : 'Performance metrics are not available yet.'
+        missingDataMessage: assessed.length ? null : 'Performance metrics are not available yet.',
+        currentLevelChange: metricChanges.currentLevelChange,
+        fitnessChange: metricChanges.fitnessChange,
+        skillProgressChange: metricChanges.skillProgressChange
       },
       metrics: {
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
         fitness: selected.trend === 'declining' ? '79%' : '87%',
-        skillProgress: selected.trend === 'improving' ? '94%' : '86%'
+        skillProgress: selected.trend === 'improving' ? '94%' : '86%',
+        currentLevelChange: metricChanges.currentLevelChange,
+        fitnessChange: metricChanges.fitnessChange,
+        skillProgressChange: metricChanges.skillProgressChange
       },
       matchTime: {
         totalMinutes: clips.length ? 2340 : 0,

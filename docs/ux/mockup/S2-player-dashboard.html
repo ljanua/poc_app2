@@ -44,17 +44,17 @@
           <div class="metric">
             <div class="metric-label">Current Level</div>
             <div class="metric-value" id="metricCurrentLevel">92%</div>
-            <div class="metric-status"><span class="badge badge-improving">↑ Up 5%</span></div>
+            <div class="metric-status"><span class="badge badge-improving" id="metricCurrentLevelChange">↑ Up 5%</span></div>
           </div>
           <div class="metric">
             <div class="metric-label">Fitness</div>
             <div class="metric-value" id="metricFitness">87%</div>
-            <div class="metric-status"><span class="badge badge-plateau">→ Stable</span></div>
+            <div class="metric-status"><span class="badge badge-plateau" id="metricFitnessChange">→ Stable</span></div>
           </div>
           <div class="metric">
             <div class="metric-label">Skill Progress</div>
             <div class="metric-value" id="metricSkill">94%</div>
-            <div class="metric-status"><span class="badge badge-improving">↑ Up 3%</span></div>
+            <div class="metric-status"><span class="badge badge-improving" id="metricSkillChange">↑ Up 3%</span></div>
           </div>
         </div>
         <div class="timeline" style="margin-top: 1.1rem;">
@@ -187,9 +187,23 @@
       trendBadge.className = 'badge ' + trendClass;
       trendBadge.textContent = trendArrow + ' ' + trendText;
 
+      function bindMetricChange(elementId, change) {
+        if (!change) {
+          return;
+        }
+        const arrow = change.trend === 'improving' ? '↑' : change.trend === 'declining' ? '↓' : '→';
+        const badgeClass = change.trend === 'improving' ? 'badge-improving' : change.trend === 'declining' ? 'badge-declining' : 'badge-plateau';
+        const element = document.getElementById(elementId);
+        element.className = 'badge ' + badgeClass;
+        element.textContent = arrow + ' ' + change.label;
+      }
+
       document.getElementById('metricCurrentLevel').textContent = dashboard.metrics.currentLevel;
       document.getElementById('metricFitness').textContent = dashboard.metrics.fitness;
       document.getElementById('metricSkill').textContent = dashboard.metrics.skillProgress;
+      bindMetricChange('metricCurrentLevelChange', dashboard.metrics.currentLevelChange);
+      bindMetricChange('metricFitnessChange', dashboard.metrics.fitnessChange);
+      bindMetricChange('metricSkillChange', dashboard.metrics.skillProgressChange);
       document.getElementById('metricMinutes').textContent = String(dashboard.matchTime.totalMinutes);
       document.getElementById('metricAppearances').textContent = String(dashboard.matchTime.appearances);
       document.getElementById('metricRecentAvg').textContent = dashboard.matchTime.recentAvg;

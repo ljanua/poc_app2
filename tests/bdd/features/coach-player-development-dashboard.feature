@@ -10,6 +10,11 @@ Feature: Coach player development dashboard
       | Lionel Messi      | on_track     | 540          | 8.8              | improving   | none        |
       | Cristiano Ronaldo | watch        | 420          | 7.1              | declining   | none        |
       | Neymar Jr         | at_risk      | 0            |                  | plateau     | performance |
+    And the following metric change indicators exist:
+      | player            | metric        | label  | trend     |
+      | Lionel Messi      | currentLevel  | Up 5%  | improving |
+      | Lionel Messi      | fitness       | Stable | plateau   |
+      | Lionel Messi      | skillProgress | Up 3%  | improving |
 
   Scenario: Coach opens a player profile and sees growth, match time, and performance
     When I open the development dashboard for player "Lionel Messi"
@@ -21,6 +26,12 @@ Feature: Coach player development dashboard
   Scenario: Dashboard trend indicator reflects latest data direction
     When I open the development dashboard for player "Cristiano Ronaldo"
     Then the dashboard should show trend indicator "declining"
+
+  Scenario: Development metrics show real per-metric change indicators instead of static badges
+    When I open the development dashboard for player "Lionel Messi"
+    Then the dashboard should show metric change for "currentLevel" with label "Up 5%" and trend "improving"
+    And the dashboard should show metric change for "fitness" with label "Stable" and trend "plateau"
+    And the dashboard should show metric change for "skillProgress" with label "Up 3%" and trend "improving"
 
   Scenario: Missing metrics are shown clearly
     When I open the development dashboard for player "Neymar Jr"

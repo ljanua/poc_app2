@@ -36,12 +36,23 @@ Given('the following player development profiles exist:', function (table) {
   }
 });
 
+Given('the following metric change indicators exist:', function (table) {
+  this.metricChangeIndicators = new Map();
+  for (const row of table.hashes()) {
+    this.metricChangeIndicators.set(row.player + '|' + row.metric, {
+      label: row.label,
+      trend: row.trend
+    });
+  }
+});
+
 When('I open the development dashboard for player {string}', function (playerName) {
   this.resetResponse();
   this.dashboardCurrentPlayer = null;
   this.dashboardVisible = null;
   this.dashboardTrend = null;
   this.dashboardMissingMessage = null;
+  this.dashboardMetricChanges = null;
 
   if (!requireCoach(this)) {
     return;
@@ -58,6 +69,11 @@ When('I open the development dashboard for player {string}', function (playerNam
   this.dashboardTrend = profile.trend;
   this.dashboardMissingMessage =
     profile.missingData === 'performance' ? 'Performance metrics are not available yet.' : null;
+  this.dashboardMetricChanges = {
+    currentLevel: this.metricChangeIndicators.get(playerName + '|currentLevel') || null,
+    fitness: this.metricChangeIndicators.get(playerName + '|fitness') || null,
+    skillProgress: this.metricChangeIndicators.get(playerName + '|skillProgress') || null
+  };
   this.lastStatus = 200;
 });
 
@@ -95,6 +111,17 @@ Then('the dashboard should show trend indicator {string}', function (trend) {
 Then('the dashboard should show missing data message {string}', function (message) {
   assert.equal(this.dashboardMissingMessage, message);
 });
+
+Then(
+  'the dashboard should show metric change for {string} with label {string} and trend {string}',
+  function (metric, label, trend) {
+    assert.ok(this.dashboardMetricChanges, 'Expected dashboard metric changes to be populated');
+    const change = this.dashboardMetricChanges[metric];
+    assert.ok(change, `Expected a metric change indicator for "${metric}"`);
+    assert.equal(change.label, label);
+    assert.equal(change.trend, trend);
+  }
+);
 
 Then('the comparison should include player {string}', function (playerName) {
   assert.ok(

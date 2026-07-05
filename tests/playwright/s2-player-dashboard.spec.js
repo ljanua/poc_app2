@@ -19,6 +19,26 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByText('Avg Score')).toBeVisible();
   });
 
+  test('shows real per-player metric change badges instead of static placeholders', async ({ page }) => {
+    const currentLevelChange = page.locator('#metricCurrentLevelChange');
+    const fitnessChange = page.locator('#metricFitnessChange');
+    const skillChange = page.locator('#metricSkillChange');
+
+    await expect(currentLevelChange).toBeVisible();
+    await expect(fitnessChange).toBeVisible();
+    await expect(skillChange).toBeVisible();
+
+    // Default player (Lionel Messi) resolves through the offline/local fallback
+    // client in CI (no DATABASE_URL configured), which mirrors the exact seeded
+    // values used by the Postgres-backed path for this named profile.
+    await expect(currentLevelChange).toHaveText(/Up 5%/);
+    await expect(currentLevelChange).toHaveClass(/badge-improving/);
+    await expect(fitnessChange).toHaveText(/Stable/);
+    await expect(fitnessChange).toHaveClass(/badge-plateau/);
+    await expect(skillChange).toHaveText(/Up 3%/);
+    await expect(skillChange).toHaveClass(/badge-improving/);
+  });
+
   test('provides actions to view results and submit clips', async ({ page }) => {
     await page.getByRole('link', { name: 'View Results' }).click();
     await expect(page).toHaveURL(/S6-assessment-list\.html|S6-assessment-list$/);

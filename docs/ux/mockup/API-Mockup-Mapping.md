@@ -25,10 +25,17 @@ Source plans:
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
+| S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, and per-metric (Current Level, Fitness, Skill Progress) change indicators | 403 forbidden, 404 not_found |
 
 Player persistence mode notes:
 - S1 runs backend mode by default (`window.__USE_BACKEND__ = true`) so create/assign operations target `/api/v1/players*`.
 - Local-only persistence is allowed for offline regression runs only when `window.__USE_MOCK_LOCAL__ = true` is explicitly set.
+- S2's dashboard read falls back to `mockup-api-client.js`'s offline/local snapshot whenever the backend is unavailable or `DATABASE_URL` is unset, which is the case in CI. The fallback always returns the same JSON shape as the backend (same keys under `stats`/`metrics`); for the four named seed players (Messi, Ronaldo, Neymar Jr, Mbappe) it also returns the exact same metric-change values as the Postgres-backed path, and for any other player it falls back to a generic trend-based approximation.
+
+Dashboard metric-change indicators:
+- `PlayerDashboardStats`/`metrics` now return `currentLevelChange`, `fitnessChange`, and `skillProgressChange` objects (`{ label, trend }`), replacing the static "Up 5%" / "Stable" / "Up 3%" markup previously hardcoded in the S2 mockup.
+- `trend` is one of `improving`, `plateau`, or `declining` and drives the badge arrow/color; `label` is the human-readable delta text (e.g. "Up 5%", "Stable").
+- Backed by new `player_stats` columns (`current_level_change_label`/`_trend`, `fitness_change_label`/`_trend`, `skill_progress_change_label`/`_trend`) added in `apps/api/src/db/migrations/009_player_stats_metric_change_indicators.sql`.
 
 ## Authorization rules
 - SystemAdmin role is required for all S7 user-management operations.
@@ -65,5 +72,8 @@ Player persistence mode notes:
 - API integration: apps/api/tests/integration/users/user-admin.api.spec.ts
 - API integration: apps/api/tests/integration/players/players-api.spec.ts
 - UI integration: tests/playwright/s1-player-list.spec.js
+- UI integration: tests/playwright/s2-player-dashboard.spec.js
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
+- BDD: tests/bdd/features/coach-player-development-dashboard.feature
+- Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts
 - RBAC regression: apps/api/tests/integration/users/user-admin-rbac-regression.spec.ts

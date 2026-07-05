@@ -114,6 +114,16 @@ components:
         message:
           type: string
 
+    MetricChangeIndicator:
+      type: object
+      required: [label, trend]
+      properties:
+        label:
+          type: string
+        trend:
+          type: string
+          enum: [improving, plateau, declining]
+
     PlayerDashboardStats:
       type: object
       required: [growthStatus, currentLevel, fitness, skillProgress, totalMinutes, appearances, recentAvg, trend, clipSubmittedCount, clipAssessedCount, clipPendingCount]
@@ -154,6 +164,12 @@ components:
         missingDataMessage:
           type: string
           nullable: true
+        currentLevelChange:
+          $ref: '#/components/schemas/MetricChangeIndicator'
+        fitnessChange:
+          $ref: '#/components/schemas/MetricChangeIndicator'
+        skillProgressChange:
+          $ref: '#/components/schemas/MetricChangeIndicator'
 
     PlayerDashboardResponse:
       type: object
@@ -177,6 +193,12 @@ components:
                   type: string
                 skillProgress:
                   type: string
+                currentLevelChange:
+                  $ref: '#/components/schemas/MetricChangeIndicator'
+                fitnessChange:
+                  $ref: '#/components/schemas/MetricChangeIndicator'
+                skillProgressChange:
+                  $ref: '#/components/schemas/MetricChangeIndicator'
             matchTime:
               type: object
               required: [totalMinutes, appearances, recentAvg]

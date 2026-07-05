@@ -81,8 +81,46 @@ function mapTrendToGrowthStatus(trend) {
   return 'watch';
 }
 
-function buildDefaultDashboardStats(trend) {
+// Derives the three Development Progress badge indicators (Current Level,
+// Fitness, Skill Progress) from a player's overall trend. Used as the
+// fallback for any player without a specific seeded profile below.
+function getDefaultMetricChangeIndicators(trend) {
   if (trend === 'improving') {
+    return {
+      currentLevelChange: { label: 'Up 5%', trend: 'improving' },
+      fitnessChange: { label: 'Up 2%', trend: 'improving' },
+      skillProgressChange: { label: 'Up 3%', trend: 'improving' }
+    };
+  }
+
+  if (trend === 'declining') {
+    return {
+      currentLevelChange: { label: 'Down 3%', trend: 'declining' },
+      fitnessChange: { label: 'Down 2%', trend: 'declining' },
+      skillProgressChange: { label: 'Down 1%', trend: 'declining' }
+    };
+  }
+
+  return {
+    currentLevelChange: { label: 'Stable', trend: 'plateau' },
+    fitnessChange: { label: 'Stable', trend: 'plateau' },
+    skillProgressChange: { label: 'Up 1%', trend: 'improving' }
+  };
+}
+
+// Pre-existing defect fix (unrelated to this plan's scope, but blocked
+// verification of it): none of the branches below previously set `trend` on
+// the returned stats object, so upsertPlayerStats always wrote a NULL trend
+// and violated player_stats' NOT NULL constraint once a player outside the
+// four named seed profiles was synced.
+function normalizeTrendValue(trend) {
+  return trend === 'improving' || trend === 'declining' ? trend : 'plateau';
+}
+
+function buildDefaultDashboardStats(trend) {
+  const normalizedTrend = normalizeTrendValue(trend);
+
+  if (normalizedTrend === 'improving') {
     return {
       growthStatus: 'on_track',
       currentLevel: '92%',
@@ -92,16 +130,18 @@ function buildDefaultDashboardStats(trend) {
       appearances: 26,
       recentAvg: "90'",
       averageScore: 8.8,
+      trend: normalizedTrend,
       lastMatchScore: 8.5,
       lastMatchSummary: 'Confident execution under pressure.',
       clipSubmittedCount: 4,
       clipAssessedCount: 3,
       clipPendingCount: 1,
-      missingDataMessage: null
+      missingDataMessage: null,
+      ...getDefaultMetricChangeIndicators(normalizedTrend)
     };
   }
 
-  if (trend === 'declining') {
+  if (normalizedTrend === 'declining') {
     return {
       growthStatus: 'at_risk',
       currentLevel: '81%',
@@ -111,12 +151,14 @@ function buildDefaultDashboardStats(trend) {
       appearances: 12,
       recentAvg: "70'",
       averageScore: null,
+      trend: normalizedTrend,
       lastMatchScore: null,
       lastMatchSummary: null,
       clipSubmittedCount: 2,
       clipAssessedCount: 0,
       clipPendingCount: 2,
-      missingDataMessage: 'Performance metrics are not available yet.'
+      missingDataMessage: 'Performance metrics are not available yet.',
+      ...getDefaultMetricChangeIndicators(normalizedTrend)
     };
   }
 
@@ -129,35 +171,43 @@ function buildDefaultDashboardStats(trend) {
     appearances: 8,
     recentAvg: "72'",
     averageScore: 7.1,
+    trend: normalizedTrend,
     lastMatchScore: 7.1,
     lastMatchSummary: 'Pace was strong, timing can improve.',
     clipSubmittedCount: 3,
     clipAssessedCount: 2,
     clipPendingCount: 1,
-    missingDataMessage: null
+    missingDataMessage: null,
+    ...getDefaultMetricChangeIndicators(normalizedTrend)
   };
 }
 
 function buildNewPlayerDashboardStats(trend) {
+  const normalizedTrend = normalizeTrendValue(trend);
+
   return {
-    growthStatus: mapTrendToGrowthStatus(trend),
-    currentLevel: trend === 'declining' ? '81%' : trend === 'improving' ? '92%' : '87%',
-    fitness: trend === 'declining' ? '79%' : '87%',
-    skillProgress: trend === 'improving' ? '94%' : '86%',
+    growthStatus: mapTrendToGrowthStatus(normalizedTrend),
+    currentLevel: normalizedTrend === 'declining' ? '81%' : normalizedTrend === 'improving' ? '92%' : '87%',
+    fitness: normalizedTrend === 'declining' ? '79%' : '87%',
+    skillProgress: normalizedTrend === 'improving' ? '94%' : '86%',
     totalMinutes: 0,
     appearances: 0,
     recentAvg: 'N/A',
     averageScore: null,
+    trend: normalizedTrend,
     lastMatchScore: null,
     lastMatchSummary: null,
     clipSubmittedCount: 0,
     clipAssessedCount: 0,
     clipPendingCount: 0,
-    missingDataMessage: 'Performance metrics are not available yet.'
+    missingDataMessage: 'Performance metrics are not available yet.',
+    ...getDefaultMetricChangeIndicators(normalizedTrend)
   };
 }
 
 function getSeedDashboardStats(normalizedName, trend) {
+  const normalizedTrend = normalizeTrendValue(trend);
+
   if (normalizedName === 'lionel messi') {
     return {
       growthStatus: 'on_track',
@@ -168,12 +218,16 @@ function getSeedDashboardStats(normalizedName, trend) {
       appearances: 26,
       recentAvg: "90'",
       averageScore: 8.8,
+      trend: normalizedTrend,
       lastMatchScore: 8.5,
       lastMatchSummary: 'Confident execution under pressure.',
       clipSubmittedCount: 4,
       clipAssessedCount: 3,
       clipPendingCount: 1,
-      missingDataMessage: null
+      missingDataMessage: null,
+      currentLevelChange: { label: 'Up 5%', trend: 'improving' },
+      fitnessChange: { label: 'Stable', trend: 'plateau' },
+      skillProgressChange: { label: 'Up 3%', trend: 'improving' }
     };
   }
 
@@ -187,12 +241,16 @@ function getSeedDashboardStats(normalizedName, trend) {
       appearances: 18,
       recentAvg: "70'",
       averageScore: 7.1,
+      trend: normalizedTrend,
       lastMatchScore: 7.1,
       lastMatchSummary: 'Pace was strong, timing can improve.',
       clipSubmittedCount: 3,
       clipAssessedCount: 2,
       clipPendingCount: 1,
-      missingDataMessage: null
+      missingDataMessage: null,
+      currentLevelChange: { label: 'Stable', trend: 'plateau' },
+      fitnessChange: { label: 'Down 2%', trend: 'declining' },
+      skillProgressChange: { label: 'Up 1%', trend: 'improving' }
     };
   }
 
@@ -206,12 +264,16 @@ function getSeedDashboardStats(normalizedName, trend) {
       appearances: 0,
       recentAvg: 'N/A',
       averageScore: null,
+      trend: normalizedTrend,
       lastMatchScore: null,
       lastMatchSummary: null,
       clipSubmittedCount: 1,
       clipAssessedCount: 0,
       clipPendingCount: 1,
-      missingDataMessage: 'Performance metrics are not available yet.'
+      missingDataMessage: 'Performance metrics are not available yet.',
+      currentLevelChange: { label: 'Down 3%', trend: 'declining' },
+      fitnessChange: { label: 'Down 4%', trend: 'declining' },
+      skillProgressChange: { label: 'Stable', trend: 'plateau' }
     };
   }
 
@@ -225,21 +287,35 @@ function getSeedDashboardStats(normalizedName, trend) {
       appearances: 24,
       recentAvg: "88'",
       averageScore: 8.5,
+      trend: normalizedTrend,
       lastMatchScore: 8.9,
       lastMatchSummary: 'Strong finishing and recovery runs.',
       clipSubmittedCount: 2,
       clipAssessedCount: 1,
       clipPendingCount: 1,
-      missingDataMessage: null
+      missingDataMessage: null,
+      currentLevelChange: { label: 'Up 4%', trend: 'improving' },
+      fitnessChange: { label: 'Up 2%', trend: 'improving' },
+      skillProgressChange: { label: 'Up 4%', trend: 'improving' }
     };
   }
 
   return buildDefaultDashboardStats(trend);
 }
 
+function toMetricChangeIndicator(label, trendValue, fallbackTrend) {
+  return {
+    label: label || 'N/A',
+    trend: trendValue || fallbackTrend || 'plateau'
+  };
+}
+
 function toDashboardPayload(row) {
   const averageScore = row.averageScore === null || row.averageScore === undefined ? 'N/A' : Number(row.averageScore).toFixed(1);
   const lastMatchScore = row.lastMatchScore === null || row.lastMatchScore === undefined ? 'N/A' : Number(row.lastMatchScore).toFixed(1);
+  const currentLevelChange = toMetricChangeIndicator(row.currentLevelChangeLabel, row.currentLevelChangeTrend, row.trend);
+  const fitnessChange = toMetricChangeIndicator(row.fitnessChangeLabel, row.fitnessChangeTrend, row.trend);
+  const skillProgressChange = toMetricChangeIndicator(row.skillProgressChangeLabel, row.skillProgressChangeTrend, row.trend);
 
   return {
     player: {
@@ -266,12 +342,18 @@ function toDashboardPayload(row) {
       clipSubmittedCount: Number(row.clipSubmittedCount || 0),
       clipAssessedCount: Number(row.clipAssessedCount || 0),
       clipPendingCount: Number(row.clipPendingCount || 0),
-      missingDataMessage: row.missingDataMessage || null
+      missingDataMessage: row.missingDataMessage || null,
+      currentLevelChange,
+      fitnessChange,
+      skillProgressChange
     },
     metrics: {
       currentLevel: row.currentLevel || 'N/A',
       fitness: row.fitness || 'N/A',
-      skillProgress: row.skillProgress || 'N/A'
+      skillProgress: row.skillProgress || 'N/A',
+      currentLevelChange,
+      fitnessChange,
+      skillProgressChange
     },
     matchTime: {
       totalMinutes: Number(row.totalMinutes || 0),
@@ -313,9 +395,15 @@ async function upsertPlayerStats(executor, playerId, stats) {
         clip_assessed_count,
         clip_pending_count,
         missing_data_message,
+        current_level_change_label,
+        current_level_change_trend,
+        fitness_change_label,
+        fitness_change_trend,
+        skill_progress_change_label,
+        skill_progress_change_trend,
         updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW())
       ON CONFLICT (player_id) DO UPDATE SET
         growth_status = EXCLUDED.growth_status,
         current_level = EXCLUDED.current_level,
@@ -332,6 +420,12 @@ async function upsertPlayerStats(executor, playerId, stats) {
         clip_assessed_count = EXCLUDED.clip_assessed_count,
         clip_pending_count = EXCLUDED.clip_pending_count,
         missing_data_message = EXCLUDED.missing_data_message,
+        current_level_change_label = EXCLUDED.current_level_change_label,
+        current_level_change_trend = EXCLUDED.current_level_change_trend,
+        fitness_change_label = EXCLUDED.fitness_change_label,
+        fitness_change_trend = EXCLUDED.fitness_change_trend,
+        skill_progress_change_label = EXCLUDED.skill_progress_change_label,
+        skill_progress_change_trend = EXCLUDED.skill_progress_change_trend,
         updated_at = NOW()
     `,
     [
@@ -350,7 +444,13 @@ async function upsertPlayerStats(executor, playerId, stats) {
       stats.clipSubmittedCount,
       stats.clipAssessedCount,
       stats.clipPendingCount,
-      stats.missingDataMessage
+      stats.missingDataMessage,
+      stats.currentLevelChange ? stats.currentLevelChange.label : null,
+      stats.currentLevelChange ? stats.currentLevelChange.trend : null,
+      stats.fitnessChange ? stats.fitnessChange.label : null,
+      stats.fitnessChange ? stats.fitnessChange.trend : null,
+      stats.skillProgressChange ? stats.skillProgressChange.label : null,
+      stats.skillProgressChange ? stats.skillProgressChange.trend : null
     ]
   );
 }
@@ -526,11 +626,24 @@ async function ensureDatabase() {
       clip_assessed_count INTEGER NOT NULL DEFAULT 0,
       clip_pending_count INTEGER NOT NULL DEFAULT 0,
       missing_data_message TEXT,
+      current_level_change_label TEXT,
+      current_level_change_trend TEXT CHECK (current_level_change_trend IN ('improving', 'plateau', 'declining')),
+      fitness_change_label TEXT,
+      fitness_change_trend TEXT CHECK (fitness_change_trend IN ('improving', 'plateau', 'declining')),
+      skill_progress_change_label TEXT,
+      skill_progress_change_trend TEXT CHECK (skill_progress_change_trend IN ('improving', 'plateau', 'declining')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_stats_trend ON player_stats(trend);`);
+  // Upgrade path for databases where player_stats already existed before these columns were added.
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS current_level_change_label TEXT;`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS current_level_change_trend TEXT CHECK (current_level_change_trend IN ('improving', 'plateau', 'declining'));`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS fitness_change_label TEXT;`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS fitness_change_trend TEXT CHECK (fitness_change_trend IN ('improving', 'plateau', 'declining'));`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS skill_progress_change_label TEXT;`);
+  await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS skill_progress_change_trend TEXT CHECK (skill_progress_change_trend IN ('improving', 'plateau', 'declining'));`);
 
   if (seedDatabase) {
     await pool.query(`
@@ -694,7 +807,13 @@ async function handlePlayersApi(req, res, requestUrl) {
           ps.clip_submitted_count AS "clipSubmittedCount",
           ps.clip_assessed_count AS "clipAssessedCount",
           ps.clip_pending_count AS "clipPendingCount",
-          ps.missing_data_message AS "missingDataMessage"
+          ps.missing_data_message AS "missingDataMessage",
+          ps.current_level_change_label AS "currentLevelChangeLabel",
+          ps.current_level_change_trend AS "currentLevelChangeTrend",
+          ps.fitness_change_label AS "fitnessChangeLabel",
+          ps.fitness_change_trend AS "fitnessChangeTrend",
+          ps.skill_progress_change_label AS "skillProgressChangeLabel",
+          ps.skill_progress_change_trend AS "skillProgressChangeTrend"
         FROM players p
         JOIN player_team_assignments a ON a.player_id = p.id
         JOIN teams t ON t.id = a.team_id

@@ -85,6 +85,12 @@ CREATE TABLE IF NOT EXISTS player_stats (
   clip_assessed_count INTEGER NOT NULL DEFAULT 0,
   clip_pending_count INTEGER NOT NULL DEFAULT 0,
   missing_data_message TEXT,
+  current_level_change_label TEXT,
+  current_level_change_trend TEXT CHECK (current_level_change_trend IN ('improving', 'plateau', 'declining')),
+  fitness_change_label TEXT,
+  fitness_change_trend TEXT CHECK (fitness_change_trend IN ('improving', 'plateau', 'declining')),
+  skill_progress_change_label TEXT,
+  skill_progress_change_trend TEXT CHECK (skill_progress_change_trend IN ('improving', 'plateau', 'declining')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
