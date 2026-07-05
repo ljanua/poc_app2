@@ -222,10 +222,13 @@
 
         visiblePlayers.forEach(function (player) {
           const trend = trendLabel(player.trend);
+          const avatarHtml = player.avatarUrl
+            ? '<img src="' + player.avatarUrl + '" alt="' + player.name + '" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">'
+            : '<span style="font-size:1.4rem;line-height:58px;">⚽</span>';
           const card = document.createElement('div');
           card.className = 'player-card';
           card.innerHTML =
-            '<div class="player-image">⚽</div>' +
+            '<div class="player-image" style="overflow:hidden;">' + avatarHtml + '</div>' +
             '<div class="player-info">' +
             '<div class="player-name">' + player.name + '</div>' +
             '<div class="player-position">' + player.position + '</div>' +

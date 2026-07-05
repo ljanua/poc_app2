@@ -1144,6 +1144,48 @@
       return { status: 200, code: 'ok', avatarUrl: avatarDataUrl };
     },
 
+    /**
+     * Reads a File, converts it to a 100x100 JPEG data-URL via canvas, then
+     * calls updatePlayerAvatar and returns the result.
+     * Returns { error: string } on validation failure.
+     */
+    uploadPlayerAvatar(playerId, file) {
+      if (!file || !file.type.startsWith('image/')) {
+        return { error: 'Please select an image file (JPEG, PNG, WebP, or GIF).' };
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        return { error: 'Image must be smaller than 5 MB.' };
+      }
+
+      return new Promise(function (resolve) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+          var img = new Image();
+          img.onload = function () {
+            var canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            var ctx = canvas.getContext('2d');
+            var size = Math.min(img.width, img.height);
+            var sx = (img.width - size) / 2;
+            var sy = (img.height - size) / 2;
+            ctx.drawImage(img, sx, sy, size, size, 0, 0, 100, 100);
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            var result = MockupApi.updatePlayerAvatar(playerId, dataUrl);
+            resolve(result);
+          };
+          img.onerror = function () {
+            resolve({ error: 'Could not read the image file. Please try another.' });
+          };
+          img.src = e.target.result;
+        };
+        reader.onerror = function () {
+          resolve({ error: 'Could not read the file. Please try again.' });
+        };
+        reader.readAsDataURL(file);
+      });
+    },
+
     listClips(filters) {
       const store = loadStore();
       const options = filters || {};

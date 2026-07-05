@@ -28,7 +28,12 @@
       <div class="notice" id="dashboardNotice" hidden></div>
 
       <div class="player-summary">
-        <div class="player-avatar">⚽</div>
+        <div class="player-avatar" id="playerAvatarContainer" style="position:relative;cursor:pointer;" title="Click to upload photo" onclick="document.getElementById('avatarFileInput').click()">
+          <img id="playerAvatarImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:inherit;">
+          <span id="playerAvatarEmoji">⚽</span>
+          <div id="playerAvatarOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.45);border-radius:inherit;align-items:center;justify-content:center;font-size:1.4rem;color:#fff;text-align:center;line-height:1;">📷</div>
+        </div>
+        <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="handleAvatarFileSelect(this)">
         <div class="player-details">
           <div class="player-name" id="dashboardPlayerName">Lionel Messi</div>
           <div class="player-meta" id="dashboardPlayerMeta">Forward • Left Wing • Age 37</div>
@@ -201,6 +206,35 @@
         editPlayerLink.hidden = false;
       }
 
+      // Avatar: show uploaded image or ⚽ fallback; hover shows camera overlay.
+      function applyAvatar(avatarUrl) {
+        var img = document.getElementById('playerAvatarImg');
+        var emoji = document.getElementById('playerAvatarEmoji');
+        var overlay = document.getElementById('playerAvatarOverlay');
+        if (avatarUrl) {
+          img.src = avatarUrl;
+          img.style.display = 'block';
+          emoji.style.display = 'none';
+        } else {
+          img.style.display = 'none';
+          emoji.style.display = '';
+        }
+      }
+      function showAvatarOverlay() {
+        var overlay = document.getElementById('playerAvatarOverlay');
+        if (overlay) overlay.style.display = 'flex';
+      }
+      function hideAvatarOverlay() {
+        var overlay = document.getElementById('playerAvatarOverlay');
+        if (overlay) overlay.style.display = 'none';
+      }
+      var avatarContainer = document.getElementById('playerAvatarContainer');
+      if (avatarContainer) {
+        avatarContainer.addEventListener('mouseenter', showAvatarOverlay);
+        avatarContainer.addEventListener('mouseleave', hideAvatarOverlay);
+      }
+      applyAvatar(player.avatarUrl || null);
+
       // A player with no real recorded stats yet must never show fabricated
       // or borrowed numbers. Show the identity card plus a single clear
       // notice, and hide every stats-derived section as one unit.
@@ -249,6 +283,54 @@
       document.getElementById('metricLastMatchSub').textContent = dashboard.performance.lastMatchSummary || 'From latest assessed clips';
       document.getElementById('dashboardClipSummary').textContent = dashboard.clipStats.submitted + ' clips submitted • ' + dashboard.clipStats.assessed + ' assessed • ' + dashboard.clipStats.pending + ' pending';
     })();
+
+    // Global upload handler — wired to the hidden file input's onchange.
+    function handleAvatarFileSelect(input) {
+      var file = input && input.files && input.files[0];
+      if (!file) return;
+
+      var playerId = null;
+      var match = window.location.search.match(/playerId=([^&]+)/);
+      if (match) playerId = decodeURIComponent(match[1]);
+
+      if (!playerId) {
+        var dash = MockupApi.getDashboardPlayer(new URLSearchParams(window.location.search).get('player') || '');
+        if (dash && dash.player && dash.player.id != null) playerId = dash.player.id;
+      }
+
+      if (!playerId) return;
+
+      MockupApi.uploadPlayerAvatar(playerId, file).then(function (result) {
+        input.value = '';
+        if (result && result.error) {
+          var toast = document.getElementById('toast') || document.createElement('div');
+          toast.id = 'toast';
+          toast.className = 'toast';
+          toast.setAttribute('role', 'status');
+          toast.setAttribute('aria-live', 'polite');
+          toast.textContent = result.error;
+          toast.classList.add('show');
+          document.body.appendChild(toast);
+          setTimeout(function () { toast.classList.remove('show'); }, 3000);
+          return;
+        }
+        if (result && result.avatarUrl) {
+          var img = document.getElementById('playerAvatarImg');
+          var emoji = document.getElementById('playerAvatarEmoji');
+          if (img) { img.src = result.avatarUrl; img.style.display = 'block'; }
+          if (emoji) emoji.style.display = 'none';
+          var toast = document.getElementById('toast') || document.createElement('div');
+          toast.id = 'toast';
+          toast.className = 'toast';
+          toast.setAttribute('role', 'status');
+          toast.setAttribute('aria-live', 'polite');
+          toast.textContent = 'Photo updated.';
+          toast.classList.add('show');
+          document.body.appendChild(toast);
+          setTimeout(function () { toast.classList.remove('show'); }, 2400);
+        }
+      });
+    }
   </script>
 </body>
 </html>

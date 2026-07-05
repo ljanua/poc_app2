@@ -132,6 +132,15 @@
       <form id="playerEditForm">
         <div class="section">
           <div class="section-title">Identity</div>
+          <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;">
+            <div class="player-avatar" id="s5AvatarContainer" style="width:72px;height:72px;flex-shrink:0;cursor:pointer;border-radius:var(--r-lg);background:var(--surface-1);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;font-size:2rem;" title="Click to upload photo" onclick="document.getElementById('s5AvatarFileInput').click()">
+              <img id="s5AvatarImg" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:inherit;">
+              <span id="s5AvatarEmoji">⚽</span>
+              <div id="s5AvatarOverlay" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,0.45);border-radius:inherit;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;text-align:center;">📷</div>
+            </div>
+            <input type="file" id="s5AvatarFileInput" accept="image/*" style="display:none" onchange="handleS5AvatarFileSelect(this)">
+            <div style="font-size:0.85rem;color:var(--text-muted);">Click the photo to upload a new image<br>(100×100 JPEG)</div>
+          </div>
           <div class="form-grid">
             <div class="form-field">
               <label class="form-label" for="fieldName">Name <span class="required">*</span></label>
@@ -570,6 +579,26 @@
         fillTeamOptions(player.teamName);
 
         setValue('fieldGrowthStatus', stats.growthStatus || '');
+
+        // Avatar display and hover overlay
+        var avatarUrl = player.avatarUrl || null;
+        var img = document.getElementById('s5AvatarImg');
+        var emoji = document.getElementById('s5AvatarEmoji');
+        var overlay = document.getElementById('s5AvatarOverlay');
+        if (avatarUrl) {
+          img.src = avatarUrl;
+          img.style.display = 'block';
+          emoji.style.display = 'none';
+        } else {
+          img.style.display = 'none';
+          emoji.style.display = '';
+        }
+        var s5AvatarContainer = document.getElementById('s5AvatarContainer');
+        if (s5AvatarContainer) {
+          s5AvatarContainer.addEventListener('mouseenter', function () { if (overlay) overlay.style.display = 'flex'; });
+          s5AvatarContainer.addEventListener('mouseleave', function () { if (overlay) overlay.style.display = 'none'; });
+        }
+
         controls.currentLevel.setState(parseRating(stats.currentLevel));
         controls.fitness.setState(parseRating(stats.fitness));
         controls.skillProgress.setState(parseRating(stats.skillProgress));
@@ -646,6 +675,28 @@
         window.location.href = './S2-player-dashboard.html?player=' + encodeURIComponent(response.data.player.name);
       });
     })();
+
+    function handleS5AvatarFileSelect(input) {
+      var file = input && input.files && input.files[0];
+      if (!file) return;
+      var playerId = new URLSearchParams(window.location.search).get('playerId');
+      if (!playerId) return;
+
+      MockupApi.uploadPlayerAvatar(playerId, file).then(function (result) {
+        input.value = '';
+        if (result && result.error) {
+          showToast(result.error);
+          return;
+        }
+        if (result && result.avatarUrl) {
+          var img = document.getElementById('s5AvatarImg');
+          var emoji = document.getElementById('s5AvatarEmoji');
+          if (img) { img.src = result.avatarUrl; img.style.display = 'block'; }
+          if (emoji) emoji.style.display = 'none';
+          showToast('Photo updated.');
+        }
+      });
+    }
   </script>
 </body>
 </html>
