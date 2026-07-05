@@ -101,4 +101,19 @@ describe('db bootstrap artifacts', () => {
     expect(migration).toContain("ps.last_match_summary = 'Confident execution under pressure.'");
     expect(migration).toContain("ps.last_match_summary = 'Pace was strong, timing can improve.'");
   });
+
+  it('keeps startup dashboard-stats sync insert-only so coach edits survive restart', () => {
+    const servePath = path.join(process.cwd(), 'scripts', 'serve-mockup.js');
+    const source = fs.readFileSync(servePath, 'utf8');
+
+    const match = source.match(/async function syncDefaultDashboardStats\([\s\S]*?\n}/);
+    expect(match, 'expected syncDefaultDashboardStats to be defined').toBeTruthy();
+
+    const body = match![0];
+    // Sync must never overwrite an existing row -- named and non-named
+    // players alike are backfilled insert-only, so a coach's PATCH edits are
+    // not clobbered on the next server restart.
+    expect(body).toContain('ensurePlayerStatsRowExists');
+    expect(body).not.toContain('upsertPlayerStats');
+  });
 });

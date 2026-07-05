@@ -466,13 +466,14 @@ async function ensurePlayerStatsRowExists(executor, playerId, stats) {
 async function syncDefaultDashboardStats(executor) {
   const result = await executor.query(`SELECT id, name, normalized_name AS "normalizedName", trend FROM players ORDER BY name ASC`);
   for (const player of result.rows) {
-    if (NAMED_REFERENCE_PROFILES.has(player.normalizedName)) {
-      await upsertPlayerStats(executor, player.id, getSeedDashboardStats(player.normalizedName, player.trend));
-    } else {
-      // Never fabricate archetype data for a real, non-demo player. Only
-      // backfill a genuine "no stats yet" row when one doesn't exist yet.
-      await ensurePlayerStatsRowExists(executor, player.id, buildNewPlayerDashboardStats(player.trend));
-    }
+    // Startup sync is insert-only for every player, so it never clobbers an
+    // existing row. Named reference profiles still get their curated seed
+    // stats, but only on first insert; once a coach edits any player (named
+    // or not) via PATCH /players/{id}, those edits survive server restarts.
+    const seedStats = NAMED_REFERENCE_PROFILES.has(player.normalizedName)
+      ? getSeedDashboardStats(player.normalizedName, player.trend)
+      : buildNewPlayerDashboardStats(player.trend);
+    await ensurePlayerStatsRowExists(executor, player.id, seedStats);
   }
 }
 
@@ -832,6 +833,203 @@ async function findPlayerById(playerId, executor = pool) {
     [playerId]
   );
   return result.rows[0] ? toPlayerPayload(result.rows[0]) : null;
+}
+
+// Resolves the active Coach actor for an incoming request. Returns null when
+// the email is unknown, inactive, or not a Coach -- callers map that to 403.
+async function resolveCoachActor(actorEmail) {
+  const email = String(actorEmail || '').trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+  const result = await pool.query(
+    `SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email]
+  );
+  const actor = result.rows[0] || null;
+  if (!actor || actor.role !== 'Coach' || actor.status !== 'active') {
+    return null;
+  }
+  return actor;
+}
+
+// Loads a single player + stats row scoped to a team led by the given coach.
+// Mirrors the dashboard query's join/scoping so GET profile and PATCH share
+// the same "belongs to this coach" guard. Returns null when the player is not
+// on any team led by the coach (callers map that to 404).
+async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT
+        p.id,
+        p.name,
+        p.normalized_name AS "normalizedName",
+        t.name AS "teamName",
+        p.position,
+        p.trend,
+        ps.growth_status AS "growthStatus",
+        ps.current_level AS "currentLevel",
+        ps.fitness,
+        ps.skill_progress AS "skillProgress",
+        ps.total_minutes AS "totalMinutes",
+        ps.appearances,
+        ps.recent_avg AS "recentAvg",
+        ps.average_score AS "averageScore",
+        ps.last_match_score AS "lastMatchScore",
+        ps.last_match_summary AS "lastMatchSummary",
+        ps.clip_submitted_count AS "clipSubmittedCount",
+        ps.clip_assessed_count AS "clipAssessedCount",
+        ps.clip_pending_count AS "clipPendingCount",
+        ps.missing_data_message AS "missingDataMessage",
+        ps.current_level_change_label AS "currentLevelChangeLabel",
+        ps.current_level_change_trend AS "currentLevelChangeTrend",
+        ps.fitness_change_label AS "fitnessChangeLabel",
+        ps.fitness_change_trend AS "fitnessChangeTrend",
+        ps.skill_progress_change_label AS "skillProgressChangeLabel",
+        ps.skill_progress_change_trend AS "skillProgressChangeTrend"
+      FROM players p
+      JOIN player_team_assignments a ON a.player_id = p.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN users coach ON coach.id = t.lead_coach_user_id
+      LEFT JOIN player_stats ps ON ps.player_id = p.id
+      WHERE p.id = $1 AND coach.id = $2
+      LIMIT 1
+    `,
+    [playerId, coachId]
+  );
+  return result.rows[0] || null;
+}
+
+const TREND_VALUES = new Set(['improving', 'plateau', 'declining']);
+const GROWTH_STATUS_VALUES = new Set(['on_track', 'watch', 'at_risk']);
+
+// Coerces a payload value into a nullable trimmed string. Empty strings and
+// nullish values collapse to null so optional columns stay NULL rather than ''.
+function toNullableString(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const text = String(value).trim();
+  return text.length ? text : null;
+}
+
+// Coerces a payload value into a non-negative integer, or returns NaN when the
+// value is present but not a valid count (so callers can reject it).
+function toCountValue(value, fallback) {
+  if (value === null || value === undefined || value === '') {
+    return fallback;
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) {
+    return NaN;
+  }
+  return Math.floor(num);
+}
+
+// Coerces a payload value into a nullable finite number (scores). Empty/nullish
+// collapses to null; a present-but-invalid value returns NaN for rejection.
+function toNullableNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : NaN;
+}
+
+// Parses an incoming metric-change indicator. Accepts null/omitted (returns
+// null) or an object with a non-empty label and valid trend. Returns the
+// string 'invalid' when the shape is present but malformed.
+function parseMetricChange(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'object') {
+    return 'invalid';
+  }
+  const label = toNullableString(value.label);
+  if (label === null) {
+    return null;
+  }
+  const trend = String(value.trend || '').trim();
+  if (!TREND_VALUES.has(trend)) {
+    return 'invalid';
+  }
+  return { label, trend };
+}
+
+// Validates and normalizes a PATCH /players/{id} body into the identity and
+// stats shapes the persistence helpers expect. Returns { error } (a message)
+// on the first validation failure, otherwise { identity, stats }.
+function parseUpdateProfilePayload(payload) {
+  const validChars = /^[A-Za-z' -]+$/;
+  const name = toTitleCase(payload.name);
+  if (!name || name.length < 2 || name.length > 60 || !validChars.test(name)) {
+    return { error: 'Player name must be 2-60 chars and use letters, spaces, apostrophe, or hyphen.' };
+  }
+
+  const teamName = normalizeLookup(payload.teamName);
+  if (!teamName || teamName.toLowerCase() === 'all') {
+    return { error: 'Pick a team before saving.' };
+  }
+
+  const trend = String(payload.trend || '').trim();
+  if (!TREND_VALUES.has(trend)) {
+    return { error: 'Trend must be one of improving, plateau, or declining.' };
+  }
+
+  const position = toNullableString(payload.position) || 'Position not set';
+
+  const growthStatus = toNullableString(payload.growthStatus);
+  if (growthStatus !== null && !GROWTH_STATUS_VALUES.has(growthStatus)) {
+    return { error: 'Growth status must be on_track, watch, at_risk, or empty.' };
+  }
+
+  const totalMinutes = toCountValue(payload.totalMinutes, 0);
+  const appearances = toCountValue(payload.appearances, 0);
+  const clipSubmittedCount = toCountValue(payload.clipSubmittedCount, 0);
+  const clipAssessedCount = toCountValue(payload.clipAssessedCount, 0);
+  const clipPendingCount = toCountValue(payload.clipPendingCount, 0);
+  if ([totalMinutes, appearances, clipSubmittedCount, clipAssessedCount, clipPendingCount].some((value) => Number.isNaN(value))) {
+    return { error: 'Minutes, appearances, and clip counts must be non-negative whole numbers.' };
+  }
+
+  const averageScore = toNullableNumber(payload.averageScore);
+  const lastMatchScore = toNullableNumber(payload.lastMatchScore);
+  if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
+    return { error: 'Scores must be numeric or left blank.' };
+  }
+
+  const currentLevelChange = parseMetricChange(payload.currentLevelChange);
+  const fitnessChange = parseMetricChange(payload.fitnessChange);
+  const skillProgressChange = parseMetricChange(payload.skillProgressChange);
+  if ([currentLevelChange, fitnessChange, skillProgressChange].includes('invalid')) {
+    return { error: 'Each metric change needs a label and a valid trend, or leave it blank.' };
+  }
+
+  return {
+    identity: { name, normalizedName: normalizeComparable(name), teamName, position, trend },
+    stats: {
+      growthStatus,
+      currentLevel: toNullableString(payload.currentLevel),
+      fitness: toNullableString(payload.fitness),
+      skillProgress: toNullableString(payload.skillProgress),
+      totalMinutes,
+      appearances,
+      recentAvg: toNullableString(payload.recentAvg) || 'N/A',
+      averageScore,
+      trend,
+      lastMatchScore,
+      lastMatchSummary: toNullableString(payload.lastMatchSummary),
+      clipSubmittedCount,
+      clipAssessedCount,
+      clipPendingCount,
+      // A coach-initiated save always leaves the "no stats yet" state.
+      missingDataMessage: null,
+      currentLevelChange,
+      fitnessChange,
+      skillProgressChange
+    }
+  };
 }
 
 async function handlePlayersApi(req, res, requestUrl) {
@@ -1557,6 +1755,97 @@ async function handlePlayersApi(req, res, requestUrl) {
       player: updated,
       message: `${updated.name} moved to ${teamName}.`
     });
+    return;
+  }
+
+  const profileMatch = requestUrl.pathname.match(/^\/api\/v1\/players\/([^/]+)\/profile$/);
+  if (req.method === 'GET' && profileMatch) {
+    const actor = await resolveCoachActor(requestUrl.searchParams.get('actorEmail'));
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const row = await findPlayerProfileForCoach(profileMatch[1], actor.id);
+    if (!row) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const payload = toDashboardPayload(row);
+    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats } });
+    return;
+  }
+
+  const updateMatch = requestUrl.pathname.match(/^\/api\/v1\/players\/([^/]+)$/);
+  if (req.method === 'PATCH' && updateMatch) {
+    const playerId = updateMatch[1];
+    const actor = await resolveCoachActor(requestUrl.searchParams.get('actorEmail'));
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    const parsed = parseUpdateProfilePayload(body);
+    if (parsed.error) {
+      sendJson(res, 400, appError(400, 'validation_error', parsed.error));
+      return;
+    }
+
+    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    if (!existing) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const team = await findTeamByName(parsed.identity.teamName);
+    if (!team) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const conflict = await client.query(
+        `SELECT id FROM players WHERE normalized_name = $1 AND id <> $2 LIMIT 1`,
+        [parsed.identity.normalizedName, playerId]
+      );
+      if (conflict.rows[0]) {
+        await client.query('ROLLBACK');
+        sendJson(res, 409, appError(409, 'conflict', 'Another player already uses that name.'));
+        return;
+      }
+
+      await client.query(
+        `
+          UPDATE players
+          SET name = $1, normalized_name = $2, position = $3, trend = $4, updated_at = NOW()
+          WHERE id = $5
+        `,
+        [parsed.identity.name, parsed.identity.normalizedName, parsed.identity.position, parsed.identity.trend, playerId]
+      );
+
+      await client.query(
+        `UPDATE player_team_assignments SET team_id = $1, updated_at = NOW() WHERE player_id = $2`,
+        [team.id, playerId]
+      );
+
+      await upsertPlayerStats(client, playerId, parsed.stats);
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const row = await findPlayerProfileForCoach(playerId, actor.id);
+    const payload = toDashboardPayload(row);
+    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats } });
     return;
   }
 
