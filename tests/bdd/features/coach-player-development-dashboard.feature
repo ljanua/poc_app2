@@ -44,6 +44,23 @@ Feature: Coach player development dashboard
     And the dashboard should show missing data message "Performance metrics are not available yet."
     And the dashboard should show only the player identity card with no stats
 
+  Scenario: Saving stats for a no-stats player clears the notice and shows the full dashboard
+    When I open the development dashboard for player "New Recruit"
+    Then the dashboard should show only the player identity card with no stats
+    When I save player "New Recruit" with growth status "on_track", match minutes 120, and performance score 7.5
+    Then the operation status should be 200
+    When I open the development dashboard for player "New Recruit"
+    Then the dashboard should show growth status "on_track"
+    And the dashboard should show match minutes 120
+    And the dashboard should show performance score 7.5
+    And the dashboard should not show a missing data message
+
+  Scenario: Non-coach role cannot save player profile changes
+    Given I am authenticated as "SystemAdmin"
+    When I save player "New Recruit" with growth status "on_track", match minutes 120, and performance score 7.5
+    Then the operation status should be 403
+    And the API error code should be "forbidden"
+
   Scenario: Coach can compare two players side by side
     Given I open the development dashboard for player "Lionel Messi"
     When I compare with player "Cristiano Ronaldo"

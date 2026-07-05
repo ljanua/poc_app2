@@ -96,5 +96,18 @@ test.describe('S2 Player Development Dashboard', () => {
 
     // The final CTA row stays available even with no stats yet.
     await expect(page.getByRole('link', { name: 'Submit a Clip' })).toBeVisible();
+
+    // Editing is still reachable for a no-stats player -- it is how the coach
+    // records their first real stats.
+    const editLink = page.locator('#editPlayerLink');
+    await expect(editLink).toBeVisible();
+    await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=999/);
+  });
+
+  test('exposes an Edit Player link that targets the viewed player', async ({ page }) => {
+    const editLink = page.locator('#editPlayerLink');
+    await expect(editLink).toBeVisible();
+    // Default player (Lionel Messi) has seed id 10 in the offline store.
+    await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=10/);
   });
 });

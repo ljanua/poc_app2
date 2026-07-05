@@ -89,6 +89,35 @@ When('I open the development dashboard for player {string}', function (playerNam
   this.lastStatus = 200;
 });
 
+When(
+  'I save player {string} with growth status {string}, match minutes {int}, and performance score {float}',
+  function (playerName, growthStatus, minutes, score) {
+    this.resetResponse();
+
+    if (!requireCoach(this)) {
+      return;
+    }
+
+    const profile = this.playerProfiles.get(playerName);
+    if (!profile) {
+      setError(this, 404, 'not_found', 'The selected player was not found anymore. Refresh and try again.');
+      return;
+    }
+
+    profile.growthStatus = growthStatus;
+    profile.matchMinutes = minutes;
+    profile.performanceScore = score;
+    // A coach-initiated save always records real stats, so the player leaves
+    // the "no stats yet" state and the missing-data notice is cleared.
+    profile.missingData = 'none';
+    this.lastStatus = 200;
+  }
+);
+
+Then('the dashboard should not show a missing data message', function () {
+  assert.equal(this.dashboardMissingMessage, null, 'Expected no missing-data message after stats were recorded');
+});
+
 When('I compare with player {string}', function (playerName) {
   this.dashboardComparisonPlayer = null;
 
