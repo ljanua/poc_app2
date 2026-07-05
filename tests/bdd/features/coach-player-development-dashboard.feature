@@ -76,6 +76,15 @@ Feature: Coach player development dashboard
     Then the comparison should include player "Lionel Messi"
     And the comparison should include player "Cristiano Ronaldo"
 
+  Scenario: Uploading a player photo updates the avatar across surfaces
+    Given I am authenticated as "Coach"
+    And the following player development profiles exist:
+      | player            | growthStatus | matchMinutes | performanceScore | trend     | missingData |
+      | New Recruit       |             | 0            |                 | plateau   | all         |
+    When I upload player "New Recruit" avatar with image data "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAB//2Q=="
+    Then the operation status should be 200
+    And the player's avatar URL should be stored
+
   Scenario: Non-coach role is denied dashboard access
     Given I am authenticated as "SystemAdmin"
     When I open the development dashboard for player "Lionel Messi"

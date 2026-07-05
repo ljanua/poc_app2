@@ -120,4 +120,24 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await page.selectOption('#teamFilter', 'Senior Squad');
     await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
   });
+
+  test('shows emoji avatar for players without an uploaded photo', async ({ page }) => {
+    const cards = page.locator('.player-card');
+    await expect(cards).toHaveCount(4);
+    // Each card should show ⚽ emoji in the avatar slot
+    await expect(page.locator('.player-card .player-image').first()).toContainText('⚽');
+  });
+
+  test('shows uploaded avatar image on player card when avatarUrl is set', async ({ page }) => {
+    // Seed player 10 (Lionel Messi) with an avatar URL in playerAvatars
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.playerAvatars = store.playerAvatars || {};
+      store.playerAvatars[10] = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAB//2Q==';
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    const messiCard = page.locator('.player-card .player-name', { hasText: 'Lionel Messi' }).locator('..').locator('.player-image');
+    await expect(messiCard.locator('img')).toBeVisible();
+  });
 });

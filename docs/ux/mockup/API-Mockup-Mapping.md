@@ -9,6 +9,7 @@ Source plans:
 - docs/plans/2026-07-03-007-feat-persist-mock-data-plan.md
 - docs/plans/2026-07-04-005-fix-s2-dashboard-missing-stats-default-player-plan.md
 - docs/plans/2026-07-04-006-feat-s2-edit-player-profile-plan.md
+- docs/plans/2026-07-05-002-feat-player-avatar-upload-plan.md
 
 ## Screen mapping
 
@@ -29,6 +30,7 @@ Source plans:
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
 | S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, and per-metric (Current Level, Fitness, Skill Progress) change indicators | 403 forbidden, 404 not_found |
 | S2-player-dashboard.html | Edit Player action (toolbar) | Navigation to S5 edit page | (client-side link to `S5-player-edit.html?playerId=`) | Opens S5 for the viewed player (shown even in the no-stats-yet state) | n/a |
+| S2-player-dashboard.html | Upload player avatar (click icon) | Upload avatar | PATCH /v1/players/{playerId}?actorEmail= with `{ avatarUrl }` | 200 OK with updated `{ player, stats }`; `player.avatarUrl` set | 400 validation_error, 403 forbidden, 404 not_found |
 | S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats }` (full editable identity + `PlayerDashboardStats`) | 403 forbidden, 404 not_found |
 | S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats }`; `missingDataMessage` cleared only when at least one Development Progress rating (Current Level, Fitness, or Skill Progress) is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
 
@@ -48,6 +50,12 @@ Dashboard "no stats yet" contract (player found, but `player_stats` has no real 
 - `syncDefaultDashboardStats` in `scripts/serve-mockup.js` (and the equivalent branch in `mockup-api-client.js`'s `buildDashboardSnapshot`) only ever applies curated demo data to the four named reference profiles (`lionel messi`, `cristiano ronaldo`, `neymar jr`, `kylian mbappe`). Every other player defaults to this genuine "no stats yet" state — including on server restart — rather than a fabricated archetype profile borrowed from one of the four named players.
 - This is distinct from the "player not found" case (bad/stale `playerName`, no roster match at all): that returns `404 not_found` and the mockup hides the entire page behind a generic notice, unchanged by this contract.
 - `apps/api/src/db/migrations/010_reset_fabricated_player_stats.sql` is a one-time remediation migration that resets any already-corrupted non-named `player_stats` rows back to this genuine "no stats yet" shape; it does not need to run again after the corresponding code fix lands.
+
+Avatar upload contract (`S2-player-dashboard.html` and `S5-player-edit.html`, `PATCH /v1/players/{playerId}` with `{ avatarUrl }`):
+- The `avatarUrl` field is stored on the `players` table (`player_avatar_url` column) and returned on every player read (`GET /v1/players`, `GET /v1/players/dashboard`, `GET /v1/players/{playerId}/profile`). Null means no avatar uploaded; the mockup renders ⚽ as the default.
+- The upload interaction is: file picker → client-side canvas conversion to 100×100 JPEG at quality 0.85 → base64 data-URL sent as `avatarUrl` in the PATCH body. Both offline (`mockup-api-client.js`) and backend modes send the same payload shape.
+- The same PATCH that updates `avatarUrl` can also carry other identity fields; all updates are atomic.
+- `playerAvatars` in `localStorage` (`mockup-api-client.js`) stores the base64 avatar keyed by player id, checked by `buildDashboardSnapshot` and `listPlayers` before falling back to `player.avatarUrl`.
 
 Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - The edit page loads once via `GET /v1/players/{playerId}/profile` and saves the full profile via `PATCH /v1/players/{playerId}`. Both are Coach-only and roster-scoped to a team led by the acting coach (same join as the dashboard read); non-coach actors get `403 forbidden` and players outside the coach's roster get `404 not_found`.

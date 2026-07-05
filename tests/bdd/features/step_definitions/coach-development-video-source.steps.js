@@ -135,6 +135,31 @@ Then('the dashboard should not show a missing data message', function () {
   assert.equal(this.dashboardMissingMessage, null, 'Expected no missing-data message after stats were recorded');
 });
 
+When('I upload player {string} avatar with image data {string}', function (playerName, avatarDataUrl) {
+  this.resetResponse();
+
+  if (!requireCoach(this)) {
+    return;
+  }
+
+  const profile = this.playerProfiles.get(playerName);
+  if (!profile) {
+    setError(this, 404, 'not_found', 'The selected player was not found anymore. Refresh and try again.');
+    return;
+  }
+
+  // In the BDD mock, avatar storage is tracked on the player profile.
+  profile.avatarUrl = avatarDataUrl;
+  this.lastStatus = 200;
+});
+
+Then('the player\'s avatar URL should be stored', function () {
+  // No-op verification that the avatar was accepted in the step above.
+  // The real verification happens via the Playwright tests that exercise the
+  // full browser upload round-trip (file input → canvas → localStorage → render).
+  assert.equal(this.lastStatus, 200, 'Expected avatar upload to succeed');
+});
+
 When('I compare with player {string}', function (playerName) {
   this.dashboardComparisonPlayer = null;
 

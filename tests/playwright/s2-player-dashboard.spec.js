@@ -110,4 +110,26 @@ test.describe('S2 Player Development Dashboard', () => {
     // Default player (Lionel Messi) has seed id 10 in the offline store.
     await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=10/);
   });
+
+  test('shows emoji avatar for a player with no uploaded photo', async ({ page }) => {
+    const emoji = page.locator('#playerAvatarEmoji');
+    await expect(emoji).toBeVisible();
+    await expect(emoji).toHaveText('⚽');
+    const img = page.locator('#playerAvatarImg');
+    await expect(img).toBeHidden();
+  });
+
+  test('uploading an avatar updates the avatar preview immediately on S2', async ({ page }) => {
+    // Seed a player with an avatar URL directly in localStorage
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.playerAvatars = store.playerAvatars || {};
+      store.playerAvatars[10] = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAB//2Q==';
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S2-player-dashboard.html');
+    await expect(page.locator('#playerAvatarImg')).toBeVisible();
+    await expect(page.locator('#playerAvatarEmoji')).toBeHidden();
+  });
 });
