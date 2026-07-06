@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S7a: Clubs — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S7-admin-user-management.html">←</a>
+      <div class="header-title">Clubs</div>
+      <div class="role-badge" id="roleBadge">SystemAdmin</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
+    </header>
+
+    <div class="content">
+      <div class="toolbar">
+        <input class="search-bar" id="clubSearch" type="text" placeholder="Search clubs by name">
+        <select class="pill-select" id="statusFilter" aria-label="Filter clubs by status">
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+          <option value="all">All statuses</option>
+        </select>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Active Clubs</div>
+          <div class="kpi-value" id="kpiActive">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Inactive</div>
+          <div class="kpi-value" id="kpiInactive">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Coaches</div>
+          <div class="kpi-value" id="kpiCoaches">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Total Teams</div>
+          <div class="kpi-value" id="kpiTeams">0</div>
+        </div>
+      </div>
+
+      <div class="page-actions">
+        <button class="btn btn-primary" id="openCreateClub" data-testid="open-create-club">Add Club</button>
+        <a class="btn btn-secondary" href="./S7-admin-user-management.html">User &amp; Role Management</a>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrap">
+          <table class="data-table" id="clubsTable" data-testid="clubs-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Coaches</th>
+                <th>Teams</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="clubsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="notice" id="roleNotice" style="margin-top: 1rem;">
+        Only SystemAdmin can create, update, or deactivate clubs and assign coaches and teams.
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item active" href="./S7-admin-user-management.html">
+        <span class="nav-icon">🔐</span>
+        <span>Users</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="modal" id="createClubModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Add Club</h2>
+        <button class="mini-btn" data-close-modal="createClubModal">Close</button>
+      </div>
+      <form id="createClubForm" class="modal-form">
+        <label class="form-label" for="createClubName">Club Name <span class="required">*</span></label>
+        <input id="createClubName" type="text" required minlength="2" maxlength="60">
+        <p class="error-msg" id="createClubError">Club name must be 2-60 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="create-club-submit">Save Club</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="createClubModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="renameClubModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Update Club</h2>
+        <button class="mini-btn" data-close-modal="renameClubModal">Close</button>
+      </div>
+      <form id="renameClubForm" class="modal-form">
+        <div class="notice">Selected club: <strong id="renameTargetClub">-</strong></div>
+        <label class="form-label" for="renameClubName">New Name <span class="required">*</span></label>
+        <input id="renameClubName" type="text" required minlength="2" maxlength="60">
+        <p class="error-msg" id="renameClubError">Club name must be 2-60 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="rename-club-submit">Update</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="renameClubModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="assignCoachesModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Assign Coaches</h2>
+        <button class="mini-btn" data-close-modal="assignCoachesModal">Close</button>
+      </div>
+      <form id="assignCoachesForm" class="modal-form">
+        <div class="notice">Selected club: <strong id="assignCoachesTargetClub">-</strong></div>
+        <label class="form-label" for="assignCoachSelect">Add Coach <span class="required">*</span></label>
+        <select id="assignCoachSelect" data-testid="assign-coach-select" required>
+          <option value="">-- Select a coach --</option>
+        </select>
+        <p class="error-msg" id="assignCoachesError">Inactive users cannot be assigned to a club.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="assign-coach-submit">Assign</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="assignCoachesModal">Close</button>
+        </div>
+      </form>
+      <div class="modal-list" id="assignedCoachesList" data-testid="assigned-coaches"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="assignTeamsModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Assign Teams</h2>
+        <button class="mini-btn" data-close-modal="assignTeamsModal">Close</button>
+      </div>
+      <form id="assignTeamsForm" class="modal-form">
+        <div class="notice">Selected club: <strong id="assignTeamsTargetClub">-</strong></div>
+        <label class="form-label" for="assignTeamSelect">Move Team <span class="required">*</span></label>
+        <select id="assignTeamSelect" data-testid="assign-team-select" required>
+          <option value="">-- Select a team --</option>
+        </select>
+        <p class="error-msg" id="assignTeamsError">A team must be selected.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="assign-team-submit">Move</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="assignTeamsModal">Close</button>
+        </div>
+      </form>
+      <div class="modal-list" id="assignedTeamsList" data-testid="assigned-teams"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
+
+    (function () {
+      const state = {
+        viewRole: 'SystemAdmin',
+        actorEmail: null,
+        statusFilter: 'active',
+        selectedClubId: null,
+        selectedClubName: null
+      };
+
+      const sessionUser = MockupApi.getCurrentUser();
+      if (sessionUser) {
+        state.actorEmail = sessionUser.email;
+        state.viewRole = sessionUser.role || 'SystemAdmin';
+      }
+
+      const tableBody = document.getElementById('clubsTableBody');
+      const searchInput = document.getElementById('clubSearch');
+      const statusFilter = document.getElementById('statusFilter');
+      const roleBadge = document.getElementById('roleBadge');
+      const roleNotice = document.getElementById('roleNotice');
+      const toast = document.getElementById('toast');
+      const kpiActive = document.getElementById('kpiActive');
+      const kpiInactive = document.getElementById('kpiInactive');
+      const kpiCoaches = document.getElementById('kpiCoaches');
+      const kpiTeams = document.getElementById('kpiTeams');
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 2500);
+      }
+
+      function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+      function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
+      });
+
+      function setAdminActionState() {
+        const isAdmin = state.viewRole === 'SystemAdmin';
+        roleBadge.textContent = state.viewRole;
+        roleNotice.textContent = isAdmin
+          ? 'Only SystemAdmin can create, update, or deactivate clubs and assign coaches and teams.'
+          : 'Coach view: read-only. Admin actions are disabled and protected by role checks (403).';
+        const guard = isAdmin ? null : 'disabled';
+        document.getElementById('openCreateClub').disabled = !isAdmin;
+        document.querySelectorAll('.js-club-action').forEach(function (btn) {
+          btn.disabled = !isAdmin;
+        });
+      }
+
+      function renderClubs() {
+        const clubs = MockupApi.listClubs(state.viewRole, state.actorEmail, state.statusFilter);
+        const allClubsForKpi = MockupApi.listClubs(state.viewRole, state.actorEmail, 'all');
+        const query = searchInput.value.trim().toLowerCase();
+
+        const rows = (clubs || []).filter(function (club) {
+          if (!query) return true;
+          return String(club.name).toLowerCase().indexOf(query) !== -1;
+        });
+
+        let activeCount = 0, inactiveCount = 0, totalCoaches = 0, totalTeams = 0;
+        (allClubsForKpi || []).forEach(function (club) {
+          const status = club.status || 'active';
+          if (status === 'active') activeCount += 1; else inactiveCount += 1;
+          totalCoaches += Number(club.coachCount || 0);
+          totalTeams += Number(club.teamCount || 0);
+        });
+        kpiActive.textContent = String(activeCount);
+        kpiInactive.textContent = String(inactiveCount);
+        kpiCoaches.textContent = String(totalCoaches);
+        kpiTeams.textContent = String(totalTeams);
+
+        tableBody.innerHTML = '';
+        rows.forEach(function (club) {
+          const tr = document.createElement('tr');
+          tr.setAttribute('data-club-id', club.id);
+          tr.setAttribute('data-club-name', club.name);
+          tr.setAttribute('data-status', club.status || 'active');
+          const statusBadge = (club.status || 'active') === 'active'
+            ? '<span class="badge badge-improving">Active</span>'
+            : '<span class="badge badge-declining">Inactive</span>';
+          tr.innerHTML =
+            '<td>' + escapeHtml(club.name) + '</td>' +
+            '<td>' + statusBadge + '</td>' +
+            '<td>' + (club.coachCount == null ? '—' : club.coachCount) + '</td>' +
+            '<td>' + (club.teamCount == null ? '—' : club.teamCount) + '</td>' +
+            '<td><div class="inline-actions">' +
+              '<button class="mini-btn js-club-action js-rename-club" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Update</button>' +
+              '<button class="mini-btn js-club-action js-assign-coaches" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Assign Coach(s)</button>' +
+              '<button class="mini-btn js-club-action js-assign-teams" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Assign Team(s)</button>' +
+              ((club.status || 'active') === 'active'
+                ? '<button class="mini-btn warn js-club-action js-deactivate-club" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Deactivate</button>'
+                : '<button class="mini-btn positive js-club-action js-reactivate-club" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Reactivate</button>') +
+            '</div></td>';
+          tableBody.appendChild(tr);
+        });
+
+        setAdminActionState();
+      }
+
+      function populateCoachSelect(currentClubId) {
+        const select = document.getElementById('assignCoachSelect');
+        select.innerHTML = '<option value="">-- Select a coach --</option>';
+        const users = MockupApi.listUsers() || [];
+        const assigned = new Set(
+          (MockupApi.listUserClubs(currentClubId, state.viewRole, state.actorEmail) || []).map(function (m) { return m.userId; })
+        );
+        const eligible = users.filter(function (u) {
+          return u.status === 'active' && !assigned.has(String(u.id)) && !assigned.has(u.email);
+        });
+        eligible.forEach(function (u) {
+          const opt = document.createElement('option');
+          opt.value = String(u.id);
+          opt.textContent = u.name + ' (' + u.role + ')';
+          select.appendChild(opt);
+        });
+      }
+
+      function renderAssignedCoaches() {
+        const list = document.getElementById('assignedCoachesList');
+        const memberships = MockupApi.listUserClubs(state.selectedClubId, state.viewRole, state.actorEmail) || [];
+        const users = MockupApi.listUsers() || [];
+        const nameById = {};
+        users.forEach(function (u) {
+          nameById[String(u.id)] = u.name;
+          nameById[u.email] = u.name;
+        });
+        if (!memberships.length) {
+          list.innerHTML = '<div class="muted-text">No coaches assigned yet.</div>';
+          return;
+        }
+        list.innerHTML = memberships.map(function (m) {
+          const name = nameById[m.userId] || m.userId;
+          return '<span class="team-chip js-club-action js-remove-coach" data-user-id="' + escapeHtml(m.userId) + '">' +
+            escapeHtml(name) + ' <span class="chip-x" aria-label="Remove from club">×</span></span>';
+        }).join(' ');
+      }
+
+      function populateTeamSelect(currentClubId) {
+        const select = document.getElementById('assignTeamSelect');
+        select.innerHTML = '<option value="">-- Select a team --</option>';
+        const teams = MockupApi.listTeamSummary() || [];
+        const eligible = teams.filter(function (t) { return String(t.clubId) !== String(currentClubId); });
+        eligible.forEach(function (t) {
+          const opt = document.createElement('option');
+          opt.value = String(t.id);
+          opt.textContent = t.name + ' (' + (t.clubName || 'no club') + ')';
+          select.appendChild(opt);
+        });
+      }
+
+      function renderAssignedTeams() {
+        const list = document.getElementById('assignedTeamsList');
+        const teams = (MockupApi.listTeamSummary() || []).filter(function (t) { return String(t.clubId) === String(state.selectedClubId); });
+        if (!teams.length) {
+          list.innerHTML = '<div class="muted-text">No teams assigned to this club yet.</div>';
+          return;
+        }
+        list.innerHTML = teams.map(function (t) {
+          return '<span class="team-chip">' + escapeHtml(t.name) + ' (' + escapeHtml(t.leadCoach || '—') + ')</span>';
+        }).join(' ');
+      }
+
+      document.getElementById('openCreateClub').addEventListener('click', function () {
+        document.getElementById('createClubName').value = '';
+        document.getElementById('createClubError').classList.remove('show');
+        openModal('createClubModal');
+      });
+
+      tableBody.addEventListener('click', function (event) {
+        const renameBtn = event.target.closest('.js-rename-club');
+        const assignCoachesBtn = event.target.closest('.js-assign-coaches');
+        const assignTeamsBtn = event.target.closest('.js-assign-teams');
+        const deactivateBtn = event.target.closest('.js-deactivate-club');
+        const reactivateBtn = event.target.closest('.js-reactivate-club');
+        const removeCoach = event.target.closest('.js-remove-coach');
+
+        if (renameBtn) {
+          state.selectedClubId = renameBtn.getAttribute('data-club-id');
+          state.selectedClubName = renameBtn.getAttribute('data-club-name');
+          document.getElementById('renameTargetClub').textContent = state.selectedClubName;
+          document.getElementById('renameClubName').value = state.selectedClubName;
+          document.getElementById('renameClubError').classList.remove('show');
+          openModal('renameClubModal');
+          return;
+        }
+
+        if (assignCoachesBtn) {
+          state.selectedClubId = assignCoachesBtn.getAttribute('data-club-id');
+          state.selectedClubName = assignCoachesBtn.getAttribute('data-club-name');
+          document.getElementById('assignCoachesTargetClub').textContent = state.selectedClubName;
+          document.getElementById('assignCoachesError').classList.remove('show');
+          populateCoachSelect(state.selectedClubId);
+          renderAssignedCoaches();
+          openModal('assignCoachesModal');
+          return;
+        }
+
+        if (assignTeamsBtn) {
+          state.selectedClubId = assignTeamsBtn.getAttribute('data-club-id');
+          state.selectedClubName = assignTeamsBtn.getAttribute('data-club-name');
+          document.getElementById('assignTeamsTargetClub').textContent = state.selectedClubName;
+          document.getElementById('assignTeamsError').classList.remove('show');
+          populateTeamSelect(state.selectedClubId);
+          renderAssignedTeams();
+          openModal('assignTeamsModal');
+          return;
+        }
+
+        if (deactivateBtn) {
+          const response = MockupApi.setClubStatus(deactivateBtn.getAttribute('data-club-id'), 'inactive', state.viewRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not deactivate.'); return; }
+          renderClubs();
+          showToast('Club deactivated.');
+          return;
+        }
+
+        if (reactivateBtn) {
+          const response = MockupApi.setClubStatus(reactivateBtn.getAttribute('data-club-id'), 'active', state.viewRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not reactivate.'); return; }
+          renderClubs();
+          showToast('Club reactivated.');
+          return;
+        }
+
+        if (removeCoach) {
+          const response = MockupApi.removeUserFromClub(removeCoach.getAttribute('data-user-id'), state.selectedClubId, state.viewRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not remove coach.'); return; }
+          renderAssignedCoaches();
+          renderClubs();
+          showToast('Coach removed from club.');
+        }
+      });
+
+      document.getElementById('createClubForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('createClubName').value.trim();
+        const response = MockupApi.createClub({ name: name }, state.viewRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('createClubError').textContent = response.message || 'Could not create the club.';
+          document.getElementById('createClubError').classList.add('show');
+          return;
+        }
+        closeModal('createClubModal');
+        event.target.reset();
+        renderClubs();
+        showToast('Club "' + (response.club && response.club.name) + '" created.');
+      });
+
+      document.getElementById('renameClubForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('renameClubName').value.trim();
+        const response = MockupApi.updateClub(state.selectedClubId, { name: name }, state.viewRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('renameClubError').textContent = response.message || 'Could not update the club.';
+          document.getElementById('renameClubError').classList.add('show');
+          return;
+        }
+        closeModal('renameClubModal');
+        renderClubs();
+        showToast('Club updated.');
+      });
+
+      document.getElementById('assignCoachesForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const userId = document.getElementById('assignCoachSelect').value;
+        if (!userId) {
+          document.getElementById('assignCoachesError').classList.add('show');
+          return;
+        }
+        const response = MockupApi.assignUserToClub(userId, state.selectedClubId, state.viewRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('assignCoachesError').textContent = response.message || 'Could not assign the coach.';
+          document.getElementById('assignCoachesError').classList.add('show');
+          return;
+        }
+        document.getElementById('assignCoachesError').classList.remove('show');
+        populateCoachSelect(state.selectedClubId);
+        renderAssignedCoaches();
+        renderClubs();
+        showToast('Coach assigned.');
+      });
+
+      document.getElementById('assignTeamsForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const teamId = document.getElementById('assignTeamSelect').value;
+        if (!teamId) {
+          document.getElementById('assignTeamsError').classList.add('show');
+          return;
+        }
+        const response = MockupApi.assignTeamToClub(teamId, state.selectedClubId, state.viewRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('assignTeamsError').textContent = response.message || 'Could not move the team.';
+          document.getElementById('assignTeamsError').classList.add('show');
+          return;
+        }
+        document.getElementById('assignTeamsError').classList.remove('show');
+        populateTeamSelect(state.selectedClubId);
+        renderAssignedTeams();
+        renderClubs();
+        showToast('Team moved to the club.');
+      });
+
+      searchInput.addEventListener('input', renderClubs);
+      statusFilter.addEventListener('change', function () {
+        state.statusFilter = statusFilter.value;
+        renderClubs();
+      });
+
+      renderClubs();
+
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', function () {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
