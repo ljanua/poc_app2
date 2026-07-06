@@ -7,6 +7,7 @@ export type AdminUser = {
   email: string;
   role: UserRole;
   status: UserStatus;
+  clubIds?: string[];
 };
 
 export type CreateUserPayload = {
