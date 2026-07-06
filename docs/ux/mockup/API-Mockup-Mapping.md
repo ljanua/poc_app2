@@ -10,6 +10,9 @@ Source plans:
 - docs/plans/2026-07-04-005-fix-s2-dashboard-missing-stats-default-player-plan.md
 - docs/plans/2026-07-04-006-feat-s2-edit-player-profile-plan.md
 - docs/plans/2026-07-05-002-feat-player-avatar-upload-plan.md
+- docs/plans/2026-07-06-005-feat-manage-club-table-and-s3-filter-plan.md
+- docs/plans/2026-07-06-007-feat-team-update-screen-plan.md
+- docs/plans/2026-07-06-008-feat-s7-user-club-assignment-and-s7a-clubs-page-plan.md
 
 ## Screen mapping
 
@@ -138,14 +141,34 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 
 - Contract: apps/api/tests/contract/openapi.user-admin.spec.ts
 - Contract: apps/api/tests/contract/openapi.players.spec.ts
+- Contract: apps/api/tests/contract/openapi.clubs-admin.spec.ts
 - API integration: apps/api/tests/integration/users/user-admin.api.spec.ts
 - API integration: apps/api/tests/integration/players/players-api.spec.ts
+- API integration: apps/api/tests/integration/clubs/clubs-api-mockup.spec.ts
+- API integration: apps/api/tests/integration/clubs/mockup-api-client.spec.ts
+- API integration: apps/api/tests/integration/db/clubs-status-migration.spec.ts
 - UI integration: tests/playwright/s1-player-list.spec.js
 - UI integration: tests/playwright/s2-player-dashboard.spec.js
 - UI integration: tests/playwright/logout.spec.js
 - UI integration: tests/playwright/manage-club.spec.js
 - UI integration: tests/playwright/team-update.spec.js
+- UI integration: tests/playwright/s7a-clubs.spec.js
+- UI integration: tests/playwright/s7-user-club-assignment.spec.js
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
 - BDD: tests/bdd/features/coach-player-development-dashboard.feature
 - Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts
 - RBAC regression: apps/api/tests/integration/users/user-admin-rbac-regression.spec.ts
+
+## Clubs Admin (S7a) + S7 per-user club assignment
+
+- `clubs.status` (`active` / `inactive`) lands via `apps/api/src/db/migrations/014_clubs_status.sql`; every existing seeded club backfills to `active`.
+- The `GET /v1/users` payload now includes `clubIds` (array of `coach_clubs` club ids) so the S7 inline badge list can render without a second lookup.
+- `GET /v1/clubs?status=active|inactive|all` defaults to `active` for both roles; SystemAdmin sees every matching club, Coach sees only their `coach_clubs` set.
+- All clubs-admin mutations (`POST /v1/clubs`, `PATCH /v1/clubs/{id}`, `PATCH /v1/clubs/{id}/status`, `POST /v1/clubs/{id}/coaches`, `POST /v1/clubs/{id}/teams`) are SystemAdmin-gated and surface `403 forbidden` for any other actor.
+- `POST /v1/users/{userId}/clubs` and `POST /v1/clubs/{id}/coaches` are idempotent: `coach_clubs(user_id, club_id)` is the unique key, so retries return `200` on a re-insert and `201` on a first add. The seed uses `ON CONFLICT (user_id, club_id) DO NOTHING` in both the SQL and the offline client.
+- `DELETE /v1/users/{userId}/clubs/{id}` is the explicit removal verb used by S7's per-row `×` chip and the S7a Assign Coach modal; returns `204` on success and `404` if the row was never there.
+- `POST /v1/clubs/{id}/teams` wraps `POST /v1/teams/{teamId}/update` inside a single transaction: the team is moved to the new club and the new lead coach is upserted into `coach_clubs` for the new club atomically. Coach mutation surface never sees a partial state.
+- Both `clubs.status = 'inactive'` and `users.status = 'inactive'` are preconditions enforced by the API: an inactive user cannot be assigned to a club and an inactive club cannot accept new members. Inactive clubs retain their existing `coach_clubs` rows and team assignments so `PATCH /v1/clubs/{id}/status` is fully reversible.
+- Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps the offline store in lockstep: `clubs` items in `createSeed` gain `status: 'active'`, `listClubs` accepts a status filter and returns `coachCount`/`teamCount`, and the new methods (`createClub`, `updateClub`, `setClubStatus`, `listUserClubs`, `assignUserToClub`, `removeUserFromClub`, `assignTeamToClub`) cover the same lifecycle in the offline fallback.
+- S7a-clubs.html is reached from S7's "View List of Clubs" page action and from the bottom-nav Users link; the page is SystemAdmin-only and shows the full club roster with KPI cards (Active Clubs / Inactive / Total Coaches / Total Teams) plus the four CRUD verbs (Add, Update, Assign Coach(s), Assign Team(s), Deactivate/Reactivate).
+- S7-admin-user-management.html renders a per-user Clubs column with the user's existing `coach_clubs` rows as removable chips plus an "Assign" button that opens the picker modal. The picker calls `MockupApi.assignUserToClub` and `MockupApi.removeUserFromClub` so the chip × button does an explicit `DELETE`, matching the API contract.
