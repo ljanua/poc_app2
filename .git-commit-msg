@@ -1,0 +1,5 @@
+refactor: consolidate avatar rendering into MockupApi helpers
+
+Extract applyAvatar(imgElId, avatarUrl) and initAvatarHover(containerEl)
+from S2/S5 inline code into MockupApi, reducing duplication across all
+three pages (S1, S2, S5).
