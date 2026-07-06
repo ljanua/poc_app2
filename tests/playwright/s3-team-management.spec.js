@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { uniqueTeamName } = require('./_fixture-utils');
 
 test.describe('S3 Team Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -12,13 +13,16 @@ test.describe('S3 Team Management', () => {
     await expect(page.getByText('Team Management')).toBeVisible();
   });
 
-  test('shows team KPIs and roster table', async ({ page }) => {
+  test('shows team KPIs and the at-least-3 seeded roster table', async ({ page }) => {
     await expect(page.getByText(/^Active Teams$/)).toBeVisible();
     await expect(page.getByText(/^Assigned Players$/)).toBeVisible();
     await expect(page.getByText(/^Unassigned Players$/)).toBeVisible();
 
+    // Invariant: at least 3 teams must be available (Senior Squad, U19 Prime,
+    // U17 Elite). Anything beyond those three is opportunistic and accepted.
     const rows = page.locator('tbody tr');
-    await expect(rows).toHaveCount(3);
+    await expect(await rows.count()).toBeGreaterThanOrEqual(3);
+
     await expect(page.getByRole('cell', { name: 'Senior Squad' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'U19 Prime' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'U17 Elite' })).toBeVisible();
@@ -36,17 +40,29 @@ test.describe('S3 Team Management', () => {
   test('coach creates a team and is auto-assigned as lead coach', async ({ page }) => {
     await expect(page.locator('#roleBadge')).toContainText('Coach');
 
+    const rowsBefore = await page.locator('tbody tr').count();
+    const kpiBefore = parseInt((await page.locator('#kpiActiveTeams').textContent()) || '0', 10);
+
+    const teamName = uniqueTeamName('U15 Rising');
+
     await page.getByRole('button', { name: 'Create Team' }).click();
     await expect(page.locator('#coachSelfNotice')).toBeVisible();
     await expect(page.locator('#coachPickerWrap')).toBeHidden();
 
-    await page.fill('#teamNameInput', 'U15 Rising');
+    await page.fill('#teamNameInput', teamName);
     await page.fill('#teamAgeGroupInput', 'U15');
     await page.getByRole('button', { name: 'Save Team' }).click();
 
-    const createdRow = page.locator('tbody tr', { hasText: 'U15 Rising' });
+    const createdRow = page.locator('tbody tr', { hasText: teamName });
     await expect(createdRow).toContainText('Joao Lima');
-    await expect(page.locator('#kpiActiveTeams')).toContainText('4');
+
+    // Invariant holds: at least 3 teams remain visible after the create.
+    const rowsAfter = await page.locator('tbody tr').count();
+    expect(rowsAfter).toBeGreaterThanOrEqual(3);
+    expect(rowsAfter).toBeGreaterThanOrEqual(rowsBefore);
+
+    const kpiAfter = parseInt((await page.locator('#kpiActiveTeams').textContent()) || '0', 10);
+    expect(kpiAfter).toBe(kpiBefore + 1);
   });
 
   test('system admin creates team selecting coach and can reassign coach', async ({ page }) => {
@@ -59,16 +75,18 @@ test.describe('S3 Team Management', () => {
     await page.goto('/S3-team-management.html');
     await expect(page.locator('#roleBadge')).toContainText('SystemAdmin');
 
+    const teamName = uniqueTeamName('U16 Select');
+
     await page.getByRole('button', { name: 'Create Team' }).click();
     await expect(page.locator('#coachPickerWrap')).toBeVisible();
     await expect(page.locator('#clubPickerWrap')).toBeVisible();
-    await page.fill('#teamNameInput', 'U16 Select');
+    await page.fill('#teamNameInput', teamName);
     await page.fill('#teamAgeGroupInput', 'U16');
     await page.selectOption('#teamCoachSelect', 'joao@vantageiq.club');
     await page.selectOption('#teamClubSelect', 'c_default');
     await page.getByRole('button', { name: 'Save Team' }).click();
 
-    const createdRow = page.locator('tbody tr', { hasText: 'U16 Select' });
+    const createdRow = page.locator('tbody tr', { hasText: teamName });
     await expect(createdRow).toContainText('Joao Lima');
 
     const seniorSquadRow = page.locator('tbody tr', { hasText: 'Senior Squad' });

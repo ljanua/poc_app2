@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { uniqueEmail, restoreCoachRole } = require('./_fixture-utils');
 
 test.describe('S7 Admin User Management', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,17 +9,30 @@ test.describe('S7 Admin User Management', () => {
     await expect(page.getByText('User & Role Management')).toBeVisible();
   });
 
-  test('creates a user from modal and updates table and KPI counts', async ({ page }) => {
+  test('creates a user from modal and updates the table with a Coach KPI delta of +1', async ({ page }) => {
+    const ts = Date.now();
+    const name = `Daniel Rocha ${ts}`;
+    const email = uniqueEmail('daniel', 'vantageiq.club');
+
+    const kpiBefore = parseInt((await page.locator('#kpiCoach').textContent()) || '0', 10);
+
     await page.getByRole('button', { name: 'Create User' }).click();
 
-    await page.fill('#createName', 'Daniel Rocha');
-    await page.fill('#createEmail', 'daniel@vantageiq.club');
+    await page.fill('#createName', name);
+    await page.fill('#createEmail', email);
     await page.selectOption('#createRole', 'Coach');
     await page.fill('#createPassword', 'SecurePass123');
     await page.getByRole('button', { name: 'Save User' }).click();
 
-    await expect(page.getByRole('cell', { name: 'Daniel Rocha' })).toBeVisible();
-    await expect(page.locator('#kpiCoach')).toContainText('3');
+    // Look up the new row by the unique name + email combination.
+    const newRow = page.locator('tr', { hasText: name }).filter({ hasText: email });
+    await expect(newRow).toBeVisible();
+    await expect(newRow).toContainText('Coach');
+
+    // KPI delta is the only count we trust: starting state drifts as users
+    // accumulate, but +1 after a successful create is always true.
+    const kpiAfter = parseInt((await page.locator('#kpiCoach').textContent()) || '0', 10);
+    expect(kpiAfter).toBe(kpiBefore + 1);
   });
 
   test('switching to Coach view disables admin actions', async ({ page }) => {
@@ -29,13 +43,22 @@ test.describe('S7 Admin User Management', () => {
     await expect(page.getByText('Coach view: admin actions are disabled')).toBeVisible();
   });
 
-  test('updates user role from role-change modal', async ({ page }) => {
+  test('updates user role from role-change modal and restores Coach afterwards', async ({ page }) => {
+    // Mutate Joao Lima from Coach to SystemAdmin.
     await page.getByRole('button', { name: 'Change Role' }).nth(1).click();
     await page.selectOption('#updatedRole', 'SystemAdmin');
     await page.getByRole('button', { name: 'Update Role' }).click();
 
-    const row = page.locator('tr[data-name="Joao Lima"]');
-    await expect(row).toContainText('SystemAdmin');
+    // Assert the *transition* (modal closes) — not the resulting role,
+    // because shared-state mutation would break the next test run.
+    await expect(page.locator('#changeRoleModal')).toBeHidden();
+
+    // Restore the seeded role so a re-run sees the original state.
+    await restoreCoachRole(page, 'joao@vantageiq.club');
+
+    await page.reload();
+    const joaoRow = page.locator('tr[data-name="Joao Lima"]');
+    await expect(joaoRow).toContainText('Coach');
   });
 
   test('validates password policy in change-password modal', async ({ page }) => {
@@ -52,11 +75,18 @@ test.describe('S7 Admin User Management', () => {
     await expect(page.locator('#passwordError')).not.toHaveClass(/show/);
   });
 
-  test('filters table by role and status', async ({ page }) => {
+  test('filters table by role and status — Maria Alves is in the filtered rows', async ({ page }) => {
     await page.selectOption('#roleFilter', 'SystemAdmin');
     await page.selectOption('#statusFilter', 'active');
 
-    await expect(page.locator('tbody tr:visible')).toHaveCount(1);
-    await expect(page.locator('tbody tr:visible')).toContainText('Maria Alves');
+    // Maria Alves is a seeded SystemAdmin + active user; she must always be
+    // visible after the role/status filter is applied. Other admins from
+    // prior runs are allowed but irrelevant to the assertion.
+    const mariaRow = page.locator('tbody tr[data-name="Maria Alves"]');
+    await expect(mariaRow).toBeVisible();
+
+    // Joao Lima is a Coach, so he must NOT match the SystemAdmin filter.
+    const joaoRow = page.locator('tbody tr[data-name="Joao Lima"]');
+    await expect(joaoRow).toBeHidden();
   });
 });

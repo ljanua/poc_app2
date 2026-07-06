@@ -109,6 +109,9 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - user_admin_forbidden_attempt
 
 ## Test traceability
+
+The Playwright suite enforces a single invariant: **at least 3 teams must be available**. The seeded `Senior Squad` / `U19 Prime` / `U17 Elite` are guaranteed by `scripts/serve-mockup.js`'s `INSERT INTO teams … ON CONFLICT DO NOTHING` step. Tests assert on these three named rows or on `>= 3` counts; any extras beyond those three (from prior runs or new admin-created teams) are accepted silently. The suite does **not** truncate the dev DB between runs. Shared-state mutations (e.g. role flips on `Joao Lima`) are restored before the test ends via `restoreCoachRole` in `tests/playwright/_fixture-utils.js`. See `docs/plans/2026-07-06-006-test-plan-resilient-to-growing-teams.md` for the full policy.
+
 - Contract: apps/api/tests/contract/openapi.user-admin.spec.ts
 - Contract: apps/api/tests/contract/openapi.players.spec.ts
 - API integration: apps/api/tests/integration/users/user-admin.api.spec.ts
