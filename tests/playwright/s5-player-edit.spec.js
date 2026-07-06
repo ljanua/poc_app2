@@ -13,6 +13,11 @@ test.describe('S5 Edit Player', () => {
 
     await page.goto('/S0-login.html');
     await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    // Always sign in as coach joao@vantageiq.club before every test in this suite.
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
     // Seed the store, then add a player with no recorded stats to edit.
     await page.goto('/S2-player-dashboard.html');
     await expect(page.getByText('Player Development')).toBeVisible();

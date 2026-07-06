@@ -655,6 +655,10 @@ async function ensureDatabase() {
     );
   `);
 
+  // Migration 011 (player avatar URL): additive column retrofit for any
+  // database that pre-dates this column. Idempotent because of IF NOT EXISTS.
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS player_avatar_url TEXT;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS player_team_assignments (
       player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,

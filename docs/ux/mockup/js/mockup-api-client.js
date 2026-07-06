@@ -1111,10 +1111,44 @@
     updatePlayerAvatar(playerId, avatarDataUrl) {
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        // PATCH /v1/players/{id} runs the full parseUpdateProfilePayload validator,
+        // which requires name, teamName, position, and trend. Read the current
+        // profile first so the avatar-only write merges with the existing
+        // identity fields instead of failing validation.
+        const profileResponse = this.getPlayerProfile(playerId);
+        if (!profileResponse || profileResponse.status !== 200 || !profileResponse.data || !profileResponse.data.player) {
+          return clone(
+            (profileResponse && profileResponse.message)
+              ? profileResponse
+              : { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' }
+          );
+        }
+        const player = profileResponse.data.player;
+        const stats = profileResponse.data.stats || {};
+        const payload = {
+          name: player.name,
+          teamName: player.teamName,
+          position: player.position,
+          trend: player.trend,
+          avatarUrl: avatarDataUrl,
+          growthStatus: stats.growthStatus,
+          currentLevel: stats.currentLevel,
+          fitness: stats.fitness,
+          skillProgress: stats.skillProgress,
+          totalMinutes: stats.totalMinutes,
+          appearances: stats.appearances,
+          recentAvg: stats.recentAvg,
+          averageScore: stats.averageScore,
+          lastMatchScore: stats.lastMatchScore,
+          lastMatchSummary: stats.lastMatchSummary,
+          clipSubmittedCount: stats.clipSubmittedCount,
+          clipAssessedCount: stats.clipAssessedCount,
+          clipPendingCount: stats.clipPendingCount
+        };
         const response = backendRequest(
           'PATCH',
           '/players/' + encodeURIComponent(playerId) + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
-          { avatarUrl: avatarDataUrl }
+          payload
         );
 
         if (response.status === 200 && response.body && response.body.data) {
@@ -1221,6 +1255,8 @@
       el.addEventListener('mouseenter', function () { overlay.style.display = 'flex'; });
       el.addEventListener('mouseleave', function () { overlay.style.display = 'none'; });
     },
+
+    listClips(filters) {
       const store = loadStore();
       const options = filters || {};
       const teamName = options.teamName || 'all';
