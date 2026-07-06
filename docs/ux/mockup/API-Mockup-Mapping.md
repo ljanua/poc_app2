@@ -54,7 +54,7 @@ Dashboard "no stats yet" contract (player found, but `player_stats` has no real 
 Avatar upload contract (`S2-player-dashboard.html` and `S5-player-edit.html`, `PATCH /v1/players/{playerId}` with `{ avatarUrl }`):
 - The `avatarUrl` field is stored on the `players` table (`player_avatar_url` column) and returned on every player read (`GET /v1/players`, `GET /v1/players/dashboard`, `GET /v1/players/{playerId}/profile`). Null means no avatar uploaded; the mockup renders ⚽ as the default.
 - The upload interaction is: file picker → client-side canvas conversion to 100×100 JPEG at quality 0.85 → base64 data-URL sent as `avatarUrl` in the PATCH body. Both offline (`mockup-api-client.js`) and backend modes send the same payload shape.
-- The same PATCH that updates `avatarUrl` can also carry other identity fields; all updates are atomic.
+- The same PATCH that updates `avatarUrl` can also carry other identity fields; all updates are atomic. **The backend validator requires every field of `UpdatePlayerProfileRequest` on every PATCH, so an avatar-only write must read-then-merge the existing profile (`mockup-api-client.js` `updatePlayerAvatar`) rather than send `{ avatarUrl }` alone** — otherwise the missing-`name` branch in `parseUpdateProfilePayload` returns `400 validation_error` (`docs/solutions/integration-issues/s2-player-avatar-patch-rejected-by-profile-validator.md`).
 - `playerAvatars` in `localStorage` (`mockup-api-client.js`) stores the base64 avatar keyed by player id, checked by `buildDashboardSnapshot` and `listPlayers` before falling back to `player.avatarUrl`.
 
 Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
