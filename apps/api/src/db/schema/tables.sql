@@ -35,11 +35,13 @@ CREATE INDEX IF NOT EXISTS idx_teams_status_club ON teams(status, club_id);
 CREATE TABLE IF NOT EXISTS clubs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_clubs_name ON clubs(name);
+CREATE INDEX IF NOT EXISTS idx_clubs_status_name ON clubs(status, name);
 
 CREATE TABLE IF NOT EXISTS coach_clubs (
   user_id TEXT NOT NULL REFERENCES users(id),
