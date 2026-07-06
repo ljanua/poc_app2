@@ -75,6 +75,18 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - Team create and team-reassign actor identity is derived from authenticated session context first (session user is source-of-truth).
 - Direct navigation without a valid authenticated session must be treated as unauthenticated and return 403 for protected writes.
 
+## Clubs and team-club scoping (Manage Club feature)
+
+- New entity tables (`clubs`, `coach_clubs`) and `teams.club_id` FK land via `apps/api/src/db/migrations/012_clubs_and_coach_assignments.sql` (idempotent, includes the `c_default = VantageIQ Club` backfill and `coach_clubs` rows for every active Coach plus SystemAdmin).
+- `GET /v1/teams` now accepts `clubId=` (exact club filter for both roles) and `actorEmail=` (Coach-only narrowing to that coach's assigned clubs via `coach_clubs`). Admin actors see every team when `actorEmail` is omitted; supplying `actorEmail` for a Coach narrows to `club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $1)`. Unknown or non-Coach actors with `actorEmail` return an empty list rather than leaking the unfiltered result.
+- Every team payload returned by `GET /v1/teams`, `POST /v1/teams`, and `POST /v1/teams/coach` now includes `clubId` and `clubName` so S3 can render the column without a second lookup.
+- `POST /v1/teams` requires `clubId` for SystemAdmin actors and inherits the acting Coach's first assigned club from `coach_clubs` when `clubId` is omitted. A successful admin create also upserts the assigned coach into `coach_clubs` so the lead coach immediately becomes a member of the new club.
+- `POST /v1/teams/coach` (admin reassignment) upserts the new lead coach into `coach_clubs` for the team's club, keeping the coach-club M:N in sync as coaches move between teams.
+- New `GET /v1/clubs` returns every club for SystemAdmin or only the coach's assigned clubs (joined through `coach_clubs`) for Coach. S3 uses it to populate the admin's club-filter dropdown.
+- S3 admin view (`S3-team-management.html`) shows every team with a `Filter by club` dropdown sourced from `MockupApi.listClubs`. The coach view hides the dropdown and shows an `Only show my clubs` checkbox that defaults on; when on, the table only renders teams whose `clubId` is in the coach's `state.assignedClubIds` (sourced from `listClubs`). An empty result renders the `club-empty` notice.
+- The team-create modal surfaces a `Club` picker for admin (`#teamClubSelect`, `[data-testid="team-club-select"]`) and inherits the coach's first club when the actor is a Coach.
+- Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps an offline seed in lockstep: `clubs` and `coachClubs` are added to `createSeed`, `listClubs` consults `coachClubs` for the offline Coach path, and `createTeam` / `reassignTeamCoach` extend the offline store with `clubId` / `clubName` while mirroring the coach-club join upsert.
+
 ## Session entry behavior
 - S0 login provides authenticated entry for both Coach and SystemAdmin paths.
 - Quick admin entry in mockup must perform real login semantics (session established) before redirecting to admin screen.
@@ -104,6 +116,7 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - UI integration: tests/playwright/s1-player-list.spec.js
 - UI integration: tests/playwright/s2-player-dashboard.spec.js
 - UI integration: tests/playwright/logout.spec.js
+- UI integration: tests/playwright/manage-club.spec.js
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
 - BDD: tests/bdd/features/coach-player-development-dashboard.feature
 - Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts

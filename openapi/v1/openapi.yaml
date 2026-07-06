@@ -429,9 +429,28 @@ paths:
   /teams:
     get:
       summary: List teams
+      description: >
+        Returns the team list, optionally filtered by club and scoped to the
+        calling coach's assigned clubs when `actorEmail` is provided and the
+        actor is a Coach.
       tags: [Teams]
       security:
         - bearerAuth: []
+      parameters:
+        - name: clubId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Restrict the result to a single club.
+        - name: actorEmail
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            Coach actor identity. When present and the user is an active Coach,
+            only teams in their assigned clubs are returned.
       responses:
         '200':
           description: Team list
@@ -481,6 +500,29 @@ paths:
             application/json:
               schema:
                 $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+
+  /clubs:
+    get:
+      summary: List clubs
+      description: >
+        Returns the clubs the caller is allowed to see. SystemAdmin sees every
+        club; Coach sees only the clubs they are assigned to via coach_clubs.
+      tags: [Clubs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: actorEmail
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Club list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubListResponse'
 
   /teams/{teamId}/coach:
     patch:

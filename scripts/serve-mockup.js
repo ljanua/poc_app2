@@ -557,6 +557,8 @@ function toTeamPayload(row) {
     leadCoach: row.leadCoach || row.lead_coach,
     leadCoachEmail: row.leadCoachEmail || row.lead_coach_email || null,
     leadCoachUserId: row.leadCoachUserId || row.lead_coach_user_id || null,
+    clubId: row.clubId || row.club_id || null,
+    clubName: row.clubName || row.club_name || null,
     playerCount: Number(row.playerCount || 0)
   };
 }
@@ -1124,7 +1126,41 @@ async function handlePlayersApi(req, res, requestUrl) {
   }
 
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/teams`) {
-    const teamRows = await pool.query(`
+    const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+
+    let actor = null;
+    if (actorEmail) {
+      const actorResult = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [actorEmail]
+      );
+      actor = actorResult.rows[0] || null;
+    }
+
+    const where = [];
+    const params = [];
+    if (clubId) {
+      params.push(clubId);
+      where.push(`t.club_id = $${params.length}`);
+    }
+    if (actorEmail) {
+      if (actor && actor.role === 'Coach' && actor.status === 'active') {
+        params.push(actor.id);
+        where.push(
+          `t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${params.length})`
+        );
+      } else if (!actor || actor.role !== 'SystemAdmin') {
+        // actorEmail supplied but the user is unknown, inactive, or not a coach.
+        // Treat as "no teams visible" rather than leaking the unfiltered list.
+        where.push('FALSE');
+      }
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const teamRows = await pool.query(
+      `
       SELECT
         t.id,
         t.name,
@@ -1132,15 +1168,56 @@ async function handlePlayersApi(req, res, requestUrl) {
         t.lead_coach_user_id AS "leadCoachUserId",
         u.name AS "leadCoach",
         u.email AS "leadCoachEmail",
+        c.id AS "clubId",
+        c.name AS "clubName",
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      ${whereSql}
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
       ORDER BY t.name ASC
-    `);
+      `,
+      params
+    );
 
     sendJson(res, 200, { data: teamRows.rows.map(toTeamPayload) });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/clubs`) {
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    let actor = null;
+    if (actorEmail) {
+      const actorResult = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [actorEmail]
+      );
+      actor = actorResult.rows[0] || null;
+    }
+
+    let clubRows;
+    if (actorEmail && (!actor || actor.role === 'Coach')) {
+      if (actor && actor.status === 'active') {
+        clubRows = await pool.query(
+          `
+          SELECT c.id, c.name
+          FROM clubs c
+          INNER JOIN coach_clubs cc ON cc.club_id = c.id
+          WHERE cc.user_id = $1
+          ORDER BY c.name ASC
+          `,
+          [actor.id]
+        );
+      } else {
+        clubRows = { rows: [] };
+      }
+    } else {
+      clubRows = await pool.query(`SELECT id, name FROM clubs ORDER BY name ASC`);
+    }
+
+    sendJson(res, 200, { data: clubRows.rows });
     return;
   }
 
@@ -1191,11 +1268,39 @@ async function handlePlayersApi(req, res, requestUrl) {
       leadCoachUserId = selectedCoach.rows[0].id;
     }
 
+    let clubId = String(payload.clubId || '').trim();
+    if (!clubId) {
+      if (effectiveRole === 'Coach') {
+        const defaultClub = await pool.query(
+          `SELECT club_id FROM coach_clubs WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
+          [actorUser.id]
+        );
+        clubId = defaultClub.rows[0] ? defaultClub.rows[0].club_id : '';
+      }
+      if (!clubId) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please select a club for this team.'));
+        return;
+      }
+    }
+
+    const clubRow = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!clubRow.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The selected club could not be found.'));
+      return;
+    }
+
     const teamId = `t_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(
-      `INSERT INTO teams (id, name, age_group, lead_coach_user_id) VALUES ($1, $2, $3, $4)`,
-      [teamId, teamName, ageGroup, leadCoachUserId]
+      `INSERT INTO teams (id, name, age_group, lead_coach_user_id, club_id) VALUES ($1, $2, $3, $4, $5)`,
+      [teamId, teamName, ageGroup, leadCoachUserId, clubId]
     );
+
+    if (effectiveRole === 'SystemAdmin') {
+      await pool.query(
+        `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+        [leadCoachUserId, clubId]
+      );
+    }
 
     const created = await pool.query(`
       SELECT
@@ -1205,12 +1310,15 @@ async function handlePlayersApi(req, res, requestUrl) {
         t.lead_coach_user_id AS "leadCoachUserId",
         u.name AS "leadCoach",
         u.email AS "leadCoachEmail",
+        c.id AS "clubId",
+        c.name AS "clubName",
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
       LIMIT 1
     `, [teamId]);
 
@@ -1256,6 +1364,13 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     await pool.query(`UPDATE teams SET lead_coach_user_id = $1, updated_at = NOW() WHERE id = $2`, [coach.rows[0].id, team.rows[0].id]);
 
+    await pool.query(
+      `INSERT INTO coach_clubs (user_id, club_id)
+       SELECT $1, t.club_id FROM teams t WHERE t.id = $2
+       ON CONFLICT (user_id, club_id) DO NOTHING`,
+      [coach.rows[0].id, team.rows[0].id]
+    );
+
     const updated = await pool.query(`
       SELECT
         t.id,
@@ -1264,12 +1379,15 @@ async function handlePlayersApi(req, res, requestUrl) {
         t.lead_coach_user_id AS "leadCoachUserId",
         u.name AS "leadCoach",
         u.email AS "leadCoachEmail",
+        c.id AS "clubId",
+        c.name AS "clubName",
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
       LIMIT 1
     `, [team.rows[0].id]);
 

@@ -38,6 +38,17 @@
 
       <div class="management-grid">
         <div class="table-card">
+          <div class="filter-row">
+            <label class="form-label" for="clubFilter">Filter by club</label>
+            <select id="clubFilter" class="pill-select" data-testid="club-filter" aria-label="Filter teams by club">
+              <option value="">All Clubs</option>
+            </select>
+            <label class="ctrl-toggle-label" id="onlyMyClubsWrap" hidden>
+              <input type="checkbox" id="onlyMyClubs" data-testid="only-my-clubs" checked>
+              <span>Only show my clubs</span>
+            </label>
+          </div>
+          <div class="notice" id="clubEmpty" hidden data-testid="club-empty">No clubs assigned. Contact your admin to be added to a club.</div>
           <div class="table-wrap">
             <table class="data-table">
               <thead>
@@ -46,12 +57,13 @@
                   <th>Age Group</th>
                   <th>Players</th>
                   <th>Lead Coach</th>
+                  <th>Club</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td colspan="5">Loading teams...</td>
+                  <td colspan="6">Loading teams...</td>
                 </tr>
               </tbody>
             </table>
@@ -98,6 +110,11 @@
         <div id="coachPickerWrap" hidden>
           <label class="form-label" for="teamCoachSelect">Lead Coach <span class="required">*</span></label>
           <select id="teamCoachSelect"></select>
+        </div>
+
+        <div id="clubPickerWrap" hidden>
+          <label class="form-label" for="teamClubSelect">Club <span class="required">*</span></label>
+          <select id="teamClubSelect" data-testid="team-club-select"></select>
         </div>
 
         <p id="teamFormError" class="error-msg">Please review the form fields and try again.</p>
@@ -150,6 +167,13 @@
       const coachPickerWrap = document.getElementById('coachPickerWrap');
       const coachSelfNotice = document.getElementById('coachSelfNotice');
       const teamFormError = document.getElementById('teamFormError');
+      const teamClubSelect = document.getElementById('teamClubSelect');
+      const clubPickerWrap = document.getElementById('clubPickerWrap');
+
+      const clubFilter = document.getElementById('clubFilter');
+      const onlyMyClubsWrap = document.getElementById('onlyMyClubsWrap');
+      const onlyMyClubsToggle = document.getElementById('onlyMyClubs');
+      const clubEmpty = document.getElementById('clubEmpty');
 
       const changeCoachModal = document.getElementById('changeCoachModal');
       const changeCoachForm = document.getElementById('changeCoachForm');
@@ -161,6 +185,8 @@
       const state = {
         actorRole: 'Coach',
         actorEmail: null,
+        availableClubs: [],
+        assignedClubIds: [],
         selectedTeamForCoachChange: null
       };
 
@@ -196,6 +222,8 @@
         if (!currentUser) {
           state.actorRole = 'Guest';
           state.actorEmail = null;
+          state.availableClubs = [];
+          state.assignedClubIds = [];
           roleBadge.textContent = 'Guest';
           openCreateTeam.disabled = true;
           openCreateTeam.textContent = 'Sign In Required';
@@ -204,9 +232,21 @@
 
         state.actorRole = currentUser.role;
         state.actorEmail = currentUser.email;
+        state.availableClubs = MockupApi.listClubs(currentUser.role, currentUser.email);
+        state.assignedClubIds = state.availableClubs.map(function (club) { return club.id; });
         roleBadge.textContent = currentUser.role;
         openCreateTeam.disabled = false;
         openCreateTeam.textContent = 'Create Team';
+
+        if (currentUser.role === 'SystemAdmin') {
+          onlyMyClubsWrap.hidden = true;
+        } else {
+          clubFilter.parentElement.querySelector('label[for="clubFilter"]').hidden = true;
+          clubFilter.hidden = true;
+          onlyMyClubsWrap.hidden = false;
+        }
+
+        fillClubFilter(state.availableClubs);
       }
 
       function fillCoachSelect(selectEl) {
@@ -227,19 +267,54 @@
         document.getElementById('kpiUnassignedPlayers').textContent = '0';
       }
 
+      function fillClubFilter(clubs) {
+        const previous = clubFilter.value;
+        clubFilter.innerHTML = '<option value="">All Clubs</option>';
+        clubs.forEach(function (club) {
+          const option = document.createElement('option');
+          option.value = club.id;
+          option.textContent = club.name;
+          clubFilter.appendChild(option);
+        });
+        if (previous && clubs.some(function (club) { return club.id === previous; })) {
+          clubFilter.value = previous;
+        }
+      }
+
       function renderTeams() {
         const teams = MockupApi.listTeamSummary();
         refreshKpis(teams);
         tableBody.innerHTML = '';
 
-        teams.forEach(function (team) {
+        const selectedClubId = clubFilter ? clubFilter.value : '';
+        const onlyMine = onlyMyClubsToggle ? onlyMyClubsToggle.checked : false;
+        const visibleTeams = teams.filter(function (team) {
+          if (selectedClubId && team.clubId !== selectedClubId) {
+            return false;
+          }
+          if (onlyMine && state.actorRole === 'Coach' && !state.assignedClubIds.includes(team.clubId)) {
+            return false;
+          }
+          return true;
+        });
+
+        if (visibleTeams.length === 0) {
+          clubEmpty.hidden = false;
+        } else {
+          clubEmpty.hidden = true;
+        }
+
+        visibleTeams.forEach(function (team) {
           const teamQuery = encodeURIComponent(team.name);
           const row = document.createElement('tr');
+          row.dataset.teamId = team.id;
+          row.dataset.teamName = team.name;
           row.innerHTML =
             '<td>' + team.name + '</td>' +
             '<td>' + team.ageGroup + '</td>' +
             '<td>' + team.playerCount + '</td>' +
             '<td>' + team.leadCoach + '</td>' +
+            '<td>' + (team.clubName || '—') + '</td>' +
             '<td>' +
             '<div class="inline-actions">' +
             '<a class="mini-btn" href="./S1-player-list.html?team=' + teamQuery + '">View</a>' +
@@ -260,10 +335,19 @@
 
         if (state.actorRole === 'SystemAdmin') {
           coachPickerWrap.hidden = false;
+          clubPickerWrap.hidden = false;
           coachSelfNotice.hidden = true;
           fillCoachSelect(teamCoachSelect);
+          teamClubSelect.innerHTML = '';
+          state.availableClubs.forEach(function (club) {
+            const option = document.createElement('option');
+            option.value = club.id;
+            option.textContent = club.name;
+            teamClubSelect.appendChild(option);
+          });
         } else {
           coachPickerWrap.hidden = true;
+          clubPickerWrap.hidden = true;
           coachSelfNotice.hidden = state.actorRole !== 'Coach';
         }
       }
@@ -294,7 +378,8 @@
           {
             name: teamNameInput.value,
             ageGroup: teamAgeGroupInput.value,
-            coachEmail: teamCoachSelect.value
+            coachEmail: teamCoachSelect.value,
+            clubId: state.actorRole === 'SystemAdmin' ? teamClubSelect.value : ''
           },
           state.actorRole,
           state.actorEmail
@@ -309,6 +394,13 @@
         renderTeams();
         showToast('Team created successfully.');
       });
+
+      if (clubFilter) {
+        clubFilter.addEventListener('change', renderTeams);
+      }
+      if (onlyMyClubsToggle) {
+        onlyMyClubsToggle.addEventListener('change', renderTeams);
+      }
 
       tableBody.addEventListener('click', function (event) {
         const button = event.target.closest('.js-change-coach');

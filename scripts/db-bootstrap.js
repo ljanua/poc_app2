@@ -3,6 +3,13 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { Client } = require('pg');
 
+try {
+  const dotenv = require('dotenv');
+  dotenv.config();
+} catch (err) {
+  // dotenv is optional in environments that already provide DATABASE_URL
+}
+
 function requireEnv(name) {
   const value = process.env[name];
   if (!value) {

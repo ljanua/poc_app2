@@ -61,9 +61,11 @@ test.describe('S3 Team Management', () => {
 
     await page.getByRole('button', { name: 'Create Team' }).click();
     await expect(page.locator('#coachPickerWrap')).toBeVisible();
+    await expect(page.locator('#clubPickerWrap')).toBeVisible();
     await page.fill('#teamNameInput', 'U16 Select');
     await page.fill('#teamAgeGroupInput', 'U16');
     await page.selectOption('#teamCoachSelect', 'joao@vantageiq.club');
+    await page.selectOption('#teamClubSelect', 'c_default');
     await page.getByRole('button', { name: 'Save Team' }).click();
 
     const createdRow = page.locator('tbody tr', { hasText: 'U16 Select' });

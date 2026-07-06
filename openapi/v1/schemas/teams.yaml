@@ -15,6 +15,12 @@ components:
         leadCoachEmail:
           type: string
           format: email
+        clubId:
+          type: string
+          description: Identifier of the club this team belongs to.
+        clubName:
+          type: string
+          description: Display name of the club this team belongs to.
 
     TeamResponse:
       type: object
@@ -46,6 +52,12 @@ components:
           type: string
           format: email
           description: Required for SystemAdmin actor; ignored for Coach actor.
+        clubId:
+          type: string
+          description: >
+            Required for SystemAdmin actor. For Coach actor, the server resolves
+            the coach's first assigned club from coach_clubs when this field is
+            omitted.
 
     ReassignTeamCoachRequest:
       type: object

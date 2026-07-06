@@ -24,10 +24,18 @@
 
   function createSeed() {
     return {
+      clubs: [
+        { id: 'c_default', name: 'VantageIQ Club' }
+      ],
+      coachClubs: [
+        { userId: 'u_admin_maria', clubId: 'c_default' },
+        { userId: 'u_coach_joao', clubId: 'c_default' },
+        { userId: 'u_coach_ana', clubId: 'c_default' }
+      ],
       teams: [
-        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club' },
-        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club' },
-        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club' }
+        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default' },
+        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club', clubId: 'c_default' },
+        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default' }
       ],
       players: [
         { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null },
@@ -605,6 +613,36 @@
       return clone(listActiveCoachesInternal(loadStore()));
     },
 
+    listClubs(actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', `/clubs${query}`);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      const role = actor.role;
+      const actorUser = actor.actorUser;
+
+      if (role === 'Coach' && actorUser) {
+        const allowedClubIds = new Set(
+          store.coachClubs
+            .filter((entry) => entry.userId === actorUser.id || entry.userId === actorUser.email)
+            .map((entry) => entry.clubId)
+        );
+        return clone(store.clubs.filter((club) => allowedClubIds.has(club.id)));
+      }
+
+      return clone(store.clubs);
+    },
+
     getCurrentUser() {
       if (shouldUseBackendPlayersMode()) {
         const sessionEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
@@ -631,6 +669,7 @@
           name: payload && payload.name,
           ageGroup: payload && payload.ageGroup,
           coachEmail: payload && payload.coachEmail,
+          clubId: payload && payload.clubId,
           actorRole,
           actorEmail
         });
@@ -678,16 +717,44 @@
         assignedCoach = selectedCoach;
       }
 
+      let resolvedClubId = String(payload && payload.clubId || '').trim();
+      if (!resolvedClubId && role === 'Coach' && sessionUser) {
+        const existing = store.coachClubs.find(
+          (entry) => entry.userId === sessionUser.id || entry.userId === sessionUser.email
+        );
+        resolvedClubId = existing ? existing.clubId : '';
+      }
+      if (!resolvedClubId) {
+        return { status: 400, code: 'validation_error', message: 'Please select a club for this team.' };
+      }
+      const targetClub = store.clubs.find((club) => club.id === resolvedClubId);
+      if (!targetClub) {
+        return { status: 400, code: 'validation_error', message: 'The selected club could not be found.' };
+      }
+
       const nextId = store.teams.reduce((max, team) => Math.max(max, team.id), 0) + 1;
       const created = {
         id: nextId,
         name: teamName,
         ageGroup,
         leadCoach: assignedCoach.name,
-        leadCoachEmail: assignedCoach.email
+        leadCoachEmail: assignedCoach.email,
+        clubId: resolvedClubId,
+        clubName: targetClub.name
       };
 
       store.teams.push(created);
+      if (role === 'SystemAdmin') {
+        const assignedId = assignedCoach.id || assignedCoach.email;
+        if (
+          assignedId &&
+          !store.coachClubs.some(
+            (entry) => entry.userId === assignedId && entry.clubId === resolvedClubId
+          )
+        ) {
+          store.coachClubs.push({ userId: assignedId, clubId: resolvedClubId });
+        }
+      }
       saveStore(store);
       return { status: 201, code: 'created', team: clone(created) };
     },
@@ -730,6 +797,19 @@
 
       team.leadCoach = selectedCoach.name;
       team.leadCoachEmail = selectedCoach.email;
+      if (team.clubId) {
+        const assignedId = selectedCoach.id || selectedCoach.email;
+        if (
+          assignedId &&
+          !store.coachClubs.some(
+            (entry) => entry.userId === assignedId && entry.clubId === team.clubId
+          )
+        ) {
+          store.coachClubs.push({ userId: assignedId, clubId: team.clubId });
+        }
+      }
+      const club = store.clubs.find((entry) => entry.id === team.clubId);
+      team.clubName = club ? club.name : null;
       saveStore(store);
       return { status: 200, code: 'ok', team: clone(team) };
     },
@@ -954,6 +1034,8 @@
             ageGroup: team.ageGroup,
             leadCoach: team.leadCoach,
             leadCoachEmail: team.leadCoachEmail || null,
+            clubId: team.clubId || null,
+            clubName: team.clubName || null,
             playerCount: Number(team.playerCount || 0)
           }))
         );
@@ -963,12 +1045,15 @@
       return clone(
         store.teams.map((team) => {
           const playerCount = store.players.filter((player) => player.teamName === team.name).length;
+          const club = store.clubs.find((entry) => entry.id === team.clubId);
           return {
             id: team.id,
             name: team.name,
             ageGroup: team.ageGroup,
             leadCoach: team.leadCoach,
             leadCoachEmail: team.leadCoachEmail || null,
+            clubId: team.clubId || null,
+            clubName: club ? club.name : null,
             playerCount
           };
         })

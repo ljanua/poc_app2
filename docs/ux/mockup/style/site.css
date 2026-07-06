@@ -883,6 +883,19 @@ textarea::placeholder { color: var(--text-dim); }
 
 .toolbar .search-bar { min-width: 220px; }
 
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0 1rem;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 1rem;
+}
+
+.filter-row .pill-select { min-width: 180px; }
+.filter-row .ctrl-toggle-label { margin-left: auto; }
+
 .team-chip {
   display: inline-flex;
   align-items: center;
