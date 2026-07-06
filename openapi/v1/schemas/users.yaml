@@ -26,6 +26,14 @@ components:
           type: string
           format: date-time
           nullable: true
+        clubIds:
+          type: array
+          items:
+            type: string
+          description: >
+            Identifiers of the clubs the user is a member of via
+            coach_clubs. Returned by `GET /v1/users` for admin actors and
+            nullable when the caller is not authorized to see memberships.
 
     UserResponse:
       type: object

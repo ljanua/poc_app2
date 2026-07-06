@@ -2,12 +2,34 @@ components:
   schemas:
     Club:
       type: object
-      required: [id, name]
+      required: [id, name, status]
       properties:
         id:
           type: string
         name:
           type: string
+        status:
+          type: string
+          enum: [active, inactive]
+          description: >
+            Lifecycle status of the club. Inactive clubs remain in the
+            database and preserve their team/coach assignments, but are
+            hidden from default pickers and from the default `GET /v1/clubs`
+            response. Set via `PATCH /v1/clubs/{clubId}/status`.
+        coachCount:
+          type: integer
+          nullable: true
+          description: >
+            Convenience count of users in this club via coach_clubs. Returned
+            by admin-facing read endpoints; null on admin list responses that
+            do not compute the join.
+        teamCount:
+          type: integer
+          nullable: true
+          description: >
+            Convenience count of teams whose club_id references this club.
+            Returned by admin-facing read endpoints; null on admin list
+            responses that do not compute the join.
 
     ClubListResponse:
       type: object
@@ -17,3 +39,101 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Club'
+
+    ClubResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Club'
+
+    CreateClubRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+
+    UpdateClubRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+
+    ClubStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+
+    UserClubMembership:
+      type: object
+      required: [userId, clubId, clubName, status]
+      properties:
+        userId:
+          type: string
+        clubId:
+          type: string
+        clubName:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+
+    UserClubListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserClubMembership'
+
+    UserClubAssignResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/UserClubMembership'
+
+    AssignUserClubRequest:
+      type: object
+      required: [clubId]
+      properties:
+        clubId:
+          type: string
+
+    AssignCoachToClubRequest:
+      type: object
+      required: [userId]
+      properties:
+        userId:
+          type: string
+          description: >
+            Id of the user to add to the club. May be any active user
+            (Coach or SystemAdmin), per the platform's all-active-users
+            eligibility for coach_clubs membership.
+
+    AssignTeamToClubRequest:
+      type: object
+      required: [teamId]
+      properties:
+        teamId:
+          type: string
+
+    ClubErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [validation_error, forbidden, not_found, conflict]
+        message:
+          type: string

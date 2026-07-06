@@ -506,7 +506,9 @@ paths:
       summary: List clubs
       description: >
         Returns the clubs the caller is allowed to see. SystemAdmin sees every
-        club; Coach sees only the clubs they are assigned to via coach_clubs.
+        club by default; Coach sees only the clubs they are assigned to via
+        coach_clubs. By default, only `status = 'active'` clubs are returned
+        for both roles; pass `?status=inactive` or `?status=all` to override.
       tags: [Clubs]
       security:
         - bearerAuth: []
@@ -516,6 +518,15 @@ paths:
           required: false
           schema:
             type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, all]
+          description: >
+            Filter by lifecycle status. Defaults to `active` for both roles
+            so deactivated clubs are hidden from new team-create pickers.
       responses:
         '200':
           description: Club list
@@ -523,6 +534,367 @@ paths:
             application/json:
               schema:
                 $ref: './schemas/clubs.yaml#/components/schemas/ClubListResponse'
+    post:
+      summary: Create club
+      description: >
+        SystemAdmin-only. Creates a new club with `status = 'active'`.
+        Returns 409 when the name collides with an existing club.
+      tags: [Clubs]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/CreateClubRequest'
+      responses:
+        '201':
+          description: Club created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /clubs/{clubId}:
+    parameters:
+      - name: clubId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Update club (rename)
+      description: >
+        SystemAdmin-only. Updates the club's display name. Returns 409 when
+        the new name collides with another club.
+      tags: [Clubs]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/UpdateClubRequest'
+      responses:
+        '200':
+          description: Club updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /clubs/{clubId}/status:
+    parameters:
+      - name: clubId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Set club lifecycle status
+      description: >
+        SystemAdmin-only. Flips the club between `active` and `inactive`.
+        Deactivating a club does NOT cascade-detach its teams or coaches;
+        the join rows are preserved so reactivate is a no-op for them.
+      tags: [Clubs]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/ClubStatusRequest'
+      responses:
+        '200':
+          description: Club status updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /clubs/{clubId}/coaches:
+    parameters:
+      - name: clubId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Assign a user to a club (additive coach_clubs insert)
+      description: >
+        SystemAdmin-only. Idempotent insert of a `coach_clubs(user_id, club_id)`
+        row. Returns 400 if the user is inactive or the club is inactive; both
+        are preconditions for membership eligibility. The endpoint is
+        non-removal: the per-user `×` chip on the S7 inline badge list calls
+        `DELETE /v1/users/{userId}/clubs/{clubId}` instead.
+      tags: [Clubs, Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/AssignCoachToClubRequest'
+      responses:
+        '201':
+          description: User assigned to club (or already a member, idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/UserClubAssignResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: User or club not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /clubs/{clubId}/teams:
+    parameters:
+      - name: clubId
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: Move a team into this club
+      description: >
+        SystemAdmin-only. Thin wrapper over `POST /v1/teams/{teamId}/update`
+        that re-asserts the team's current coach and status while changing
+        only `clubId`. The wrapper keeps the S7a Assign Teams picker
+        self-contained; the actual mutation is atomic and goes through the
+        team-update transaction.
+      tags: [Clubs, Teams]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/AssignTeamToClubRequest'
+      responses:
+        '200':
+          description: Team moved
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/teams.yaml#/components/schemas/TeamResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: Team or club not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /users/{userId}/clubs:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: List a user's club memberships
+      description: >
+        SystemAdmin-only. Returns every `coach_clubs` row for the user,
+        joined with the club's display name and current status.
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User's club memberships
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/UserClubListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+    post:
+      summary: Assign user to a club (additive)
+      description: >
+        SystemAdmin-only. Idempotent insert of a `coach_clubs(user_id, club_id)`
+        row for the user. Same preconditions as
+        `POST /v1/clubs/{clubId}/coaches`: target user must be active, target
+        club must be active. 200 is returned when the row already exists so
+        callers can safely retry without a "conflict" branch.
+      tags: [Users, Clubs]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/clubs.yaml#/components/schemas/AssignUserClubRequest'
+      responses:
+        '200':
+          description: Already a member (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/UserClubAssignResponse'
+        '201':
+          description: User assigned to club
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/UserClubAssignResponse'
+        '400':
+          description: Validation error (user or club inactive)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: User or club not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+
+  /users/{userId}/clubs/{clubId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: clubId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      summary: Remove a user from a single club
+      description: >
+        SystemAdmin-only. Deletes the matching `coach_clubs` row. Returns
+        204 on success and 404 if the row didn't exist (not idempotent; the
+        caller must distinguish "detached" from "wasn't there"). Other
+        memberships the user holds are untouched.
+      tags: [Users, Clubs]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Membership removed
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
+        '404':
+          description: Membership not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/clubs.yaml#/components/schemas/ClubErrorResponse'
 
   /teams/{teamId}/coach:
     patch:
