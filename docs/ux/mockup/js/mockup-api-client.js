@@ -614,10 +614,11 @@
       return clone(listActiveCoachesInternal(loadStore()));
     },
 
-    listClubs(actorRole, actorEmail) {
+    listClubs(actorRole, actorEmail, statusFilter) {
       if (shouldUseBackendPlayersMode()) {
         const params = new URLSearchParams();
         if (actorEmail) params.set('actorEmail', actorEmail);
+        if (statusFilter) params.set('status', statusFilter);
         const query = params.toString() ? `?${params.toString()}` : '';
         const response = backendRequest('GET', `/clubs${query}`);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -631,17 +632,272 @@
       const actor = resolveActorContext(store, actorRole, actorEmail);
       const role = actor.role;
       const actorUser = actor.actorUser;
+      const status = String(statusFilter || 'active').trim().toLowerCase();
+      const matchStatus = (club) => {
+        if (status === 'all') return true;
+        const clubStatus = club.status || 'active';
+        return clubStatus === status;
+      };
+      const decorate = (club) => {
+        const coachCount = store.coachClubs.filter((entry) => entry.clubId === club.id).length;
+        const teamCount = store.teams.filter((entry) => entry.clubId === club.id).length;
+        return Object.assign({}, club, {
+          status: club.status || 'active',
+          coachCount: coachCount,
+          teamCount: teamCount
+        });
+      };
 
+      let scoped;
       if (role === 'Coach' && actorUser) {
         const allowedClubIds = new Set(
           store.coachClubs
             .filter((entry) => entry.userId === actorUser.id || entry.userId === actorUser.email)
             .map((entry) => entry.clubId)
         );
-        return clone(store.clubs.filter((club) => allowedClubIds.has(club.id)));
+        scoped = store.clubs.filter((club) => allowedClubIds.has(club.id));
+      } else {
+        scoped = store.clubs.slice();
       }
 
-      return clone(store.clubs);
+      return clone(scoped.filter(matchStatus).map(decorate));
+    },
+
+    createClub(payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/clubs', {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', club: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 60) {
+        return { status: 400, code: 'validation_error', message: 'Club name must be 2-60 characters.' };
+      }
+      if (store.clubs.some((club) => club.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A club with this name already exists.' };
+      }
+
+      const nextId = 'c_' + Date.now().toString(36);
+      const created = { id: nextId, name: name, status: 'active', coachCount: 0, teamCount: 0 };
+      store.clubs.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', club: clone(created) };
+    },
+
+    updateClub(clubId, payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/clubs/' + encodeURIComponent(clubId), {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', club: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      const club = store.clubs.find((entry) => entry.id === clubId);
+      if (!club) {
+        return { status: 404, code: 'not_found', message: 'The selected club was not found anymore. Refresh and try again.' };
+      }
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 60) {
+        return { status: 400, code: 'validation_error', message: 'Club name must be 2-60 characters.' };
+      }
+      if (store.clubs.some((other) => other.id !== clubId && other.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A club with this name already exists.' };
+      }
+      club.name = name;
+      saveStore(store);
+      return { status: 200, code: 'ok', club: clone(club) };
+    },
+
+    setClubStatus(clubId, status, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/clubs/' + encodeURIComponent(clubId) + '/status', {
+          status: status,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', club: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      const club = store.clubs.find((entry) => entry.id === clubId);
+      if (!club) {
+        return { status: 404, code: 'not_found', message: 'The selected club was not found anymore. Refresh and try again.' };
+      }
+      if (!['active', 'inactive'].includes(status)) {
+        return { status: 400, code: 'validation_error', message: 'Status must be active or inactive.' };
+      }
+      club.status = status;
+      saveStore(store);
+      return { status: 200, code: 'ok', club: clone(club) };
+    },
+
+    listUserClubs(userId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', '/users/' + encodeURIComponent(userId) + '/clubs' + query);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        return [];
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin') {
+        return [];
+      }
+      return clone(
+        store.coachClubs
+          .filter((entry) => entry.userId === userId || entry.userId === userId)
+          .map((entry) => {
+            const club = store.clubs.find((c) => c.id === entry.clubId);
+            return {
+              userId: entry.userId,
+              clubId: entry.clubId,
+              clubName: club ? club.name : null,
+              status: club ? (club.status || 'active') : 'inactive'
+            };
+          })
+      );
+    },
+
+    assignUserToClub(userId, clubId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/users/' + encodeURIComponent(userId) + '/clubs', {
+          clubId: clubId,
+          actorRole,
+          actorEmail
+        });
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      const user = store.users.find((entry) => String(entry.id) === String(userId) || (entry.email && entry.email.toLowerCase() === String(userId).toLowerCase()));
+      if (!user) {
+        return { status: 404, code: 'not_found', message: 'The selected user was not found anymore. Refresh and try again.' };
+      }
+      if (user.status !== 'active') {
+        return { status: 400, code: 'validation_error', message: 'Inactive users cannot be assigned to a club.' };
+      }
+      const club = store.clubs.find((entry) => entry.id === clubId);
+      if (!club) {
+        return { status: 404, code: 'not_found', message: 'The selected club was not found anymore. Refresh and try again.' };
+      }
+      if ((club.status || 'active') !== 'active') {
+        return { status: 400, code: 'validation_error', message: 'Inactive clubs cannot accept new members.' };
+      }
+      const assignedId = user.id;
+      if (!store.coachClubs.some((entry) => entry.userId === assignedId && entry.clubId === clubId)) {
+        store.coachClubs.push({ userId: assignedId, clubId: clubId });
+        saveStore(store);
+        return { status: 201, code: 'created', membership: clone({ userId: assignedId, clubId: clubId, clubName: club.name, status: 'active' }) };
+      }
+      return { status: 200, code: 'ok', membership: clone({ userId: assignedId, clubId: clubId, clubName: club.name, status: 'active' }) };
+    },
+
+    removeUserFromClub(userId, clubId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('DELETE', '/users/' + encodeURIComponent(userId) + '/clubs/' + encodeURIComponent(clubId) + query);
+        if (response.status === 204) {
+          return { status: 204, code: 'ok' };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      const before = store.coachClubs.length;
+      store.coachClubs = store.coachClubs.filter((entry) => !(String(entry.userId) === String(userId) && entry.clubId === clubId));
+      if (store.coachClubs.length === before) {
+        return { status: 404, code: 'not_found', message: 'The user was not a member of this club.' };
+      }
+      saveStore(store);
+      return { status: 204, code: 'ok' };
+    },
+
+    assignTeamToClub(teamId, clubId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/clubs/' + encodeURIComponent(clubId) + '/teams', {
+          teamId: teamId,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', team: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      const team = store.teams.find((entry) => String(entry.id) === String(teamId));
+      if (!team) {
+        return { status: 404, code: 'not_found', message: 'The selected team was not found anymore. Refresh and try again.' };
+      }
+      const club = store.clubs.find((entry) => entry.id === clubId);
+      if (!club) {
+        return { status: 404, code: 'not_found', message: 'The selected club was not found anymore. Refresh and try again.' };
+      }
+      if (team.clubId === clubId) {
+        return { status: 400, code: 'validation_error', message: 'The team is already in this club.' };
+      }
+      team.clubId = clubId;
+      team.clubName = club.name;
+      const leadCoachEmail = (team.leadCoachEmail || '').toLowerCase();
+      if (leadCoachEmail) {
+        const lead = store.users.find((u) => u.email.toLowerCase() === leadCoachEmail);
+        const leadId = lead ? lead.id : leadCoachEmail;
+        if (leadId && !store.coachClubs.some((entry) => entry.userId === leadId && entry.clubId === clubId)) {
+          store.coachClubs.push({ userId: leadId, clubId: clubId });
+        }
+      }
+      saveStore(store);
+      return { status: 200, code: 'ok', team: clone(team) };
     },
 
     getCurrentUser() {

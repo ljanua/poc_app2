@@ -48,6 +48,7 @@
       <div class="page-actions">
         <button class="btn btn-primary js-admin-action" id="openCreateUser">Create User</button>
         <button class="btn btn-secondary js-admin-action" id="toggleRoleView">Switch to Coach View</button>
+        <a class="btn btn-secondary" href="./S7a-clubs.html" data-testid="open-clubs-page">View List of Clubs</a>
         <button class="btn btn-secondary">Export Access Report</button>
       </div>
 
@@ -60,6 +61,7 @@
                 <th>Email</th>
                 <th>Role</th>
                 <th>Status</th>
+                <th>Clubs</th>
                 <th>Last Login</th>
                 <th>Actions</th>
               </tr>
@@ -213,6 +215,28 @@
     </div>
   </div>
 
+  <div class="modal" id="assignClubModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Assign Club</h2>
+        <button class="mini-btn" data-close-modal="assignClubModal">Close</button>
+      </div>
+      <form id="assignClubForm" class="modal-form">
+        <div class="notice">Selected user: <strong id="assignClubTargetUser">-</strong></div>
+        <label class="form-label" for="assignClubSelect">Club <span class="required">*</span></label>
+        <select id="assignClubSelect" required>
+          <option value="">-- Select a club --</option>
+        </select>
+        <p class="error-msg" id="assignClubError">Only active clubs are available for new members.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit">Assign Club</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="assignClubModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="./js/mockup-api-client.js"></script>
@@ -223,8 +247,15 @@
       const state = {
         viewRole: 'SystemAdmin',
         selectedUserName: null,
-        selectedUserEmail: null
+        selectedUserEmail: null,
+        selectedUserId: null,
+        selectedActorEmail: null
       };
+
+      const sessionUser = MockupApi.getCurrentUser();
+      if (sessionUser) {
+        state.selectedActorEmail = sessionUser.email;
+      }
 
       const usersTableBody = document.getElementById('usersTableBody');
       const userSearch = document.getElementById('userSearch');
@@ -262,6 +293,7 @@
       function renderUsers() {
         const users = MockupApi.listUsers();
         usersTableBody.innerHTML = '';
+        const clubs = MockupApi.listClubs(state.viewRole, state.selectedUserEmail || MockupApi.getCurrentUser() && MockupApi.getCurrentUser().email, 'active');
 
         users.forEach(function (user) {
           const row = document.createElement('tr');
@@ -269,19 +301,43 @@
           row.setAttribute('data-email', user.email);
           row.setAttribute('data-role', user.role);
           row.setAttribute('data-status', user.status);
+          row.setAttribute('data-user-id', user.id);
+          const userClubIds = Array.isArray(user.clubIds) ? user.clubIds : [];
+          const userClubs = (clubs || []).filter(function (club) { return userClubIds.indexOf(club.id) !== -1; });
+          const clubsCell =
+            '<td class="clubs-cell">' +
+              (userClubs.length
+                ? userClubs.map(function (club) {
+                    return '<span class="team-chip js-club-chip" data-user-id="' + user.id + '" data-club-id="' + club.id + '" title="Click to remove">' +
+                      escapeHtml(club.name) + ' <span class="chip-x" aria-label="Remove from club">×</span>' +
+                      '</span>';
+                  }).join(' ')
+                : '<span class="muted-text">—</span>') +
+              ' <button class="mini-btn js-admin-action js-assign-club" data-user-id="' + user.id + '" data-user-name="' + escapeHtml(user.name) + '" data-email="' + user.email + '">Assign</button>' +
+            '</td>';
           row.innerHTML =
-            '<td>' + user.name + '</td>' +
-            '<td>' + user.email + '</td>' +
-            '<td><span class="team-chip">' + user.role + '</span></td>' +
+            '<td>' + escapeHtml(user.name) + '</td>' +
+            '<td>' + escapeHtml(user.email) + '</td>' +
+            '<td><span class="team-chip">' + escapeHtml(user.role) + '</span></td>' +
             '<td><span class="badge ' + (user.status === 'active' ? 'badge-improving' : 'badge-declining') + '">' + (user.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
-            '<td>' + user.lastLogin + '</td>' +
+            clubsCell +
+            '<td>' + escapeHtml(user.lastLogin || 'Unknown') + '</td>' +
             '<td><div class="inline-actions">' +
-            '<button class="mini-btn js-admin-action js-change-role" data-user="' + user.name + '" data-email="' + user.email + '" data-role="' + user.role + '">Change Role</button>' +
-            '<button class="mini-btn js-admin-action js-change-password" data-user="' + user.name + '" data-email="' + user.email + '">Change Password</button>' +
+            '<button class="mini-btn js-admin-action js-change-role" data-user="' + escapeHtml(user.name) + '" data-email="' + user.email + '" data-role="' + user.role + '">Change Role</button>' +
+            '<button class="mini-btn js-admin-action js-change-password" data-user="' + escapeHtml(user.name) + '" data-email="' + user.email + '">Change Password</button>' +
             '<button class="mini-btn ' + (user.status === 'active' ? 'warn js-deactivate' : 'positive js-reactivate') + ' js-admin-action" data-email="' + user.email + '">' + (user.status === 'active' ? 'Deactivate' : 'Reactivate') + '</button>' +
             '</div></td>';
           usersTableBody.appendChild(row);
         });
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function refreshKpis() {
@@ -411,6 +467,40 @@
           setAdminActionState();
           showToast('User reactivated successfully.');
         }
+
+        const chipX = event.target.closest('.js-club-chip');
+        if (chipX) {
+          const userId = chipX.getAttribute('data-user-id');
+          const clubId = chipX.getAttribute('data-club-id');
+          const response = MockupApi.removeUserFromClub(userId, clubId, state.viewRole, state.selectedActorEmail);
+          if (response.status >= 400) {
+            showToast(response.message);
+            return;
+          }
+          renderUsers();
+          applyFilters();
+          showToast('Removed from club.');
+          return;
+        }
+
+        const assignClubBtn = event.target.closest('.js-assign-club');
+        if (assignClubBtn) {
+          state.selectedUserId = assignClubBtn.getAttribute('data-user-id');
+          state.selectedUserName = assignClubBtn.getAttribute('data-user-name');
+          state.selectedUserEmail = assignClubBtn.getAttribute('data-email');
+          document.getElementById('assignClubTargetUser').textContent = state.selectedUserName;
+          const select = document.getElementById('assignClubSelect');
+          select.innerHTML = '<option value="">-- Select a club --</option>';
+          const clubs = MockupApi.listClubs(state.viewRole, state.selectedActorEmail, 'active');
+          (clubs || []).forEach(function (club) {
+            const opt = document.createElement('option');
+            opt.value = club.id;
+            opt.textContent = club.name;
+            select.appendChild(opt);
+          });
+          document.getElementById('assignClubError').classList.remove('show');
+          openModal('assignClubModal');
+        }
       });
 
       document.getElementById('createUserForm').addEventListener('submit', function (event) {
@@ -467,6 +557,25 @@
         closeModal('changePasswordModal');
         event.target.reset();
         showToast('Password updated for ' + state.selectedUserName + '.');
+      });
+
+      document.getElementById('assignClubForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const clubId = document.getElementById('assignClubSelect').value;
+        if (!clubId) {
+          document.getElementById('assignClubError').classList.add('show');
+          return;
+        }
+        const response = MockupApi.assignUserToClub(state.selectedUserId, clubId, state.viewRole, state.selectedActorEmail);
+        if (response.status >= 400) {
+          showToast(response.message || 'Could not assign the club.');
+          return;
+        }
+        closeModal('assignClubModal');
+        event.target.reset();
+        renderUsers();
+        applyFilters();
+        showToast('Club assigned to ' + state.selectedUserName + '.');
       });
 
       userSearch.addEventListener('input', applyFilters);
