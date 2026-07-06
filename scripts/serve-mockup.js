@@ -559,6 +559,7 @@ function toTeamPayload(row) {
     leadCoachUserId: row.leadCoachUserId || row.lead_coach_user_id || null,
     clubId: row.clubId || row.club_id || null,
     clubName: row.clubName || row.club_name || null,
+    status: row.status || 'active',
     playerCount: Number(row.playerCount || 0)
   };
 }
@@ -1128,6 +1129,7 @@ async function handlePlayersApi(req, res, requestUrl) {
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/teams`) {
     const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const statusFilter = String(requestUrl.searchParams.get('status') || 'active').trim().toLowerCase();
 
     let actor = null;
     if (actorEmail) {
@@ -1143,6 +1145,10 @@ async function handlePlayersApi(req, res, requestUrl) {
     if (clubId) {
       params.push(clubId);
       where.push(`t.club_id = $${params.length}`);
+    }
+    if (statusFilter !== 'all' && (statusFilter === 'active' || statusFilter === 'inactive')) {
+      params.push(statusFilter);
+      where.push(`t.status = $${params.length}`);
     }
     if (actorEmail) {
       if (actor && actor.role === 'Coach' && actor.status === 'active') {
@@ -1170,13 +1176,14 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       ${whereSql}
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
       ORDER BY t.name ASC
       `,
       params
@@ -1312,13 +1319,14 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
       LIMIT 1
     `, [teamId]);
 
@@ -1381,17 +1389,140 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
       LIMIT 1
     `, [team.rows[0].id]);
 
     sendJson(res, 200, { data: toTeamPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/update$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/update$/);
+    const teamId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actorEmail = String(payload.actorEmail || '').trim().toLowerCase();
+    const actorRole = String(payload.actorRole || '').trim();
+    const newCoachEmail = String(payload.coachEmail || '').trim().toLowerCase();
+    const newClubId = String(payload.clubId || '').trim();
+    const newStatus = String(payload.status || '').trim().toLowerCase();
+
+    let actorUser = null;
+    if (actorEmail) {
+      const actorResult = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [actorEmail]
+      );
+      actorUser = actorResult.rows[0] || null;
+    }
+
+    const effectiveRole = actorUser ? actorUser.role : actorRole;
+    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    if (!newCoachEmail || !newClubId || !['active', 'inactive'].includes(newStatus)) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const existing = await pool.query(
+      `SELECT id, name, club_id AS "clubId" FROM teams WHERE id = $1 LIMIT 1`,
+      [teamId]
+    );
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected team was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    // Coach scope: the team must currently be in one of the coach's clubs AND the new club must also be in that set.
+    if (effectiveRole === 'Coach') {
+      const scopeResult = await pool.query(
+        `SELECT club_id FROM coach_clubs WHERE user_id = $1`,
+        [actorUser.id]
+      );
+      const allowedClubIds = scopeResult.rows.map((row) => row.club_id);
+      if (!allowedClubIds.includes(existing.rows[0].clubId) || !allowedClubIds.includes(newClubId)) {
+        sendJson(res, 403, appError(403, 'forbidden_scope', 'Coaches can only update teams in clubs they belong to.'));
+        return;
+      }
+    }
+
+    const club = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [newClubId]);
+    if (!club.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const coach = await pool.query(
+      `SELECT id, name, email FROM users WHERE LOWER(email) = LOWER($1) AND role = 'Coach' AND status = 'active' LIMIT 1`,
+      [newCoachEmail]
+    );
+    if (!coach.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `UPDATE teams
+            SET lead_coach_user_id = $1,
+                club_id = $2,
+                status = $3,
+                updated_at = NOW()
+          WHERE id = $4`,
+        [coach.rows[0].id, newClubId, newStatus, teamId]
+      );
+      await client.query(
+        `INSERT INTO coach_clubs (user_id, club_id)
+         SELECT $1, $2
+         ON CONFLICT (user_id, club_id) DO NOTHING`,
+        [coach.rows[0].id, newClubId]
+      );
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    const refreshed = await pool.query(
+      `
+      SELECT
+        t.id,
+        t.name,
+        t.age_group AS "ageGroup",
+        t.lead_coach_user_id AS "leadCoachUserId",
+        u.name AS "leadCoach",
+        u.email AS "leadCoachEmail",
+        c.id AS "clubId",
+        c.name AS "clubName",
+        t.status,
+        COUNT(a.player_id) AS "playerCount"
+      FROM teams t
+      LEFT JOIN users u ON u.id = t.lead_coach_user_id
+      LEFT JOIN clubs c ON c.id = t.club_id
+      LEFT JOIN player_team_assignments a ON a.team_id = t.id
+      WHERE t.id = $1
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
+      LIMIT 1
+      `,
+      [teamId]
+    );
+
+    sendJson(res, 200, { data: toTeamPayload(refreshed.rows[0]) });
     return;
   }
 

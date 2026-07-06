@@ -43,9 +43,13 @@
             <select id="clubFilter" class="pill-select" data-testid="club-filter" aria-label="Filter teams by club">
               <option value="">All Clubs</option>
             </select>
+            <label class="ctrl-toggle-label" id="showActiveWrap" data-testid="show-active-wrap">
+              <input type="checkbox" id="showActive" data-testid="show-active" checked>
+              <span>Show active</span>
+            </label>
             <label class="ctrl-toggle-label" id="onlyMyClubsWrap" hidden>
               <input type="checkbox" id="onlyMyClubs" data-testid="only-my-clubs" checked>
-              <span>Only show my clubs</span>
+              <span>Only my teams</span>
             </label>
           </div>
           <div class="notice" id="clubEmpty" hidden data-testid="club-empty">No clubs assigned. Contact your admin to be added to a club.</div>
@@ -173,6 +177,7 @@
       const clubFilter = document.getElementById('clubFilter');
       const onlyMyClubsWrap = document.getElementById('onlyMyClubsWrap');
       const onlyMyClubsToggle = document.getElementById('onlyMyClubs');
+      const showActiveToggle = document.getElementById('showActive');
       const clubEmpty = document.getElementById('clubEmpty');
 
       const changeCoachModal = document.getElementById('changeCoachModal');
@@ -282,7 +287,8 @@
       }
 
       function renderTeams() {
-        const teams = MockupApi.listTeamSummary();
+        const showActiveOnly = showActiveToggle ? showActiveToggle.checked : true;
+        const teams = MockupApi.listTeamSummary({ status: showActiveOnly ? 'active' : 'all' });
         refreshKpis(teams);
         tableBody.innerHTML = '';
 
@@ -293,6 +299,9 @@
             return false;
           }
           if (onlyMine && state.actorRole === 'Coach' && !state.assignedClubIds.includes(team.clubId)) {
+            return false;
+          }
+          if (showActiveOnly && team.status === 'inactive') {
             return false;
           }
           return true;
@@ -309,16 +318,21 @@
           const row = document.createElement('tr');
           row.dataset.teamId = team.id;
           row.dataset.teamName = team.name;
+          row.dataset.status = team.status || 'active';
+          const updateHref = './S3a-team-update.html?teamId=' + encodeURIComponent(team.id);
+          const rowStyle = team.status === 'inactive' ? ' style="opacity:0.55;"' : '';
+          const statusBadge = team.status === 'inactive' ? ' <span class="status-badge status-inactive" data-testid="row-status-inactive">Inactive</span>' : '';
           row.innerHTML =
-            '<td>' + team.name + '</td>' +
+            '<td>' + team.name + statusBadge + '</td>' +
             '<td>' + team.ageGroup + '</td>' +
             '<td>' + team.playerCount + '</td>' +
             '<td>' + team.leadCoach + '</td>' +
             '<td>' + (team.clubName || '—') + '</td>' +
             '<td>' +
-            '<div class="inline-actions">' +
+            '<div class="inline-actions"' + rowStyle + '>' +
             '<a class="mini-btn" href="./S1-player-list.html?team=' + teamQuery + '">View</a>' +
             '<a class="mini-btn positive" href="./S1-player-list.html?team=' + teamQuery + '">Assign</a>' +
+            '<a class="mini-btn" href="' + updateHref + '" data-testid="row-update-link">Update</a>' +
             (state.actorRole === 'SystemAdmin'
               ? '<button class="mini-btn js-change-coach" type="button" data-team-name="' + team.name + '">Change Coach</button>'
               : '') +
@@ -400,6 +414,9 @@
       }
       if (onlyMyClubsToggle) {
         onlyMyClubsToggle.addEventListener('change', renderTeams);
+      }
+      if (showActiveToggle) {
+        showActiveToggle.addEventListener('change', renderTeams);
       }
 
       tableBody.addEventListener('click', function (event) {

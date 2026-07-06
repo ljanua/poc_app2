@@ -108,6 +108,30 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - user_password_change_failed
 - user_admin_forbidden_attempt
 
+## Team Update (S3a) + team status (active/inactive)
+
+A new `teams.status` column (`active` / `inactive`) lands via migration `apps/api/src/db/migrations/013_teams_status.sql`. Every existing seeded team backfills to `active`. The S3 teams table grows two checkboxes: **Show active** (default ON, hides `inactive` rows) and **Only my teams** (default OFF, replaces the prior "Only show my clubs" wording — Coach-only narrowing by `coach_clubs`). A new S3a screen (`docs/ux/mockup/S3a-team-update.html`) is reached from each S3 row's `Update` action.
+
+### Endpoints
+
+- `GET /v1/teams?status=active|inactive|all` (default `active`). Admin sees the requested status; Coach actor (with `?actorEmail=<coach>`) sees their filtered set.
+- `POST /v1/teams/:teamId/update` body `{ coachEmail, clubId, status, actorRole, actorEmail }`. Atomic transaction (BEGIN/UPDATE teams/UPSERT coach_clubs/COMMIT). Returns the refreshed `Team` payload with `status`.
+    - Coach actor: must hold a `coach_clubs` row for the team's current club AND the new club. Violation → `403 forbidden_scope`.
+    - `status` must be `active` or `inactive`. Unknown team → `404 not_found`. Unknown coach/club → `400 validation_error`.
+
+### Client
+
+- `MockupApi.updateTeamCoachAndClub(teamId, payload)` — online wraps `POST /v1/teams/:teamId/update`; offline/local writes through to `vantageiq_mockup_v2` with the same role-scoping guard.
+- `MockupApi.listTeamSummary` and `MockupApi.getTeamById(teamId)` expose `status`.
+- Seeded offline teams carry `status: 'active'` from `createSeed()`; older local stores fall back to `active` on read (`team.status || 'active'`).
+
+### Roles
+
+- **SystemAdmin** can edit any team's coach, club, and status. Club dropdown lists every club.
+- **Coach** can edit teams in their own clubs (`coach_clubs`). Club dropdown is pre-narrowed; the server enforces the same guard.
+
+See `docs/plans/2026-07-06-007-feat-team-update-screen-plan.md` for full requirements, schema design, and test scenarios.
+
 ## Test traceability
 
 The Playwright suite enforces a single invariant: **at least 3 teams must be available**. The seeded `Senior Squad` / `U19 Prime` / `U17 Elite` are guaranteed by `scripts/serve-mockup.js`'s `INSERT INTO teams … ON CONFLICT DO NOTHING` step. Tests assert on these three named rows or on `>= 3` counts; any extras beyond those three (from prior runs or new admin-created teams) are accepted silently. The suite does **not** truncate the dev DB between runs. Shared-state mutations (e.g. role flips on `Joao Lima`) are restored before the test ends via `restoreCoachRole` in `tests/playwright/_fixture-utils.js`. See `docs/plans/2026-07-06-006-test-plan-resilient-to-growing-teams.md` for the full policy.
@@ -120,6 +144,7 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - UI integration: tests/playwright/s2-player-dashboard.spec.js
 - UI integration: tests/playwright/logout.spec.js
 - UI integration: tests/playwright/manage-club.spec.js
+- UI integration: tests/playwright/team-update.spec.js
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
 - BDD: tests/bdd/features/coach-player-development-dashboard.feature
 - Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts

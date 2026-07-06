@@ -25,11 +25,40 @@ CREATE TABLE IF NOT EXISTS teams (
   name TEXT NOT NULL UNIQUE,
   age_group TEXT NOT NULL,
   lead_coach_user_id TEXT NOT NULL REFERENCES users(id),
+  club_id TEXT REFERENCES clubs(id),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_teams_lead_coach_user_id ON teams(lead_coach_user_id);
+
+CREATE TABLE IF NOT EXISTS clubs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_clubs_name ON clubs(name);
+
+CREATE TABLE IF NOT EXISTS coach_clubs (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  club_id TEXT NOT NULL REFERENCES clubs(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, club_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coach_clubs_club_id ON coach_clubs(club_id);
+CREATE INDEX IF NOT EXISTS idx_coach_clubs_user_id ON coach_clubs(user_id);
+
+ALTER TABLE teams ADD COLUMN IF NOT EXISTS club_id TEXT REFERENCES clubs(id);
+CREATE INDEX IF NOT EXISTS idx_teams_club_id ON teams(club_id);
+
+ALTER TABLE teams
+  ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'
+  CHECK (status IN ('active', 'inactive'));
+CREATE INDEX IF NOT EXISTS idx_teams_status_club ON teams(status, club_id);
 
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY,

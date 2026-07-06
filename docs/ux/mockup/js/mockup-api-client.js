@@ -33,9 +33,9 @@
         { userId: 'u_coach_ana', clubId: 'c_default' }
       ],
       teams: [
-        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default' },
-        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club', clubId: 'c_default' },
-        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default' }
+        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default', status: 'active' },
+        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club', clubId: 'c_default', status: 'active' },
+        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', status: 'active' }
       ],
       players: [
         { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null },
@@ -585,9 +585,10 @@
       return clone(seed);
     },
 
-    listTeams() {
+    listTeams(queryString) {
       if (shouldUseBackendPlayersMode()) {
-        const response = backendRequest('GET', '/teams');
+        const path = '/teams' + (queryString ? '?' + queryString : '');
+        const response = backendRequest('GET', path);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
           return clone(response.body.data);
         }
@@ -740,7 +741,8 @@
         leadCoach: assignedCoach.name,
         leadCoachEmail: assignedCoach.email,
         clubId: resolvedClubId,
-        clubName: targetClub.name
+        clubName: targetClub.name,
+        status: 'active'
       };
 
       store.teams.push(created);
@@ -810,6 +812,74 @@
       }
       const club = store.clubs.find((entry) => entry.id === team.clubId);
       team.clubName = club ? club.name : null;
+      saveStore(store);
+      return { status: 200, code: 'ok', team: clone(team) };
+    },
+
+    updateTeamCoachAndClub(teamId, payload) {
+      const body = payload || {};
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/teams/' + encodeURIComponent(teamId) + '/update', {
+          coachEmail: body.coachEmail,
+          clubId: body.clubId,
+          status: body.status,
+          actorRole: body.actorRole,
+          actorEmail: body.actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', team: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const team = (store.teams || []).find((entry) => String(entry.id) === String(teamId));
+      if (!team) {
+        return { status: 404, code: 'not_found', message: 'The selected team was not found anymore. Refresh and try again.' };
+      }
+
+      const newCoachEmail = String(body.coachEmail || '').trim().toLowerCase();
+      const newClubId = String(body.clubId || '').trim();
+      const newStatus = String(body.status || '').trim().toLowerCase();
+      if (!newCoachEmail || !newClubId || !['active', 'inactive'].includes(newStatus)) {
+        return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+      }
+
+      const actorRole = String(body.actorRole || '').trim();
+      const actorEmail = String(body.actorEmail || '').trim().toLowerCase();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      const sessionUser = actor.actorUser;
+      if (!sessionUser || sessionUser.status !== 'active' || !['SystemAdmin', 'Coach'].includes(actor.role)) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (actor.role === 'Coach') {
+        const allowedClubIds = (store.coachClubs || [])
+          .filter((entry) => entry.userId === sessionUser.id || entry.userId === sessionUser.email)
+          .map((entry) => entry.clubId);
+        if (!allowedClubIds.includes(team.clubId) || !allowedClubIds.includes(newClubId)) {
+          return { status: 403, code: 'forbidden_scope', message: 'Coaches can only update teams in clubs they belong to.' };
+        }
+      }
+
+      const club = store.clubs.find((entry) => entry.id === newClubId);
+      if (!club) {
+        return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+      }
+      const newCoach = listActiveCoachesInternal(store).find((coach) => coach.email.toLowerCase() === newCoachEmail);
+      if (!newCoach) {
+        return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+      }
+
+      team.leadCoach = newCoach.name;
+      team.leadCoachEmail = newCoach.email;
+      team.clubId = newClubId;
+      team.clubName = club.name;
+      team.status = newStatus;
+      const assignedId = newCoach.id || newCoach.email;
+      if (!Array.isArray(store.coachClubs)) store.coachClubs = [];
+      if (assignedId && !store.coachClubs.some((entry) => entry.userId === assignedId && entry.clubId === newClubId)) {
+        store.coachClubs.push({ userId: assignedId, clubId: newClubId });
+      }
       saveStore(store);
       return { status: 200, code: 'ok', team: clone(team) };
     },
@@ -1024,9 +1094,12 @@
       return { status: 200, code: 'ok', moved: outcome.moved, player: clone(player), message: outcome.message };
     },
 
-    listTeamSummary() {
+    listTeamSummary(options) {
+      const filters = options || {};
       if (shouldUseBackendPlayersMode()) {
-        const teams = this.listTeams();
+        const params = new URLSearchParams();
+        if (filters.status) params.set('status', filters.status);
+        const teams = this.listTeams(filters.status ? params.toString() : '');
         return clone(
           teams.map((team) => ({
             id: team.id,
@@ -1036,6 +1109,7 @@
             leadCoachEmail: team.leadCoachEmail || null,
             clubId: team.clubId || null,
             clubName: team.clubName || null,
+            status: team.status || 'active',
             playerCount: Number(team.playerCount || 0)
           }))
         );
@@ -1054,10 +1128,16 @@
             leadCoachEmail: team.leadCoachEmail || null,
             clubId: team.clubId || null,
             clubName: club ? club.name : null,
+            status: team.status || 'active',
             playerCount
           };
         })
       );
+    },
+
+    getTeamById(teamId) {
+      const summary = this.listTeamSummary();
+      return clone(summary.find((team) => String(team.id) === String(teamId)) || null);
     },
 
     getDashboardPlayer(playerName) {
