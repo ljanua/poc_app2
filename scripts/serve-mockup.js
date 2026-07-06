@@ -545,8 +545,47 @@ function toUserPayload(row) {
     role: row.role,
     status: row.status,
     lastLogin: row.lastLogin || row.last_login_label || row.lastLoginLabel || null,
-    password: row.password || row.password_hash || row.passwordHash || ''
+    password: row.password || row.password_hash || row.passwordHash || '',
+    clubIds: Array.isArray(row.clubIds) ? row.clubIds : []
   };
+}
+
+function toClubPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status || 'active',
+    coachCount: row.coachCount === undefined || row.coachCount === null ? null : Number(row.coachCount),
+    teamCount: row.teamCount === undefined || row.teamCount === null ? null : Number(row.teamCount)
+  };
+}
+
+function toUserClubPayload(row) {
+  return {
+    userId: row.userId || row.user_id,
+    clubId: row.clubId || row.club_id,
+    clubName: row.clubName || row.club_name || null,
+    status: row.status || 'active'
+  };
+}
+
+async function resolveSystemAdminActor(actorEmail) {
+  const email = String(actorEmail || '').trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+  const result = await pool.query(
+    `SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email]
+  );
+  return result.rows[0] || null;
+}
+
+function assertSystemAdminActor(actor) {
+  if (!actor || actor.role !== 'SystemAdmin' || actor.status !== 'active') {
+    return false;
+  }
+  return true;
 }
 
 function toTeamPayload(row) {
@@ -1195,6 +1234,9 @@ async function handlePlayersApi(req, res, requestUrl) {
 
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/clubs`) {
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const statusFilterRaw = String(requestUrl.searchParams.get('status') || '').trim().toLowerCase();
+    const statusFilter = ['active', 'inactive', 'all'].includes(statusFilterRaw) ? statusFilterRaw : 'active';
+
     let actor = null;
     if (actorEmail) {
       const actorResult = await pool.query(
@@ -1205,14 +1247,17 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     let clubRows;
+    const statusClause = statusFilter === 'all' ? '' : `AND c.status = '${statusFilter}'`;
     if (actorEmail && (!actor || actor.role === 'Coach')) {
       if (actor && actor.status === 'active') {
         clubRows = await pool.query(
           `
-          SELECT c.id, c.name
+          SELECT c.id, c.name, c.status,
+            (SELECT COUNT(*)::int FROM coach_clubs cc2 WHERE cc2.club_id = c.id) AS "coachCount",
+            (SELECT COUNT(*)::int FROM teams t WHERE t.club_id = c.id) AS "teamCount"
           FROM clubs c
           INNER JOIN coach_clubs cc ON cc.club_id = c.id
-          WHERE cc.user_id = $1
+          WHERE cc.user_id = $1 ${statusClause}
           ORDER BY c.name ASC
           `,
           [actor.id]
@@ -1221,10 +1266,378 @@ async function handlePlayersApi(req, res, requestUrl) {
         clubRows = { rows: [] };
       }
     } else {
-      clubRows = await pool.query(`SELECT id, name FROM clubs ORDER BY name ASC`);
+      clubRows = await pool.query(
+        `
+        SELECT c.id, c.name, c.status,
+          (SELECT COUNT(*)::int FROM coach_clubs cc2 WHERE cc2.club_id = c.id) AS "coachCount",
+          (SELECT COUNT(*)::int FROM teams t WHERE t.club_id = c.id) AS "teamCount"
+        FROM clubs c
+        ${statusFilter === 'all' ? '' : 'WHERE c.status = $1'}
+        ORDER BY c.name ASC
+        `,
+        statusFilter === 'all' ? [] : [statusFilter]
+      );
     }
 
-    sendJson(res, 200, { data: clubRows.rows });
+    sendJson(res, 200, { data: clubRows.rows.map(toClubPayload) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/clubs`) {
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const name = normalizeLookup(payload.name);
+    if (!name || name.length < 2 || name.length > 60) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Club name must be 2-60 characters.'));
+      return;
+    }
+
+    const existing = await pool.query(`SELECT id FROM clubs WHERE LOWER(name) = LOWER($1) LIMIT 1`, [name]);
+    if (existing.rows[0]) {
+      sendJson(res, 409, appError(409, 'conflict', 'A club with this name already exists.'));
+      return;
+    }
+
+    const clubId = `c_${Date.now().toString(36)}`;
+    const inserted = await pool.query(
+      `INSERT INTO clubs (id, name, status) VALUES ($1, $2, 'active') RETURNING id, name, status`,
+      [clubId, name]
+    );
+    sendJson(res, 201, { data: toClubPayload({ ...inserted.rows[0], coachCount: 0, teamCount: 0 }) });
+    return;
+  }
+
+  if (req.method === 'PATCH' && requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)$/);
+    const clubId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const name = normalizeLookup(payload.name);
+    if (!name || name.length < 2 || name.length > 60) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Club name must be 2-60 characters.'));
+      return;
+    }
+
+    const existing = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const collision = await pool.query(`SELECT id FROM clubs WHERE LOWER(name) = LOWER($1) AND id <> $2 LIMIT 1`, [name, clubId]);
+    if (collision.rows[0]) {
+      sendJson(res, 409, appError(409, 'conflict', 'A club with this name already exists.'));
+      return;
+    }
+
+    const updated = await pool.query(
+      `UPDATE clubs SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, status`,
+      [name, clubId]
+    );
+    const counts = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM coach_clubs WHERE club_id = $1) AS "coachCount",
+         (SELECT COUNT(*)::int FROM teams WHERE club_id = $1) AS "teamCount"`,
+      [clubId]
+    );
+    sendJson(res, 200, { data: toClubPayload({ ...updated.rows[0], ...counts.rows[0] }) });
+    return;
+  }
+
+  if (req.method === 'PATCH' && requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/status$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/status$/);
+    const clubId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const status = String(payload.status || '').trim().toLowerCase();
+    if (!['active', 'inactive'].includes(status)) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Status must be active or inactive.'));
+      return;
+    }
+
+    const existing = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const updated = await pool.query(
+      `UPDATE clubs SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, status`,
+      [status, clubId]
+    );
+    const counts = await pool.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM coach_clubs WHERE club_id = $1) AS "coachCount",
+         (SELECT COUNT(*)::int FROM teams WHERE club_id = $1) AS "teamCount"`,
+      [clubId]
+    );
+    sendJson(res, 200, { data: toClubPayload({ ...updated.rows[0], ...counts.rows[0] }) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/coaches$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/coaches$/);
+    const clubId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const targetUserId = String(payload.userId || '').trim();
+    if (!targetUserId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'A user must be selected.'));
+      return;
+    }
+
+    const user = await pool.query(
+      `SELECT id, name, email, role, status FROM users WHERE id = $1 LIMIT 1`,
+      [targetUserId]
+    );
+    if (!user.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (user.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Inactive users cannot be assigned to a club.'));
+      return;
+    }
+
+    const club = await pool.query(`SELECT id, name, status FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!club.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (club.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Inactive clubs cannot accept new members.'));
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+      [targetUserId, clubId]
+    );
+
+    sendJson(res, 201, {
+      data: {
+        userId: targetUserId,
+        clubId,
+        clubName: club.rows[0].name,
+        status: 'active'
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/teams$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/clubs\/([^/]+)\/teams$/);
+    const clubId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const teamId = String(payload.teamId || '').trim();
+    if (!teamId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'A team must be selected.'));
+      return;
+    }
+
+    const team = await pool.query(
+      `SELECT id, lead_coach_user_id, status FROM teams WHERE id = $1 LIMIT 1`,
+      [teamId]
+    );
+    if (!team.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected team was not found anymore. Refresh and try again.'));
+      return;
+    }
+    const club = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!club.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    if (team.rows[0].club_id === clubId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The team is already in this club.'));
+      return;
+    }
+
+    const coach = await pool.query(
+      `SELECT id, name, email FROM users WHERE id = $1 LIMIT 1`,
+      [team.rows[0].lead_coach_user_id]
+    );
+    const clubRow = await pool.query(`SELECT id, name FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+
+    await pool.query('BEGIN');
+    try {
+      await pool.query(
+        `UPDATE teams SET club_id = $1, updated_at = NOW() WHERE id = $2`,
+        [clubId, teamId]
+      );
+      if (coach.rows[0]) {
+        await pool.query(
+          `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+          [coach.rows[0].id, clubId]
+        );
+      }
+      await pool.query('COMMIT');
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      sendJson(res, 500, appError(500, 'unknown', 'Could not move the team to the new club.'));
+      return;
+    }
+
+    const refreshed = await pool.query(
+      `SELECT t.id, t.name, t.age_group AS "ageGroup", u.name AS "leadCoach", u.email AS "leadCoachEmail",
+              c.id AS "clubId", c.name AS "clubName", t.status,
+              (SELECT COUNT(*)::int FROM player_team_assignments a WHERE a.team_id = t.id) AS "playerCount"
+       FROM teams t
+       LEFT JOIN users u ON u.id = t.lead_coach_user_id
+       LEFT JOIN clubs c ON c.id = t.club_id
+       WHERE t.id = $1
+       GROUP BY t.id, t.name, t.age_group, u.name, u.email, c.id, c.name, t.status`,
+      [teamId]
+    );
+    sendJson(res, 200, { data: toTeamPayload(refreshed.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs$/);
+    const userId = decodeURIComponent(match[1]);
+
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const actor = await resolveSystemAdminActor(actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const user = await pool.query(`SELECT id FROM users WHERE id = $1 LIMIT 1`, [userId]);
+    if (!user.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const memberships = await pool.query(
+      `SELECT cc.user_id AS "userId", cc.club_id AS "clubId", c.name AS "clubName", c.status
+       FROM coach_clubs cc
+       INNER JOIN clubs c ON c.id = cc.club_id
+       WHERE cc.user_id = $1
+       ORDER BY c.name ASC`,
+      [userId]
+    );
+    sendJson(res, 200, { data: memberships.rows.map(toUserClubPayload) });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs$/);
+    const userId = decodeURIComponent(match[1]);
+
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const clubId = String(payload.clubId || '').trim();
+    if (!clubId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'A club must be selected.'));
+      return;
+    }
+
+    const user = await pool.query(
+      `SELECT id, name, email, role, status FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    if (!user.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (user.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Inactive users cannot be assigned to a club.'));
+      return;
+    }
+
+    const club = await pool.query(`SELECT id, name, status FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    if (!club.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (club.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Inactive clubs cannot accept new members.'));
+      return;
+    }
+
+    const existing = await pool.query(
+      `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+      [userId, clubId]
+    );
+    const alreadyMember = existing.rows.length > 0;
+    if (!alreadyMember) {
+      await pool.query(
+        `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+        [userId, clubId]
+      );
+    }
+
+    const status = alreadyMember ? 200 : 201;
+    sendJson(res, status, {
+      data: {
+        userId,
+        clubId,
+        clubName: club.rows[0].name,
+        status: 'active'
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'DELETE' && requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs\/([^/]+)$/)) {
+    const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/clubs\/([^/]+)$/);
+    const userId = decodeURIComponent(match[1]);
+    const clubId = decodeURIComponent(match[2]);
+
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const actor = await resolveSystemAdminActor(actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const removed = await pool.query(
+      `DELETE FROM coach_clubs WHERE user_id = $1 AND club_id = $2`,
+      [userId, clubId]
+    );
+    if (removed.rowCount === 0) {
+      sendJson(res, 404, appError(404, 'not_found', 'The user was not a member of this club.'));
+      return;
+    }
+    sendJson(res, 204, '');
     return;
   }
 
@@ -1536,7 +1949,11 @@ async function handlePlayersApi(req, res, requestUrl) {
         role,
         status,
         password_hash AS "passwordHash",
-        last_login_label AS "lastLogin"
+        last_login_label AS "lastLogin",
+        COALESCE(
+          (SELECT array_agg(club_id ORDER BY club_id) FROM coach_clubs WHERE user_id = users.id),
+          ARRAY[]::text[]
+        ) AS "clubIds"
       FROM users
       ${requestedEmail ? `WHERE LOWER(email) = LOWER($1)` : ''}
       ORDER BY name ASC
