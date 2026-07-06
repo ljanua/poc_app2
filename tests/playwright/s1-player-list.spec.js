@@ -128,8 +128,9 @@ test.describe('S1 Player List team filter and add-player flow', () => {
   test('shows emoji avatar for players without an uploaded photo', async ({ page }) => {
     const cards = page.locator('.player-card');
     await expect(cards).toHaveCount(4);
-    // Each card should show ⚽ emoji in the avatar slot
+    // Each card should show ⚽ emoji in the avatar slot and have no has-avatar modifier
     await expect(page.locator('.player-card .player-image').first()).toContainText('⚽');
+    await expect(page.locator('.player-card .player-image.has-avatar')).toHaveCount(0);
   });
 
   test('shows uploaded avatar image on player card when avatarUrl is set', async ({ page }) => {
@@ -141,7 +142,73 @@ test.describe('S1 Player List team filter and add-player flow', () => {
       window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
     });
     await page.reload();
-    const messiCard = page.locator('.player-card .player-name', { hasText: 'Lionel Messi' }).locator('..').locator('.player-image');
-    await expect(messiCard.locator('img')).toBeVisible();
+    const messiCard = page.locator('[data-player-id="10"]');
+    await expect(messiCard).toBeVisible();
+    const avatarImg = messiCard.locator('.player-image img');
+    await expect(avatarImg).toBeVisible();
+    await expect(avatarImg).toHaveAttribute('src', /^data:image\//);
+    await expect(messiCard.locator('.player-image')).not.toContainText('⚽');
+    await expect(messiCard.locator('.player-image')).toHaveClass(/has-avatar/);
+  });
+});
+
+// Regression: avatar uploaded via the live backend PATCH must surface on the
+// S1 list rendered from GET /v1/players. Catches two regressions at once:
+//   1. toPlayerPayload dropping avatarUrl from the list response (U0).
+//   2. S1 render path failing to render the image after a live write.
+//
+// These tests run against the live backend (no __USE_BACKEND__ = false) so
+// they catch the round-trip through scripts/serve-mockup.js. Mirrors the
+// pattern in tests/playwright/s2-player-avatar-backend.spec.js.
+
+const TINY_JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/8A//2Q==';
+
+async function loginAsCoach(page) {
+  await page.goto('/S0-login.html');
+  await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+  await page.fill('#email', 'joao@vantageiq.club');
+  await page.fill('#password', 'SecurePass123');
+  await page.locator('#loginForm button[type="submit"]').click();
+  await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+}
+
+test.describe('S1 Player List avatar renders against live backend', () => {
+  test.beforeEach(async ({ page }) => {
+    // Explicitly do NOT force offline mode — these tests exercise the
+    // GET /v1/players round-trip through the live backend.
+    await loginAsCoach(page);
+  });
+
+  test('uploaded avatar renders on the S1 card after live PATCH + reload', async ({ page }) => {
+    const result = await page.evaluate(async (dataUrl) => {
+      const players = await window.MockupApi.listPlayers({ teamName: 'all' });
+      const target = (players || [])[0];
+      if (!target) {
+        return { skipped: true, reason: 'no players seeded in backend' };
+      }
+      const bytes = Uint8Array.from(atob(dataUrl.split(',')[1]), (c) => c.charCodeAt(0));
+      const file = new File([bytes], 'avatar.jpg', { type: 'image/jpeg' });
+      const upload = await window.MockupApi.uploadPlayerAvatar(target.id, file);
+      return { upload, targetId: target.id };
+    }, TINY_JPEG_DATA_URL);
+
+    if (result && result.skipped) {
+      test.skip(true, result.reason);
+    }
+
+    expect(result.upload.error, `upload returned an error: ${result.upload.error}`).toBeUndefined();
+    expect(result.upload.status, `status should be 200, got ${result.upload.status}`).toBe(200);
+
+    // Force a fresh GET /v1/players round-trip so the S1 render reads the
+    // server-side avatarUrl (rather than the cached in-memory list).
+    await page.goto('/S1-player-list.html');
+
+    const targetCard = page.locator('[data-player-id="' + result.targetId + '"]');
+    await expect(targetCard).toBeVisible();
+    const avatarImg = targetCard.locator('.player-image img');
+    await expect(avatarImg).toBeVisible();
+    await expect(avatarImg).toHaveAttribute('src', /^data:image\/jpeg/);
+    await expect(targetCard.locator('.player-image')).not.toContainText('⚽');
+    await expect(targetCard.locator('.player-image')).toHaveClass(/has-avatar/);
   });
 });

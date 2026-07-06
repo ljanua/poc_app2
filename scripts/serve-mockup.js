@@ -62,6 +62,7 @@ function toPlayerPayload(row) {
     id: row.id,
     name: row.name,
     normalizedName: row.normalizedName,
+    avatarUrl: row.avatarUrl || null,
     teamName: row.teamName,
     position: row.position,
     trend: row.trend,

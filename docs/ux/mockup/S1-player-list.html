@@ -225,10 +225,15 @@
           const avatarHtml = player.avatarUrl
             ? '<img src="' + player.avatarUrl + '" alt="' + player.name + '" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">'
             : '<span style="font-size:1.4rem;line-height:58px;">⚽</span>';
+          const imgWrap = document.createElement('div');
+          imgWrap.className = 'player-image' + (player.avatarUrl ? ' has-avatar' : '');
+          imgWrap.style.overflow = 'hidden';
+          imgWrap.innerHTML = avatarHtml;
           const card = document.createElement('div');
           card.className = 'player-card';
+          card.dataset.playerId = String(player.id);
           card.innerHTML =
-            '<div class="player-image" style="overflow:hidden;">' + avatarHtml + '</div>' +
+            '__AVATAR_WRAPPER__' +
             '<div class="player-info">' +
             '<div class="player-name">' + player.name + '</div>' +
             '<div class="player-position">' + player.position + '</div>' +
@@ -239,6 +244,7 @@
             '</div>' +
             '</div>' +
             '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(player.name) + '">View</a>';
+          card.innerHTML = card.innerHTML.replace('__AVATAR_WRAPPER__', imgWrap.outerHTML);
           playerGrid.appendChild(card);
         });
 
