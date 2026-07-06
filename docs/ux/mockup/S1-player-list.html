@@ -12,6 +12,7 @@
       <div class="header-title">⚡ VantageIQ</div>
       <input id="playerSearch" type="text" class="search-bar" placeholder="Search players, positions...">
       <div class="role-badge" id="roleBadge">Coach</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
     </header>
 
     <div class="content">
@@ -436,6 +437,14 @@
       roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
       renderPlayers();
       renderSuggestions();
+
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', () => {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
     })();
   </script>
 </body>

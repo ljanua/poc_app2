@@ -12,6 +12,7 @@
       <a class="back-btn" href="./S0-login.html">←</a>
       <div class="header-title">User &amp; Role Management</div>
       <div class="role-badge">SystemAdmin</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
     </header>
 
     <div class="content">
@@ -475,6 +476,14 @@
       renderUsers();
       applyFilters();
       setAdminActionState();
+
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', () => {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
     })();
   </script>
 </body>

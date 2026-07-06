@@ -78,6 +78,7 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 ## Session entry behavior
 - S0 login provides authenticated entry for both Coach and SystemAdmin paths.
 - Quick admin entry in mockup must perform real login semantics (session established) before redirecting to admin screen.
+- Every protected surface (S1, S2, S3, S4, S5, S6, S7) renders an icon-only `exit` button (`[data-testid="exit-button"]`, aria-label "Log out") in the topbar. Clicking it calls `MockupApi.logout()` (clears `vantageiq_current_user_email` from `localStorage`) and navigates to `S0-login.html`. Logout is client-side only — the v1 short-lived JWT expires on its own and there is no server-side revocation endpoint in this release.
 
 ## Validation expectations
 - Create user: name, email, role, and initial password required.
@@ -102,6 +103,7 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - API integration: apps/api/tests/integration/players/players-api.spec.ts
 - UI integration: tests/playwright/s1-player-list.spec.js
 - UI integration: tests/playwright/s2-player-dashboard.spec.js
+- UI integration: tests/playwright/logout.spec.js
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
 - BDD: tests/bdd/features/coach-player-development-dashboard.feature
 - Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts

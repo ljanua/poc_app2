@@ -26,3 +26,6 @@ If PowerShell blocks npm scripts due execution policy, run through cmd:
 ## Optional environment variables
 - MOCKUP_HOST (default: 127.0.0.1)
 - MOCKUP_PORT (default: 5500)
+
+## Topbar session control
+Every protected screen (S1, S2, S3, S4, S5, S6, S7) renders an icon-only `exit` button in the topbar (`[data-testid="exit-button"]`). Clicking it calls `MockupApi.logout()` and navigates to `S0-login.html`.

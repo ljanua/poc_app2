@@ -124,6 +124,7 @@
       <a class="back-btn" href="./S1-player-list.html">←</a>
       <div class="header-title">Edit Player</div>
       <div class="header-meta">Coach View</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
     </header>
 
     <div class="content">
@@ -659,6 +660,14 @@
         showToast('Player saved successfully.');
         window.location.href = './S2-player-dashboard.html?player=' + encodeURIComponent(response.data.player.name);
       });
+
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', () => {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
     })();
 
     function handleS5AvatarFileSelect(input) {
