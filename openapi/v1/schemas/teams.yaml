@@ -21,6 +21,14 @@ components:
         clubName:
           type: string
           description: Display name of the club this team belongs to.
+        sportId:
+          type: string
+          description: >
+            Identifier of the sport this team plays. Defaults to "sport_soccer"
+            when omitted on create.
+        sportName:
+          type: string
+          description: Display name of the sport this team plays.
 
     TeamResponse:
       type: object
@@ -58,6 +66,29 @@ components:
             Required for SystemAdmin actor. For Coach actor, the server resolves
             the coach's first assigned club from coach_clubs when this field is
             omitted.
+        sportId:
+          type: string
+          description: >
+            Optional sport identifier. When omitted the server defaults to
+            "sport_soccer". Must reference an active row in the sports table.
+
+    UpdateTeamRequest:
+      type: object
+      required: [coachEmail, clubId, status]
+      properties:
+        coachEmail:
+          type: string
+          format: email
+        clubId:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        sportId:
+          type: string
+          description: >
+            Optional sport identifier. When omitted the server keeps the team's
+            current sport. Must reference an active row in the sports table.
 
     ReassignTeamCoachRequest:
       type: object

@@ -767,6 +767,8 @@ function toTeamPayload(row) {
     leadCoachUserId: row.leadCoachUserId || row.lead_coach_user_id || null,
     clubId: row.clubId || row.club_id || null,
     clubName: row.clubName || row.club_name || null,
+    sportId: row.sportId || row.sport_id || null,
+    sportName: row.sportName || row.sport_name || null,
     status: row.status || 'active',
     playerCount: Number(row.playerCount || 0)
   };
@@ -1411,14 +1413,17 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        s.id AS "sportId",
+        s.name AS "sportName",
         t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
+      LEFT JOIN sports s ON s.id = t.sport_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       ${whereSql}
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, s.id, s.name, t.status
       ORDER BY t.name ASC
       `,
       params
@@ -1707,13 +1712,16 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const refreshed = await pool.query(
       `SELECT t.id, t.name, t.age_group AS "ageGroup", u.name AS "leadCoach", u.email AS "leadCoachEmail",
-              c.id AS "clubId", c.name AS "clubName", t.status,
+              c.id AS "clubId", c.name AS "clubName",
+              s.id AS "sportId", s.name AS "sportName",
+              t.status,
               (SELECT COUNT(*)::int FROM player_team_assignments a WHERE a.team_id = t.id) AS "playerCount"
        FROM teams t
        LEFT JOIN users u ON u.id = t.lead_coach_user_id
        LEFT JOIN clubs c ON c.id = t.club_id
+       LEFT JOIN sports s ON s.id = t.sport_id
        WHERE t.id = $1
-       GROUP BY t.id, t.name, t.age_group, u.name, u.email, c.id, c.name, t.status`,
+       GROUP BY t.id, t.name, t.age_group, u.name, u.email, c.id, c.name, s.id, s.name, t.status`,
       [teamId]
     );
     sendJson(res, 200, { data: toTeamPayload(refreshed.rows[0]) });
@@ -1905,10 +1913,23 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    let sportId = String(payload.sportId || '').trim();
+    if (!sportId) {
+      sportId = 'sport_soccer';
+    }
+    const sportRow = await pool.query(
+      `SELECT id FROM sports WHERE id = $1 AND status = 'active' LIMIT 1`,
+      [sportId]
+    );
+    if (!sportRow.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The selected sport could not be found.'));
+      return;
+    }
+
     const teamId = `t_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(
-      `INSERT INTO teams (id, name, age_group, lead_coach_user_id, club_id) VALUES ($1, $2, $3, $4, $5)`,
-      [teamId, teamName, ageGroup, leadCoachUserId, clubId]
+      `INSERT INTO teams (id, name, age_group, lead_coach_user_id, club_id, sport_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [teamId, teamName, ageGroup, leadCoachUserId, clubId, sportId]
     );
 
     if (effectiveRole === 'SystemAdmin') {
@@ -1928,14 +1949,17 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        s.id AS "sportId",
+        s.name AS "sportName",
         t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
+      LEFT JOIN sports s ON s.id = t.sport_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, s.id, s.name, t.status
       LIMIT 1
     `, [teamId]);
 
@@ -1998,14 +2022,17 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        s.id AS "sportId",
+        s.name AS "sportName",
         t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
+      LEFT JOIN sports s ON s.id = t.sport_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, s.id, s.name, t.status
       LIMIT 1
     `, [team.rows[0].id]);
 
@@ -2041,6 +2068,16 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     if (!newCoachEmail || !newClubId || !['active', 'inactive'].includes(newStatus)) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const newSportId = String(payload.sportId || '').trim() || 'sport_soccer';
+    const sportRow = await pool.query(
+      `SELECT id FROM sports WHERE id = $1 AND status = 'active' LIMIT 1`,
+      [newSportId]
+    );
+    if (!sportRow.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The selected sport could not be found.'));
       return;
     }
 
@@ -2089,9 +2126,10 @@ async function handlePlayersApi(req, res, requestUrl) {
             SET lead_coach_user_id = $1,
                 club_id = $2,
                 status = $3,
+                sport_id = $4,
                 updated_at = NOW()
-          WHERE id = $4`,
-        [coach.rows[0].id, newClubId, newStatus, teamId]
+          WHERE id = $5`,
+        [coach.rows[0].id, newClubId, newStatus, newSportId, teamId]
       );
       await client.query(
         `INSERT INTO coach_clubs (user_id, club_id)
@@ -2118,14 +2156,17 @@ async function handlePlayersApi(req, res, requestUrl) {
         u.email AS "leadCoachEmail",
         c.id AS "clubId",
         c.name AS "clubName",
+        s.id AS "sportId",
+        s.name AS "sportName",
         t.status,
         COUNT(a.player_id) AS "playerCount"
       FROM teams t
       LEFT JOIN users u ON u.id = t.lead_coach_user_id
       LEFT JOIN clubs c ON c.id = t.club_id
+      LEFT JOIN sports s ON s.id = t.sport_id
       LEFT JOIN player_team_assignments a ON a.team_id = t.id
       WHERE t.id = $1
-      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, t.status
+      GROUP BY t.id, t.name, t.age_group, t.lead_coach_user_id, u.name, u.email, c.id, c.name, s.id, s.name, t.status
       LIMIT 1
       `,
       [teamId]
