@@ -18,10 +18,8 @@
     <div class="content">
       <div class="form-wrapper">
         <div class="toolbar" style="margin-bottom: 1rem;">
-          <select class="pill-select" aria-label="Selected team for clip">
-            <option>Team: Senior Squad</option>
-            <option>Team: U19 Prime</option>
-            <option>Team: U17 Elite</option>
+          <select id="teamSelect" class="pill-select" aria-label="Selected team for clip" data-testid="team-select">
+            <option value="all">Team: All</option>
           </select>
         </div>
 
@@ -177,18 +175,107 @@
       }
     });
 
-    (function () {
-      const currentUser = MockupApi.getCurrentUser();
-      document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
-      MockupApi.applyRoleGatedNav(currentUser);
-      const playerSelect = document.getElementById('player');
-      const players = MockupApi.listPlayers({ teamName: 'all' });
+    function getAvailableTeamsForActor(currentUser) {
+      const allTeams = MockupApi.listTeams() || [];
+      if (!currentUser || currentUser.status !== 'active') {
+        return allTeams;
+      }
+      if (currentUser.role === 'SystemAdmin') {
+        return allTeams;
+      }
+      if (currentUser.role === 'Coach') {
+        const actorEmail = String(currentUser.email || '').trim().toLowerCase();
+        const actorName = String(currentUser.name || '').trim().toLowerCase();
+        return allTeams.filter(function (team) {
+          const teamCoachEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+          const teamCoachName = String(team.leadCoach || '').trim().toLowerCase();
+          if (actorEmail && teamCoachEmail && teamCoachEmail === actorEmail) {
+            return true;
+          }
+          if (actorName && teamCoachName && teamCoachName === actorName) {
+            return true;
+          }
+          return false;
+        });
+      }
+      return allTeams;
+    }
+
+    function populateTeamSelect(teamSelect, teams, selectedTeam) {
+      teamSelect.innerHTML = '';
+      const allOption = document.createElement('option');
+      allOption.value = 'all';
+      allOption.textContent = 'Team: All';
+      teamSelect.appendChild(allOption);
+      teams.forEach(function (team) {
+        const option = document.createElement('option');
+        option.value = String(team.name);
+        option.textContent = 'Team: ' + team.name;
+        teamSelect.appendChild(option);
+      });
+      if (selectedTeam && selectedTeam !== 'all') {
+        const match = Array.from(teamSelect.options).find(function (o) { return o.value === selectedTeam; });
+        teamSelect.value = match ? selectedTeam : 'all';
+      } else {
+        teamSelect.value = 'all';
+      }
+    }
+
+    function populatePlayerSelect(playerSelect, players) {
+      playerSelect.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Select a player…';
+      playerSelect.appendChild(placeholder);
       players.forEach(function (player) {
         const option = document.createElement('option');
         option.value = String(player.id);
         option.textContent = player.name;
+        option.dataset.teamName = String(player.teamName || '');
         playerSelect.appendChild(option);
       });
+    }
+
+    (function () {
+      const currentUser = MockupApi.getCurrentUser();
+      document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
+      MockupApi.applyRoleGatedNav(currentUser);
+
+      const actorEmail = currentUser && currentUser.email
+        ? String(currentUser.email).trim().toLowerCase()
+        : '';
+      const isCoach = Boolean(
+        currentUser &&
+        currentUser.role === 'Coach' &&
+        currentUser.status === 'active'
+      );
+      const state = {
+        actorEmail: actorEmail,
+        onlyMine: isCoach,
+        selectedTeam: 'all'
+      };
+
+      const teamSelect = document.getElementById('teamSelect');
+      const playerSelect = document.getElementById('player');
+
+      function refreshPlayers() {
+        const players = MockupApi.listPlayers({
+          teamName: state.selectedTeam,
+          actorEmail: state.actorEmail,
+          onlyMine: state.onlyMine
+        });
+        populatePlayerSelect(playerSelect, players);
+      }
+
+      const availableTeams = getAvailableTeamsForActor(currentUser);
+      populateTeamSelect(teamSelect, availableTeams, state.selectedTeam);
+
+      teamSelect.addEventListener('change', function () {
+        state.selectedTeam = teamSelect.value;
+        refreshPlayers();
+      });
+
+      refreshPlayers();
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
       if (exitButton) {
