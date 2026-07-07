@@ -1056,6 +1056,47 @@ textarea::placeholder { color: var(--text-dim); }
   color: var(--text);
 }
 
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-lg);
+  padding: 0.35rem;
+  margin: 1rem 0 1rem;
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.tab {
+  flex: 1 1 auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-soft);
+  text-align: center;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab:hover {
+  background: var(--surface-soft, rgba(0, 0, 0, 0.04));
+}
+
+.tab.active {
+  background: var(--brand-1, #2c7be5);
+  color: #fff;
+  border-color: var(--brand-1, #2c7be5);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--brand-1, #2c7be5);
+  outline-offset: 2px;
+}
+
 .inline-actions {
   display: flex;
   gap: 0.45rem;

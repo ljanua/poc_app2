@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S8: Skills — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S1-player-list.html">←</a>
+      <div class="header-title">Skills</div>
+      <div class="role-badge" id="roleBadge">SystemAdmin</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
+    </header>
+
+    <div class="content">
+      <div class="toolbar">
+        <label class="pill-select" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+          <input id="showInactiveToggle" type="checkbox" data-testid="show-inactive-toggle">
+          <span>Show inactive</span>
+        </label>
+      </div>
+
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label"># Sports</div>
+          <div class="kpi-value" id="kpiSportsCount">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"># Active Positions</div>
+          <div class="kpi-value" id="kpiActivePositionsCount">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"># Skills</div>
+          <div class="kpi-value" id="kpiSkillsCount">0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"># Assignments</div>
+          <div class="kpi-value" id="kpiAssignmentsCount">0</div>
+        </div>
+      </div>
+
+      <div class="page-actions">
+        <a class="btn btn-secondary" href="./S7a-clubs.html">Clubs</a>
+        <a class="btn btn-secondary" href="./S7-admin-user-management.html">User &amp; Role Management</a>
+      </div>
+
+      <div class="role-notice" id="roleNotice" style="margin-top: 1rem;">
+        You do not have permission to manage skills.
+      </div>
+
+      <div class="tabs" id="skillsTabs" role="tablist" aria-label="Skills admin sections">
+        <button class="tab" type="button" role="tab" data-tab-id="sports" id="tab-sports" aria-controls="tabpanel-sports" aria-selected="false">Sports</button>
+        <button class="tab" type="button" role="tab" data-tab-id="positions" id="tab-positions" aria-controls="tabpanel-positions" aria-selected="false">Positions</button>
+        <button class="tab" type="button" role="tab" data-tab-id="skills" id="tab-skills" aria-controls="tabpanel-skills" aria-selected="false">Skills</button>
+        <button class="tab" type="button" role="tab" data-tab-id="position-skills" id="tab-position-skills" aria-controls="tabpanel-position-skills" aria-selected="true">Position-Skills</button>
+      </div>
+
+      <div id="skillPanels">
+        <!-- Sports -->
+        <section class="table-card" role="tabpanel" id="tabpanel-sports" data-tab-id="sports" aria-labelledby="tab-sports" hidden>
+          <div class="modal-header">
+            <h2>Sports</h2>
+            <button class="btn btn-primary" data-testid="add-sport" type="button">Add Sport</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="sportsTable" data-testid="sports-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th># Positions</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sportsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Positions -->
+        <section class="table-card" role="tabpanel" id="tabpanel-positions" data-tab-id="positions" aria-labelledby="tab-positions" hidden>
+          <div class="modal-header">
+            <h2>Positions</h2>
+            <label class="pill-select" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+              <span>Sport:</span>
+              <select data-testid="position-sport-filter" id="positionSportFilter"></select>
+            </label>
+            <button class="btn btn-primary" data-testid="add-position" type="button">Add Position</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="positionsTable" data-testid="positions-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th># Skills</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="positionsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Skills -->
+        <section class="table-card" role="tabpanel" id="tabpanel-skills" data-tab-id="skills" aria-labelledby="tab-skills" hidden>
+          <div class="modal-header">
+            <h2>Skills</h2>
+            <button class="btn btn-primary" data-testid="add-skill" type="button">Add Skill</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="skillsTable" data-testid="skills-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Status</th>
+                  <th># Positions</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="skillsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Position Skills (default tab — visible on load) -->
+        <section class="table-card" role="tabpanel" id="tabpanel-position-skills" data-tab-id="position-skills" aria-labelledby="tab-position-skills">
+          <div class="modal-header">
+            <h2>Position Skills</h2>
+            <label class="pill-select" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+              <span>Position:</span>
+              <select data-testid="position-skills-filter" id="positionSkillsFilter"></select>
+            </label>
+            <button class="btn btn-primary" data-testid="assign-skills" type="button">Assign Skills</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="positionSkillsTable" data-testid="position-skills-table">
+              <thead>
+                <tr>
+                  <th>Skill</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="positionSkillsTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin" data-testid="nav-users" hidden>
+        <span class="nav-icon">🔐</span>
+        <span>Users</span>
+      </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
+      <a class="nav-item active" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
+    </nav>
+  </div>
+
+  <div class="modal" id="createSportModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Add Sport</h2>
+        <button class="mini-btn" data-close-modal="createSportModal">Close</button>
+      </div>
+      <form id="createSportForm" class="modal-form">
+        <label class="form-label" for="sportNameInput">Sport Name <span class="required">*</span></label>
+        <input id="sportNameInput" data-testid="sport-name-input" type="text" required minlength="2" maxlength="40">
+        <p class="error-msg" id="createSportError">Sport name must be 2-40 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="create-sport-submit">Save Sport</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="createSportModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="renameSportModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Update Sport</h2>
+        <button class="mini-btn" data-close-modal="renameSportModal">Close</button>
+      </div>
+      <form id="renameSportForm" class="modal-form">
+        <div class="notice">Selected sport: <strong id="renameTargetSport">-</strong></div>
+        <label class="form-label" for="renameSportName">New Name <span class="required">*</span></label>
+        <input id="renameSportName" type="text" required minlength="2" maxlength="40">
+        <p class="error-msg" id="renameSportError">Sport name must be 2-40 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="rename-sport-submit">Update</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="renameSportModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="createPositionModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Add Position</h2>
+        <button class="mini-btn" data-close-modal="createPositionModal">Close</button>
+      </div>
+      <form id="createPositionForm" class="modal-form">
+        <label class="form-label" for="positionNameInput">Position Name <span class="required">*</span></label>
+        <input id="positionNameInput" data-testid="position-name-input" type="text" required minlength="2" maxlength="80">
+
+        <label class="form-label" for="positionSportSelect">Sport <span class="required">*</span></label>
+        <select id="positionSportSelect" data-testid="position-sport-select" required></select>
+
+        <p class="error-msg" id="createPositionError">Position name must be 2-80 characters and unique within the sport.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="create-position-submit">Save Position</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="createPositionModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="renamePositionModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Update Position</h2>
+        <button class="mini-btn" data-close-modal="renamePositionModal">Close</button>
+      </div>
+      <form id="renamePositionForm" class="modal-form">
+        <div class="notice">Selected position: <strong id="renameTargetPosition">-</strong></div>
+        <label class="form-label" for="renamePositionName">New Name <span class="required">*</span></label>
+        <input id="renamePositionName" type="text" required minlength="2" maxlength="80">
+
+        <label class="form-label" for="renamePositionSport">Sport</label>
+        <select id="renamePositionSport"></select>
+
+        <p class="error-msg" id="renamePositionError">Position name must be 2-80 characters and unique within the sport.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="rename-position-submit">Update</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="renamePositionModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="createSkillModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Add Skill</h2>
+        <button class="mini-btn" data-close-modal="createSkillModal">Close</button>
+      </div>
+      <form id="createSkillForm" class="modal-form">
+        <label class="form-label" for="skillNameInput">Skill Name <span class="required">*</span></label>
+        <input id="skillNameInput" data-testid="skill-name-input" type="text" required minlength="2" maxlength="60">
+        <p class="error-msg" id="createSkillError">Skill name must be 2-60 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="create-skill-submit">Save Skill</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="createSkillModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="renameSkillModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Update Skill</h2>
+        <button class="mini-btn" data-close-modal="renameSkillModal">Close</button>
+      </div>
+      <form id="renameSkillForm" class="modal-form">
+        <div class="notice">Selected skill: <strong id="renameTargetSkill">-</strong></div>
+        <label class="form-label" for="renameSkillName">New Name <span class="required">*</span></label>
+        <input id="renameSkillName" type="text" required minlength="2" maxlength="60">
+        <p class="error-msg" id="renameSkillError">Skill name must be 2-60 characters and unique.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="rename-skill-submit">Update</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="renameSkillModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="assignSkillsModal" aria-hidden="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Assign Skills to Position</h2>
+        <button class="mini-btn" data-close-modal="assignSkillsModal">Close</button>
+      </div>
+      <form id="assignSkillsForm" class="modal-form">
+        <div class="notice">Selected position: <strong id="assignSkillsTargetPosition">-</strong></div>
+        <p class="muted-text">Check the skills to add to this position. Unchecking does NOT remove existing assignments — use the Remove button in the table for that.</p>
+        <div class="checkbox-list" id="assignSkillsChecklist" data-testid="assign-skills-checklist"></div>
+        <p class="error-msg" id="assignSkillsError">Pick at least one skill to assign.</p>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="assign-skills-submit">Assign</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="assignSkillsModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
+
+    (function () {
+      const state = {
+        actorRole: null,
+        actorEmail: null,
+        showInactive: false,
+        selectedSportId: 'sport_soccer',
+        selectedPositionId: null,
+        selectedSkillId: null
+      };
+
+      const currentUser = MockupApi.getCurrentUser();
+      const roleNotice = document.getElementById('roleNotice');
+      const skillPanels = document.getElementById('skillPanels');
+      const roleBadge = document.getElementById('roleBadge');
+      const toast = document.getElementById('toast');
+      const showInactiveToggle = document.getElementById('showInactiveToggle');
+
+      if (!currentUser || currentUser.role !== 'SystemAdmin') {
+        roleNotice.style.display = 'block';
+        skillPanels.style.display = 'none';
+        const tabsBar = document.getElementById('skillsTabs');
+        if (tabsBar) tabsBar.style.display = 'none';
+        roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
+        MockupApi.applyRoleGatedNav(currentUser);
+        const exitButton = document.querySelector('[data-testid="exit-button"]');
+        if (exitButton) {
+          exitButton.addEventListener('click', function () {
+            MockupApi.logout();
+            window.location.href = './S0-login.html';
+          });
+        }
+        return;
+      }
+
+      state.actorRole = currentUser.role;
+      state.actorEmail = currentUser.email;
+      roleBadge.textContent = state.actorRole;
+      roleNotice.style.display = 'none';
+      skillPanels.style.display = '';
+      MockupApi.applyRoleGatedNav(currentUser);
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 2500);
+      }
+
+      function openModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+      }
+      function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+      document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+        btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
+      });
+
+      function statusBadge(status) {
+        if (status === 'inactive') {
+          return '<span class="badge badge-declining">Inactive</span>';
+        }
+        return '<span class="badge badge-improving">Active</span>';
+      }
+
+      function refreshKpis() {
+        const sportsAll = MockupApi.listSports(state.actorRole, state.actorEmail, 'all') || [];
+        const positionsAll = MockupApi.listPositions(state.actorRole, state.actorEmail, null, 'all') || [];
+        const positionsActive = positionsAll.filter(function (p) { return (p.status || 'active') === 'active'; });
+        const skillsAll = MockupApi.listSkills(state.actorRole, state.actorEmail, 'all') || [];
+        const assignmentRows = [];
+        (positionsActive).forEach(function (p) {
+          const rows = MockupApi.listPositionSkills(p.id, state.actorRole, state.actorEmail) || [];
+          rows.forEach(function (r) { assignmentRows.push(r); });
+        });
+
+        document.getElementById('kpiSportsCount').textContent = String(sportsAll.length);
+        document.getElementById('kpiActivePositionsCount').textContent = String(positionsActive.length);
+        document.getElementById('kpiSkillsCount').textContent = String(skillsAll.length);
+        document.getElementById('kpiAssignmentsCount').textContent = String(assignmentRows.length);
+      }
+
+      function renderSports() {
+        const statusFilter = state.showInactive ? 'all' : 'active';
+        const sports = MockupApi.listSports(state.actorRole, state.actorEmail, statusFilter) || [];
+        const body = document.getElementById('sportsTableBody');
+        body.innerHTML = '';
+        sports.forEach(function (sport) {
+          const tr = document.createElement('tr');
+          tr.id = 'sportRow-' + sport.id;
+          tr.setAttribute('data-sport-id', sport.id);
+          tr.setAttribute('data-sport-name', sport.name);
+          tr.innerHTML =
+            '<td>' + escapeHtml(sport.name) + '</td>' +
+            '<td>' + statusBadge(sport.status || 'active') + '</td>' +
+            '<td>' + (sport.positionCount == null ? '—' : sport.positionCount) + '</td>' +
+            '<td><div class="inline-actions">' +
+              '<button class="mini-btn" data-testid="rename-sport-' + escapeHtml(sport.id) + '" type="button">Rename</button>' +
+              ((sport.status || 'active') === 'active'
+                ? '<button class="mini-btn warn" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Deactivate</button>'
+                : '<button class="mini-btn positive" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Activate</button>') +
+            '</div></td>';
+          body.appendChild(tr);
+        });
+      }
+
+      function populateSportFilter() {
+        const select = document.getElementById('positionSportFilter');
+        const sports = MockupApi.listSports(state.actorRole, state.actorEmail, 'all') || [];
+        const previous = state.selectedSportId;
+        select.innerHTML = '';
+        sports.forEach(function (sport) {
+          const opt = document.createElement('option');
+          opt.value = sport.id;
+          opt.textContent = sport.name;
+          if (sport.id === previous) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!sports.find(function (s) { return s.id === state.selectedSportId; })) {
+          state.selectedSportId = sports.length ? sports[0].id : null;
+          if (state.selectedSportId) select.value = state.selectedSportId;
+        }
+      }
+
+      function renderPositions() {
+        const statusFilter = state.showInactive ? 'all' : 'active';
+        const positions = MockupApi.listPositions(state.actorRole, state.actorEmail, state.selectedSportId, statusFilter) || [];
+        const body = document.getElementById('positionsTableBody');
+        body.innerHTML = '';
+        positions.forEach(function (position) {
+          const tr = document.createElement('tr');
+          tr.id = 'positionRow-' + position.id;
+          tr.setAttribute('data-position-id', position.id);
+          tr.setAttribute('data-position-name', position.name);
+          tr.innerHTML =
+            '<td>' + escapeHtml(position.name) + '</td>' +
+            '<td>' + statusBadge(position.status || 'active') + '</td>' +
+            '<td>' + (position.skillCount == null ? '—' : position.skillCount) + '</td>' +
+            '<td><div class="inline-actions">' +
+              '<button class="mini-btn" data-testid="rename-position-' + escapeHtml(position.id) + '" type="button">Rename</button>' +
+              ((position.status || 'active') === 'active'
+                ? '<button class="mini-btn warn" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Deactivate</button>'
+                : '<button class="mini-btn positive" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Activate</button>') +
+            '</div></td>';
+          body.appendChild(tr);
+        });
+        // Auto-pick the first position for the Position Skills filter when
+        // none has been selected yet, so the table is never blank on entry.
+        if (!state.selectedPositionId && positions.length) {
+          state.selectedPositionId = positions[0].id;
+        }
+        populatePositionSkillsFilter(positions);
+      }
+
+      function populatePositionSkillsFilter(positions) {
+        const select = document.getElementById('positionSkillsFilter');
+        const previous = state.selectedPositionId;
+        select.innerHTML = '';
+        const opts = positions.length ? positions : (MockupApi.listPositions(state.actorRole, state.actorEmail, state.selectedSportId, 'all') || []);
+        opts.forEach(function (position) {
+          const opt = document.createElement('option');
+          opt.value = position.id;
+          opt.textContent = position.name;
+          if (position.id === previous) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!opts.find(function (p) { return p.id === state.selectedPositionId; })) {
+          state.selectedPositionId = opts.length ? opts[0].id : null;
+          if (state.selectedPositionId) select.value = state.selectedPositionId;
+        }
+      }
+
+      function renderSkills() {
+        const statusFilter = state.showInactive ? 'all' : 'active';
+        const skills = MockupApi.listSkills(state.actorRole, state.actorEmail, statusFilter) || [];
+        const body = document.getElementById('skillsTableBody');
+        body.innerHTML = '';
+        skills.forEach(function (skill) {
+          const tr = document.createElement('tr');
+          tr.id = 'skillRow-' + skill.id;
+          tr.setAttribute('data-skill-id', skill.id);
+          tr.setAttribute('data-skill-name', skill.name);
+          tr.innerHTML =
+            '<td>' + escapeHtml(skill.name) + '</td>' +
+            '<td>' + statusBadge(skill.status || 'active') + '</td>' +
+            '<td>' + (skill.assignedPositionCount == null ? '—' : skill.assignedPositionCount) + '</td>' +
+            '<td><div class="inline-actions">' +
+              '<button class="mini-btn" data-testid="rename-skill-' + escapeHtml(skill.id) + '" type="button">Rename</button>' +
+              ((skill.status || 'active') === 'active'
+                ? '<button class="mini-btn warn" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Deactivate</button>'
+                : '<button class="mini-btn positive" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Activate</button>') +
+              '<button class="mini-btn danger" data-testid="delete-skill-' + escapeHtml(skill.id) + '" type="button">Delete</button>' +
+            '</div></td>';
+          body.appendChild(tr);
+        });
+      }
+
+      function renderPositionSkills() {
+        const body = document.getElementById('positionSkillsTableBody');
+        body.innerHTML = '';
+        if (!state.selectedPositionId) {
+          body.innerHTML = '<tr><td colspan="3" class="muted-text">Pick a position above to see its assigned skills.</td></tr>';
+          return;
+        }
+        const assignments = MockupApi.listPositionSkills(state.selectedPositionId, state.actorRole, state.actorEmail) || [];
+        if (!assignments.length) {
+          body.innerHTML = '<tr><td colspan="3" class="muted-text">No skills assigned yet. Use "Assign Skills" to add some.</td></tr>';
+          return;
+        }
+        assignments.forEach(function (entry) {
+          const tr = document.createElement('tr');
+          tr.id = 'positionSkillRow-' + state.selectedPositionId + '-' + entry.skillId;
+          tr.setAttribute('data-skill-id', entry.skillId);
+          tr.innerHTML =
+            '<td>' + escapeHtml(entry.skillName || entry.skillId) + '</td>' +
+            '<td>' + statusBadge(entry.status || 'active') + '</td>' +
+            '<td><button class="mini-btn warn" data-testid="remove-skill-' + escapeHtml(state.selectedPositionId) + '-' + escapeHtml(entry.skillId) + '" type="button">Remove</button></td>';
+          body.appendChild(tr);
+        });
+      }
+
+      function renderAll() {
+        populateSportFilter();
+        renderSports();
+        renderPositions();
+        renderSkills();
+        renderPositionSkills();
+        refreshKpis();
+      }
+
+      // Toolbar toggle.
+      showInactiveToggle.addEventListener('change', function () {
+        state.showInactive = Boolean(showInactiveToggle.checked);
+        renderAll();
+      });
+
+      // Sport filter (Positions panel).
+      document.getElementById('positionSportFilter').addEventListener('change', function (event) {
+        state.selectedSportId = event.target.value;
+        state.selectedPositionId = null;
+        renderPositions();
+        renderPositionSkills();
+        refreshKpis();
+      });
+
+      // Position Skills filter.
+      document.getElementById('positionSkillsFilter').addEventListener('change', function (event) {
+        state.selectedPositionId = event.target.value;
+        renderPositionSkills();
+      });
+
+      // Add buttons.
+      document.querySelector('[data-testid="add-sport"]').addEventListener('click', function () {
+        document.getElementById('sportNameInput').value = '';
+        document.getElementById('createSportError').classList.remove('show');
+        openModal('createSportModal');
+      });
+      document.querySelector('[data-testid="add-position"]').addEventListener('click', function () {
+        document.getElementById('positionNameInput').value = '';
+        const select = document.getElementById('positionSportSelect');
+        // Populate sport options.
+        const sports = MockupApi.listSports(state.actorRole, state.actorEmail, 'all') || [];
+        select.innerHTML = '';
+        sports.forEach(function (sport) {
+          const opt = document.createElement('option');
+          opt.value = sport.id;
+          opt.textContent = sport.name;
+          if (sport.id === state.selectedSportId) opt.selected = true;
+          select.appendChild(opt);
+        });
+        document.getElementById('createPositionError').classList.remove('show');
+        openModal('createPositionModal');
+      });
+      document.querySelector('[data-testid="add-skill"]').addEventListener('click', function () {
+        document.getElementById('skillNameInput').value = '';
+        document.getElementById('createSkillError').classList.remove('show');
+        openModal('createSkillModal');
+      });
+
+      // Sport row actions.
+      document.getElementById('sportsTableBody').addEventListener('click', function (event) {
+        const renameBtn = event.target.closest('[data-testid^="rename-sport-"]');
+        const toggleBtn = event.target.closest('[data-testid^="toggle-sport-status-"]');
+        const row = event.target.closest('tr');
+        const sportId = row ? row.getAttribute('data-sport-id') : null;
+        const currentName = row ? row.getAttribute('data-sport-name') : null;
+        if (renameBtn && sportId) {
+          state.selectedSportId = sportId;
+          document.getElementById('renameTargetSport').textContent = currentName || sportId;
+          document.getElementById('renameSportName').value = currentName || '';
+          document.getElementById('renameSportError').classList.remove('show');
+          openModal('renameSportModal');
+          return;
+        }
+        if (toggleBtn && sportId) {
+          const rowEl = document.querySelector('#sportRow-' + sportId);
+          const isCurrentlyActive = rowEl && rowEl.querySelector('[data-testid="toggle-sport-status-' + sportId + '"]').textContent.trim() === 'Deactivate';
+          const newStatus = isCurrentlyActive ? 'inactive' : 'active';
+          const response = MockupApi.setSportStatus(sportId, newStatus, state.actorRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not update sport status.'); return; }
+          renderAll();
+          showToast(newStatus === 'active' ? 'Sport activated.' : 'Sport deactivated.');
+        }
+      });
+
+      // Position row actions.
+      document.getElementById('positionsTableBody').addEventListener('click', function (event) {
+        const renameBtn = event.target.closest('[data-testid^="rename-position-"]');
+        const toggleBtn = event.target.closest('[data-testid^="toggle-position-status-"]');
+        const row = event.target.closest('tr');
+        const positionId = row ? row.getAttribute('data-position-id') : null;
+        if (renameBtn && positionId) {
+          const position = (MockupApi.listPositions(state.actorRole, state.actorEmail, null, 'all') || []).find(function (p) { return p.id === positionId; });
+          document.getElementById('renameTargetPosition').textContent = position ? position.name : positionId;
+          document.getElementById('renamePositionName').value = position ? position.name : '';
+          const sportSelect = document.getElementById('renamePositionSport');
+          const sports = MockupApi.listSports(state.actorRole, state.actorEmail, 'all') || [];
+          sportSelect.innerHTML = '';
+          sports.forEach(function (sport) {
+            const opt = document.createElement('option');
+            opt.value = sport.id;
+            opt.textContent = sport.name;
+            if (sport.id === (position && position.sportId)) opt.selected = true;
+            sportSelect.appendChild(opt);
+          });
+          document.getElementById('renamePositionError').classList.remove('show');
+          state.selectedPositionId = positionId;
+          openModal('renamePositionModal');
+          return;
+        }
+        if (toggleBtn && positionId) {
+          const rowEl = document.querySelector('#positionRow-' + positionId);
+          const isCurrentlyActive = rowEl && rowEl.querySelector('[data-testid="toggle-position-status-' + positionId + '"]').textContent.trim() === 'Deactivate';
+          const newStatus = isCurrentlyActive ? 'inactive' : 'active';
+          const response = MockupApi.setPositionStatus(positionId, newStatus, state.actorRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not update position status.'); return; }
+          renderAll();
+          showToast(newStatus === 'active' ? 'Position activated.' : 'Position deactivated.');
+        }
+      });
+
+      // Skill row actions.
+      document.getElementById('skillsTableBody').addEventListener('click', function (event) {
+        const renameBtn = event.target.closest('[data-testid^="rename-skill-"]');
+        const toggleBtn = event.target.closest('[data-testid^="toggle-skill-status-"]');
+        const deleteBtn = event.target.closest('[data-testid^="delete-skill-"]');
+        const row = event.target.closest('tr');
+        const skillId = row ? row.getAttribute('data-skill-id') : null;
+        const currentName = row ? row.getAttribute('data-skill-name') : null;
+        if (renameBtn && skillId) {
+          state.selectedSkillId = skillId;
+          document.getElementById('renameTargetSkill').textContent = currentName || skillId;
+          document.getElementById('renameSkillName').value = currentName || '';
+          document.getElementById('renameSkillError').classList.remove('show');
+          openModal('renameSkillModal');
+          return;
+        }
+        if (toggleBtn && skillId) {
+          const rowEl = document.querySelector('#skillRow-' + skillId);
+          const isCurrentlyActive = rowEl && rowEl.querySelector('[data-testid="toggle-skill-status-' + skillId + '"]').textContent.trim() === 'Deactivate';
+          const newStatus = isCurrentlyActive ? 'inactive' : 'active';
+          const response = MockupApi.setSkillStatus(skillId, newStatus, state.actorRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not update skill status.'); return; }
+          renderAll();
+          showToast(newStatus === 'active' ? 'Skill activated.' : 'Skill deactivated.');
+          return;
+        }
+        if (deleteBtn && skillId) {
+          const response = MockupApi.deleteSkill(skillId, state.actorRole, state.actorEmail);
+          if (response.status >= 400) { showToast(response.message || 'Could not delete skill.'); return; }
+          renderAll();
+          showToast('Skill deleted.');
+        }
+      });
+
+      // Position Skills row actions (Remove).
+      document.getElementById('positionSkillsTableBody').addEventListener('click', function (event) {
+        const removeBtn = event.target.closest('button[data-testid^="remove-skill-"]');
+        if (!removeBtn) return;
+        const testId = removeBtn.getAttribute('data-testid');
+        // Format: remove-skill-{positionId}-{skillId}. The skillId is the last segment,
+        // but skill ids can contain dashes. Use the dataset on the row instead.
+        const row = event.target.closest('tr');
+        const skillId = row ? row.getAttribute('data-skill-id') : null;
+        if (!skillId || !state.selectedPositionId) return;
+        const response = MockupApi.removeSkillFromPosition(state.selectedPositionId, skillId, state.actorRole, state.actorEmail);
+        if (response.status >= 400) { showToast(response.message || 'Could not remove skill.'); return; }
+        renderAll();
+        showToast('Skill removed.');
+      });
+
+      // Assign Skills modal trigger.
+      document.querySelector('[data-testid="assign-skills"]').addEventListener('click', function () {
+        if (!state.selectedPositionId) {
+          showToast('Pick a position first.');
+          return;
+        }
+        const position = (MockupApi.listPositions(state.actorRole, state.actorEmail, null, 'all') || []).find(function (p) { return p.id === state.selectedPositionId; });
+        document.getElementById('assignSkillsTargetPosition').textContent = position ? position.name : state.selectedPositionId;
+
+        const skills = MockupApi.listSkills(state.actorRole, state.actorEmail, 'all') || [];
+        const assignments = MockupApi.listPositionSkills(state.selectedPositionId, state.actorRole, state.actorEmail) || [];
+        const assignedIds = new Set(assignments.map(function (a) { return a.skillId; }));
+
+        const checklist = document.getElementById('assignSkillsChecklist');
+        checklist.innerHTML = '';
+        skills.forEach(function (skill) {
+          const wrap = document.createElement('label');
+          wrap.className = 'checkbox-item';
+          wrap.innerHTML =
+            '<input type="checkbox" data-testid="assign-skill-checkbox-' + escapeHtml(skill.id) + '" data-skill-id="' + escapeHtml(skill.id) + '"' +
+            (assignedIds.has(skill.id) ? ' checked' : '') + '>' +
+            '<span>' + escapeHtml(skill.name) + '</span>';
+          checklist.appendChild(wrap);
+        });
+        document.getElementById('assignSkillsError').classList.remove('show');
+        openModal('assignSkillsModal');
+      });
+
+      // Modal form submits.
+      document.getElementById('createSportForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('sportNameInput').value.trim();
+        const response = MockupApi.createSport({ name: name }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('createSportError').textContent = response.message || 'Could not create sport.';
+          document.getElementById('createSportError').classList.add('show');
+          return;
+        }
+        closeModal('createSportModal');
+        event.target.reset();
+        renderAll();
+        showToast('Sport "' + (response.sport && response.sport.name) + '" created.');
+      });
+
+      document.getElementById('renameSportForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('renameSportName').value.trim();
+        const response = MockupApi.updateSport(state.selectedSportId, { name: name }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('renameSportError').textContent = response.message || 'Could not update sport.';
+          document.getElementById('renameSportError').classList.add('show');
+          return;
+        }
+        closeModal('renameSportModal');
+        renderAll();
+        showToast('Sport updated.');
+      });
+
+      document.getElementById('createPositionForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('positionNameInput').value.trim();
+        const sportId = document.getElementById('positionSportSelect').value;
+        const response = MockupApi.createPosition({ name: name, sportId: sportId }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('createPositionError').textContent = response.message || 'Could not create position.';
+          document.getElementById('createPositionError').classList.add('show');
+          return;
+        }
+        closeModal('createPositionModal');
+        event.target.reset();
+        renderAll();
+        showToast('Position "' + (response.position && response.position.name) + '" created.');
+      });
+
+      document.getElementById('renamePositionForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('renamePositionName').value.trim();
+        const sportId = document.getElementById('renamePositionSport').value;
+        const response = MockupApi.updatePosition(state.selectedPositionId, { name: name, sportId: sportId }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('renamePositionError').textContent = response.message || 'Could not update position.';
+          document.getElementById('renamePositionError').classList.add('show');
+          return;
+        }
+        closeModal('renamePositionModal');
+        renderAll();
+        showToast('Position updated.');
+      });
+
+      document.getElementById('createSkillForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('skillNameInput').value.trim();
+        const response = MockupApi.createSkill({ name: name }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('createSkillError').textContent = response.message || 'Could not create skill.';
+          document.getElementById('createSkillError').classList.add('show');
+          return;
+        }
+        closeModal('createSkillModal');
+        event.target.reset();
+        renderAll();
+        showToast('Skill "' + (response.skill && response.skill.name) + '" created.');
+      });
+
+      document.getElementById('renameSkillForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const name = document.getElementById('renameSkillName').value.trim();
+        const response = MockupApi.updateSkill(state.selectedSkillId, { name: name }, state.actorRole, state.actorEmail);
+        if (response.status >= 400) {
+          document.getElementById('renameSkillError').textContent = response.message || 'Could not update skill.';
+          document.getElementById('renameSkillError').classList.add('show');
+          return;
+        }
+        closeModal('renameSkillModal');
+        renderAll();
+        showToast('Skill updated.');
+      });
+
+      document.getElementById('assignSkillsForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (!state.selectedPositionId) {
+          document.getElementById('assignSkillsError').classList.add('show');
+          return;
+        }
+        const checks = document.querySelectorAll('#assignSkillsChecklist input[type="checkbox"]');
+        let anyChecked = false;
+        let mutated = false;
+        checks.forEach(function (check) {
+          const skillId = check.getAttribute('data-skill-id');
+          if (check.checked) {
+            anyChecked = true;
+            // Only assign skills that aren't already on the position.
+            const existing = MockupApi.listPositionSkills(state.selectedPositionId, state.actorRole, state.actorEmail) || [];
+            if (!existing.find(function (e) { return e.skillId === skillId; })) {
+              const response = MockupApi.assignSkillToPosition(state.selectedPositionId, skillId, state.actorRole, state.actorEmail);
+              if (response.status === 201 || response.status === 200) {
+                mutated = true;
+              } else if (response.status >= 400) {
+                showToast(response.message || 'Could not assign skill ' + skillId + '.');
+              }
+            }
+          }
+        });
+        if (!anyChecked) {
+          document.getElementById('assignSkillsError').classList.add('show');
+          return;
+        }
+        closeModal('assignSkillsModal');
+        renderAll();
+        showToast(mutated ? 'Skills assigned.' : 'Skills already assigned.');
+      });
+
+      renderAll();
+
+      // Tabbed navigation between Sports / Positions / Skills / Position-Skills.
+      // Default is Position-Skills (also restored from sessionStorage if present).
+      (function setupTabs() {
+        const VALID_TABS = ['sports', 'positions', 'skills', 'position-skills'];
+        const STORAGE_KEY = 'vantageiq_s8_active_tab';
+        const DEFAULT_TAB = 'position-skills';
+
+        function readStoredTab() {
+          try {
+            const stored = sessionStorage.getItem(STORAGE_KEY);
+            if (stored && VALID_TABS.indexOf(stored) !== -1) return stored;
+          } catch (e) { /* sessionStorage unavailable — fall back to default */ }
+          return DEFAULT_TAB;
+        }
+
+        function writeStoredTab(tabId) {
+          try { sessionStorage.setItem(STORAGE_KEY, tabId); } catch (e) { /* ignore */ }
+        }
+
+        function setActiveTab(tabId) {
+          const buttons = document.querySelectorAll('[role="tab"][data-tab-id]');
+          buttons.forEach(function (btn) {
+            const isActive = btn.dataset.tabId === tabId;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+          });
+          const panels = document.querySelectorAll('[role="tabpanel"][data-tab-id]');
+          panels.forEach(function (panel) {
+            const isActive = panel.dataset.tabId === tabId;
+            panel.hidden = !isActive;
+          });
+          writeStoredTab(tabId);
+        }
+
+        const tabsContainer = document.getElementById('skillsTabs');
+        if (tabsContainer) {
+          tabsContainer.addEventListener('click', function (event) {
+            const btn = event.target.closest('[role="tab"][data-tab-id]');
+            if (!btn) return;
+            setActiveTab(btn.dataset.tabId);
+          });
+        }
+
+        setActiveTab(readStoredTab());
+      })();
+
+      // Exit button wires MockupApi.logout + redirect to login (mirrors S7a).
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', function () {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

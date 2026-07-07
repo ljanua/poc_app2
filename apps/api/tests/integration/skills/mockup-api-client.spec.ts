@@ -183,6 +183,43 @@ describe('mockup-api-client.js — S8 skills / positions / sports', () => {
     expect(s8Html).toContain('You do not have permission to manage skills.');
   });
 
+  it('S8-skills.html exposes a boxed tab bar with all four tab ids', () => {
+    // Tab buttons exist with role="tab" and the four expected data-tab-id values.
+    expect(s8Html).toContain('id="skillsTabs"');
+    expect(s8Html).toContain('role="tablist"');
+    expect(s8Html).toContain('data-tab-id="sports"');
+    expect(s8Html).toContain('data-tab-id="positions"');
+    expect(s8Html).toContain('data-tab-id="skills"');
+    expect(s8Html).toContain('data-tab-id="position-skills"');
+  });
+
+  it('S8-skills.html marks exactly one tabpanel as the default (Position-Skills)', () => {
+    // Each section is a tabpanel with role="tabpanel" + matching data-tab-id.
+    expect(s8Html).toContain('id="tabpanel-sports"');
+    expect(s8Html).toContain('id="tabpanel-positions"');
+    expect(s8Html).toContain('id="tabpanel-skills"');
+    expect(s8Html).toContain('id="tabpanel-position-skills"');
+
+    // Three panels declare `hidden`; the Position-Skills panel does not.
+    const sportsHidden = /id="tabpanel-sports"[^>]*\bhidden\b/.test(s8Html);
+    const positionsHidden = /id="tabpanel-positions"[^>]*\bhidden\b/.test(s8Html);
+    const skillsHidden = /id="tabpanel-skills"[^>]*\bhidden\b/.test(s8Html);
+    const positionSkillsHidden = /id="tabpanel-position-skills"[^>]*\bhidden\b/.test(s8Html);
+    expect(sportsHidden).toBe(true);
+    expect(positionsHidden).toBe(true);
+    expect(skillsHidden).toBe(true);
+    expect(positionSkillsHidden).toBe(false);
+  });
+
+  it('S8-skills.html wires the tab click handler and persists the active tab in sessionStorage', () => {
+    expect(s8Html).toContain('function setActiveTab(');
+    expect(s8Html).toContain('vantageiq_s8_active_tab');
+    expect(s8Html).toContain("sessionStorage.setItem(STORAGE_KEY");
+    expect(s8Html).toContain("sessionStorage.getItem(STORAGE_KEY");
+    // Click delegation on the tab list (whitespace-tolerant regex).
+    expect(s8Html).toMatch(/getElementById\(['"]skillsTabs['"]\)[\s\S]*?\.addEventListener\(['"]click['"]/);
+  });
+
   it('every existing mockup page gets the new data-testid="nav-skills" entry', () => {
     for (const pagePath of existingPages) {
       const fullPath = path.join(process.cwd(), 'docs', 'ux', 'mockup', pagePath);
