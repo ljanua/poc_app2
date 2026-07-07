@@ -1146,6 +1146,8 @@
         const params = new URLSearchParams();
         if (filters.teamName) params.set('teamName', filters.teamName);
         if (filters.query) params.set('query', filters.query);
+        if (filters.actorEmail) params.set('actorEmail', filters.actorEmail);
+        if (filters.onlyMine) params.set('onlyMine', 'true');
 
         const response = backendRequest('GET', '/players?' + params.toString());
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -1161,12 +1163,57 @@
       const teamName = filters.teamName || 'all';
       const query = normalizeComparable(filters.query || '');
 
+      // Coach scoping: when onlyMine is requested for a Coach actor, narrow
+      // to players on teams in the coach's clubs. SystemAdmin and unknown
+      // actors always see the full roster. The coach → clubs relationship is
+      // resolved in two passes so we tolerate the two seed shapes present in
+      // the codebase: (1) coach_clubs.userId matches actor.id/email directly,
+// (2) coachClubs is empty but team.leadCoachEmail === actor.email (used by
+// the seeded offline store and the regression S1 tests).
+      const actor = filters.onlyMine ? resolveActorContext(store, null, filters.actorEmail).actorUser : null;
+      const isCoachScoped = Boolean(actor && actor.role === 'Coach' && actor.status === 'active');
+      let allowedTeamNames = null;
+      if (isCoachScoped) {
+        const actorEmail = String(actor.email || '').trim().toLowerCase();
+        const actorId = actor.id;
+        const allowedClubIds = new Set(
+          (store.coachClubs || [])
+            .filter((entry) => {
+              const id = entry.userId;
+              return String(id) === String(actorId) || String(id).toLowerCase() === actorEmail;
+            })
+            .map((entry) => entry.clubId)
+        );
+        const fromCoachClubs = new Set(
+          store.teams
+            .filter((team) => allowedClubIds.has(team.clubId))
+            .map((team) => team.name)
+        );
+        // Fallback: when coach_clubs is empty for this coach, use the
+        // leadCoachEmail match. This mirrors the getAvailableTeams logic the
+        // S1 dropdown already uses and keeps the seeded offline store
+        // working without a separate coach_clubs row per coach.
+        const fromLeadCoachEmail = new Set(
+          store.teams
+            .filter((team) => {
+              const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+              return teamEmail && teamEmail === actorEmail;
+            })
+            .map((team) => team.name)
+        );
+        // Union both sets so an admin who already wired coach_clubs still
+        // sees every team they own, including ones whose leadCoachEmail has
+        // drifted from the seeded user record.
+        allowedTeamNames = new Set([...fromCoachClubs, ...fromLeadCoachEmail]);
+      }
+
       return clone(
         store.players
           .filter((player) => {
             const teamMatches = teamName === 'all' || player.teamName === teamName;
             const queryMatches = !query || normalizeComparable(player.name).includes(query) || normalizeComparable(player.position).includes(query);
-            return teamMatches && queryMatches;
+            const clubScopeMatches = !allowedTeamNames || allowedTeamNames.has(player.teamName);
+            return teamMatches && queryMatches && clubScopeMatches;
           })
           .map((player) => {
             const avatars = store.playerAvatars || {};
@@ -1661,6 +1708,39 @@
       } else {
         imgEl.style.display = 'none';
         emojiEl.style.display = '';
+      }
+    },
+
+    /**
+     * Toggle visibility of every [data-role-visible-to] element based on the
+     * current user's role. Elements without the attribute remain untouched.
+     * Used by the bottom-nav across mockups so coaches never see the
+     * SystemAdmin-only "Clubs" / "Users" entries and SystemAdmin sessions
+     * see all six nav items.
+     *
+     * @param {object|null} [currentUser] Optional pre-resolved user; if omitted
+     *   the function reads `getCurrentUser()`. Pass it when the caller already
+     *   has the user row (avoids a redundant localStorage round-trip).
+     */
+    applyRoleGatedNav(currentUser) {
+      var user = currentUser || this.getCurrentUser();
+      var role = (user && user.role) ? String(user.role) : '';
+      var isActive = Boolean(user && user.status === 'active');
+      var nodes = document.querySelectorAll('[data-role-visible-to]');
+      for (var i = 0; i < nodes.length; i += 1) {
+        var allowedRole = nodes[i].getAttribute('data-role-visible-to');
+        if (!allowedRole) continue;
+        var visible = isActive && role === allowedRole;
+        // The hidden attribute wins over inline display; setting both keeps
+        // the element out of the layout even when a previous script toggled
+        // style.display inline.
+        if (visible) {
+          nodes[i].hidden = false;
+          nodes[i].style.removeProperty('display');
+        } else {
+          nodes[i].hidden = true;
+          nodes[i].style.display = 'none';
+        }
       }
     },
 

@@ -20,9 +20,13 @@
         <select id="teamFilter" class="pill-select" aria-label="Filter by team">
           <option value="all">All Teams</option>
         </select>
+        <label class="checkbox-label" id="onlyMineWrap" data-role-visible-to="Coach" hidden>
+          <input id="onlyMineToggle" type="checkbox" data-testid="only-mine-toggle">
+          <span>Only My Players</span>
+        </label>
         <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
         <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
-        <a class="btn btn-secondary" href="./S7-admin-user-management.html">Admin Users</a>
+        <a class="btn btn-secondary" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin">Admin Users</a>
       </div>
 
       <div class="add-player-panel" id="addPlayerPanel" hidden>
@@ -73,6 +77,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
     </nav>
   </div>
 
@@ -89,7 +97,10 @@
         selectedTeam: 'all',
         searchQuery: '',
         duplicatePlayer: null,
-        confirmCreate: true
+        confirmCreate: true,
+        actorEmail: null,
+        onlyMine: false,
+        isCoach: false
       };
 
       const playerGrid = document.getElementById('playerGrid');
@@ -98,6 +109,8 @@
       const teamFilter = document.getElementById('teamFilter');
       const playerListStatus = document.getElementById('playerListStatus');
       const roleBadge = document.getElementById('roleBadge');
+      const onlyMineWrap = document.getElementById('onlyMineWrap');
+      const onlyMineToggle = document.getElementById('onlyMineToggle');
 
       const addPlayerPanel = document.getElementById('addPlayerPanel');
       const toggleAddPlayer = document.getElementById('toggleAddPlayer');
@@ -114,6 +127,27 @@
       const assignExistingBtn = document.getElementById('assignExistingBtn');
 
       const toast = document.getElementById('toast');
+
+      function hydrateActor() {
+        const currentUser = MockupApi.getCurrentUser();
+        if (currentUser && currentUser.email) {
+          state.actorEmail = String(currentUser.email).trim().toLowerCase();
+        }
+        state.isCoach = Boolean(currentUser && currentUser.role === 'Coach' && currentUser.status === 'active');
+        // Only My Players: visible only to active Coaches, default ON.
+        if (state.isCoach) {
+          state.onlyMine = true;
+          onlyMineWrap.hidden = false;
+          onlyMineToggle.checked = true;
+        } else {
+          state.onlyMine = false;
+          onlyMineWrap.hidden = true;
+          onlyMineToggle.checked = false;
+        }
+        roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
+        // Apply nav role-gating on every page load (clubs/users items hidden for coaches).
+        MockupApi.applyRoleGatedNav(currentUser);
+      }
 
       function showToast(message) {
         toast.textContent = message;
@@ -200,21 +234,28 @@
         return validTeams.indexOf(requestedTeam) >= 0 ? requestedTeam : 'all';
       }
 
-      function hydrateActor() {
-        const currentUser = MockupApi.getCurrentUser();
-        roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
-      }
-
       function getVisiblePlayers() {
-        return MockupApi.listPlayers({ teamName: state.selectedTeam, query: state.searchQuery });
+        return MockupApi.listPlayers({
+          teamName: state.selectedTeam,
+          query: state.searchQuery,
+          actorEmail: state.actorEmail,
+          onlyMine: state.onlyMine
+        });
       }
 
       function updateListStatus(visiblePlayers) {
-        if (state.selectedTeam === 'all') {
-          playerListStatus.textContent = 'Showing all assigned players (' + visiblePlayers.length + ').';
+        // When a specific team is selected, the team-scoped copy takes precedence
+        // regardless of the Only My Players toggle (the team filter narrows the
+        // roster further and that context is what the user just changed).
+        if (state.selectedTeam !== 'all') {
+          playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players assigned to ' + state.selectedTeam + '.';
           return;
         }
-        playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players assigned to ' + state.selectedTeam + '.';
+        if (state.isCoach && state.onlyMine) {
+          playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players in your clubs.';
+          return;
+        }
+        playerListStatus.textContent = 'Showing all assigned players (' + visiblePlayers.length + ').';
       }
 
       function renderPlayers() {
@@ -387,6 +428,11 @@
         renderSuggestions();
       });
 
+      onlyMineToggle.addEventListener('change', function () {
+        state.onlyMine = Boolean(onlyMineToggle.checked);
+        renderPlayers();
+      });
+
       toggleAddPlayer.addEventListener('click', function () {
         toggleAddPlayerPanel(addPlayerPanel.hidden);
       });
@@ -434,7 +480,7 @@
       const initialTeams = getAvailableTeams(currentUser);
       state.selectedTeam = resolveInitialTeam(initialTeams);
       renderTeamFilterOptions(initialTeams);
-      roleBadge.textContent = currentUser ? currentUser.role : 'Guest';
+      hydrateActor();
       renderPlayers();
       renderSuggestions();
 

@@ -31,26 +31,31 @@ test.describe('S1 Player List team filter and add-player flow', () => {
   });
 
   test('shows only players assigned to selected team', async ({ page }) => {
-    await page.selectOption('#teamFilter', 'Senior Squad');
+    // Coach Joao only leads U19 Prime. His dropdown contains only [All Teams, U19 Prime],
+    // so the only meaningful team filter is U19 Prime itself. Verify the status
+    // banner switches to the team-scoped copy when he picks his team.
+    await page.selectOption('#teamFilter', 'U19 Prime');
+    await expect(page.locator('#playerListStatus')).toContainText('U19 Prime');
+    await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
 
-    const cards = page.locator('.player-card .player-name');
-    await expect(cards).toHaveCount(2);
-    await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
-    await expect(page.locator('.player-card .player-name', { hasText: 'Kylian Mbappe' })).toBeVisible();
-    await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toHaveCount(0);
-
-    await expect(page.locator('#playerListStatus')).toContainText('Senior Squad');
+    // Switching back to "All Teams" keeps the coach-scoped roster (just U19 Prime's
+    // players), but the status banner switches to the "in your clubs" copy because
+    // Only My Players is on by default for Coach actors.
+    await page.selectOption('#teamFilter', 'all');
+    await expect(page.locator('#playerListStatus')).toContainText('your clubs');
+    await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
   });
 
   test('initializes selected team from query string when valid', async ({ page }) => {
+    // Joao does not lead Senior Squad, so the valid query-string team
+    // resolves to "all" (his dropdown only lists U19 Prime) and the result
+    // is filtered to his own players.
     await page.goto('/S1-player-list.html?team=Senior%20Squad');
 
-    await expect(page.locator('#teamFilter')).toHaveValue('Senior Squad');
+    await expect(page.locator('#teamFilter')).toHaveValue('all');
     const cards = page.locator('.player-card .player-name');
-    await expect(cards).toHaveCount(2);
-    await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
-    await expect(page.locator('.player-card .player-name', { hasText: 'Kylian Mbappe' })).toBeVisible();
-    await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toHaveCount(0);
+    await expect(cards).toHaveCount(1);
+    await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
   });
 
   test('shows only coach-assigned teams in the dropdown for coach sessions', async ({ page }) => {
@@ -83,24 +88,23 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await page.goto('/S1-player-list.html?team=Unknown%20Team');
 
     await expect(page.locator('#teamFilter')).toHaveValue('all');
-    await expect(page.locator('.player-card .player-name')).toHaveCount(4);
-    await expect(page.locator('#playerListStatus')).toContainText('Showing all assigned players');
+    // Coach-scoped: Joao sees only his own team's player (Messi on U19 Prime).
+    await expect(page.locator('.player-card .player-name')).toHaveCount(1);
+    await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
+    await expect(page.locator('#playerListStatus')).toContainText('your clubs');
   });
 
   test('adds a player from name lookup and reassigns to selected team', async ({ page }) => {
-    await page.selectOption('#teamFilter', 'Senior Squad');
+    // Coach Joao only leads U19 Prime; the add-player flow is gated to a specific team.
+    await page.selectOption('#teamFilter', 'U19 Prime');
     await page.getByRole('button', { name: 'Add Player' }).click();
 
     await page.fill('#addPlayerInput', 'ney');
     await page.fill('#addPlayerInput', 'Neymar Jr');
     await page.getByRole('button', { name: 'Add to Team' }).click();
 
-    await expect(page.locator('#toast')).toContainText('Neymar Jr moved to Senior Squad.');
+    await expect(page.locator('#toast')).toContainText('Neymar Jr moved to U19 Prime.');
     await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toBeVisible();
-
-    await page.selectOption('#teamFilter', 'U17 Elite');
-    await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toHaveCount(0);
-    await expect(page.locator('#emptyState')).toBeVisible();
   });
 
   test('blocks add action when no valid dropdown match exists', async ({ page }) => {
@@ -125,14 +129,18 @@ test.describe('S1 Player List team filter and add-player flow', () => {
   });
 
   test('keeps explicit mock-local behavior for offline regression runs', async ({ page }) => {
-    await expect(page.locator('.player-card .player-name')).toHaveCount(4);
-    await page.selectOption('#teamFilter', 'Senior Squad');
-    await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
+    // Coach Joao is the lead of U19 Prime only; with Only My Players ON he
+    // sees only Messi (the seeded player on U19 Prime). Extras accumulate
+    // across runs, so we don't pin a hard count.
+    const cardNames = page.locator('.player-card .player-name');
+    await expect(cardNames).toHaveCount(1);
+    await expect(cardNames).toContainText(['Lionel Messi']);
   });
 
   test('shows emoji avatar for players without an uploaded photo', async ({ page }) => {
     const cards = page.locator('.player-card');
-    await expect(cards).toHaveCount(4);
+    // Coach scope: Joao sees exactly the player on the team he leads.
+    await expect(cards).toHaveCount(1);
     // Each card should show ⚽ emoji in the avatar slot and have no has-avatar modifier
     await expect(page.locator('.player-card .player-image').first()).toContainText('⚽');
     await expect(page.locator('.player-card .player-image.has-avatar')).toHaveCount(0);

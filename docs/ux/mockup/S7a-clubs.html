@@ -84,9 +84,17 @@
         <span class="nav-icon">📹</span>
         <span>Capture</span>
       </a>
-      <a class="nav-item active" href="./S7-admin-user-management.html">
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin" data-testid="nav-users" hidden>
         <span class="nav-icon">🔐</span>
         <span>Users</span>
+      </a>
+      <a class="nav-item active" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
       </a>
     </nav>
   </div>
@@ -196,6 +204,7 @@
         state.actorEmail = sessionUser.email;
         state.viewRole = sessionUser.role || 'SystemAdmin';
       }
+      MockupApi.applyRoleGatedNav(sessionUser);
 
       const tableBody = document.getElementById('clubsTableBody');
       const searchInput = document.getElementById('clubSearch');

@@ -74,6 +74,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
     </nav>
   </div>
 
@@ -177,6 +181,8 @@
         state.actorEmail = sessionUser.email;
         state.actorRole = sessionUser.role || 'Coach';
         roleBadge.textContent = state.actorRole;
+
+        MockupApi.applyRoleGatedNav(sessionUser);
 
         const teamId = getQueryTeamId();
         if (!teamId) {

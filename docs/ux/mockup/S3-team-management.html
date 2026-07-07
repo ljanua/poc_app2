@@ -93,6 +93,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
     </nav>
   </div>
 
@@ -242,6 +246,8 @@
         roleBadge.textContent = currentUser.role;
         openCreateTeam.disabled = false;
         openCreateTeam.textContent = 'Create Team';
+
+        MockupApi.applyRoleGatedNav(currentUser);
 
         if (currentUser.role === 'SystemAdmin') {
           onlyMyClubsWrap.hidden = true;

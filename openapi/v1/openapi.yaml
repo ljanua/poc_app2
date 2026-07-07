@@ -9,6 +9,14 @@ paths:
   /players:
     get:
       summary: List players
+      description: >-
+        Returns the player roster. When `actorEmail` resolves to an active
+        Coach, the result is scoped to players whose team belongs to one of
+        the coach's clubs (joined via `coach_clubs`); SystemAdmin actors and
+        unknown/missing actors receive the full roster regardless of
+        `onlyMine`. `onlyMine` is layered on top of role scoping and is
+        accepted for API completeness but never affects a SystemAdmin
+        response.
       tags: [Players]
       security:
         - bearerAuth: []
@@ -23,6 +31,23 @@ paths:
           required: false
           schema:
             type: string
+        - name: actorEmail
+          in: query
+          required: false
+          description: >-
+            Email of the requesting user. When the resolved user is an
+            active Coach, the response is scoped to that coach's clubs.
+          schema:
+            type: string
+        - name: onlyMine
+          in: query
+          required: false
+          description: >-
+            When true, narrows the response to players whose team belongs
+            to one of the actor's clubs. Has no effect for SystemAdmin
+            actors (they always see the full roster).
+          schema:
+            type: boolean
       responses:
         '200':
           description: Player list

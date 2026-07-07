@@ -36,7 +36,9 @@ test.describe('S7a Clubs page', () => {
 
   test('SystemAdmin sees the seeded club and the page actions', async ({ page }) => {
     await page.goto('/S7a-clubs.html');
-    await expect(page.getByText('Clubs')).toBeVisible();
+    // Scope to the page header: the page also has KPI labels and a nav item
+    // labelled "Clubs", so getByText alone would match all four strict-mode elements.
+    await expect(page.getByRole('banner').getByText('Clubs')).toBeVisible();
     await expect(page.getByTestId('open-create-club')).toBeVisible();
     await expect(page.locator('tbody tr', { hasText: 'VantageIQ Club' })).toHaveCount(1);
   });

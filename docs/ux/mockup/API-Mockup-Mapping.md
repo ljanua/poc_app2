@@ -13,6 +13,7 @@ Source plans:
 - docs/plans/2026-07-06-005-feat-manage-club-table-and-s3-filter-plan.md
 - docs/plans/2026-07-06-007-feat-team-update-screen-plan.md
 - docs/plans/2026-07-06-008-feat-s7-user-club-assignment-and-s7a-clubs-page-plan.md
+- docs/plans/2026-07-06-009-feat-s1-coach-scope-clubs-main-menu-plan.md
 
 ## Screen mapping
 
@@ -27,7 +28,7 @@ Source plans:
 | S3-team-management.html | Create Team (Coach actor) | Create team (coach auto-assigned) | POST /v1/teams | 201 Created with lead coach set to actor | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Create Team (SystemAdmin actor) | Create team (selected active coach) | POST /v1/teams | 201 Created with selected coach as lead coach | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Change Coach (SystemAdmin only) | Reassign team coach | PATCH /v1/teams/{teamId}/coach | 200 OK with updated team coach | 400 validation_error, 403 forbidden, 404 not_found |
-| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded) | 400 validation_error |
+| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query=&actorEmail=&onlyMine= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded). When `actorEmail` resolves to an active Coach and `onlyMine=true`, the list is scoped to players on teams belonging to that coach's clubs (joined via `coach_clubs`); SystemAdmin actors always see the full roster regardless of `onlyMine` | 400 validation_error |
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
@@ -172,3 +173,31 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps the offline store in lockstep: `clubs` items in `createSeed` gain `status: 'active'`, `listClubs` accepts a status filter and returns `coachCount`/`teamCount`, and the new methods (`createClub`, `updateClub`, `setClubStatus`, `listUserClubs`, `assignUserToClub`, `removeUserFromClub`, `assignTeamToClub`) cover the same lifecycle in the offline fallback.
 - S7a-clubs.html is reached from S7's "View List of Clubs" page action and from the bottom-nav Users link; the page is SystemAdmin-only and shows the full club roster with KPI cards (Active Clubs / Inactive / Total Coaches / Total Teams) plus the four CRUD verbs (Add, Update, Assign Coach(s), Assign Team(s), Deactivate/Reactivate).
 - S7-admin-user-management.html renders a per-user Clubs column with the user's existing `coach_clubs` rows as removable chips plus an "Assign" button that opens the picker modal. The picker calls `MockupApi.assignUserToClub` and `MockupApi.removeUserFromClub` so the chip × button does an explicit `DELETE`, matching the API contract.
+
+## S1 Coach Scoping + Clubs Main Menu (2026-07-06-009)
+
+### API
+
+- `GET /v1/players` accepts two new query parameters:
+  - `actorEmail` (string, optional): when the email resolves to an active user, that user's role drives the scoping decision.
+  - `onlyMine` (boolean, optional, default `false`): when `true`, the response is narrowed to players whose team belongs to one of the actor's clubs.
+- Coach scoping rule: when `actorEmail` resolves to an active Coach, the response is narrowed via `teams.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $actor)`. SystemAdmin actors and unknown/missing actors receive the full roster regardless of `onlyMine`.
+- `onlyMine` is honored only when an active actor was resolved AND that actor is a Coach. SystemAdmin actors always see the full roster (the `onlyMine` flag is accepted for API completeness but ignored for them).
+
+### Client
+
+- `MockupApi.listPlayers(options)` accepts `actorEmail` and `onlyMine` in `options`. In backend mode both fields are forwarded as query parameters. In offline mode the same rule is mirrored: when `actor` resolves to an active Coach and `onlyMine` is truthy, the result is filtered to players whose team name is in the set of team names belonging to that coach's clubs (`coach_clubs` ∩ `teams.club_id`).
+- `MockupApi.getCurrentUser()` and `MockupApi.applyRoleGatedNav(currentUser)` are the new entry points used by every mockup page:
+  - `applyRoleGatedNav` walks every `[data-role-visible-to]` element and toggles `hidden` + `display: none` based on the current user's role and `status === 'active'`.
+  - The Clubs and Users nav items carry `data-role-visible-to="SystemAdmin"` so coaches never see admin-only chrome.
+
+### UI
+
+- `S1-player-list.html` gains a Coach-only "Only My Players" checkbox in the toolbar. It is `hidden` and unchecked by default; for active Coach actors it is `hidden=false` and `checked=true`. Unchecking it disables coach scoping (the roster returns to the full set on the same actor). The checkbox is shipped `hidden` in markup so coaches never see a flash of admin-only chrome before JS hydrates the role.
+- `S1-player-list.html` reads `actorEmail` and `onlyMine` from the actor context on every call to `MockupApi.listPlayers`. The status banner switches between "Showing X players in your clubs." (Coach + Only My Players ON) and the existing "Showing all assigned players (N)" / "Showing N players assigned to <team>" strings.
+- Every bottom-nav page (`S1`, `S2`, `S3`, `S3a`, `S4`, `S5`, `S6`, `S7`, `S7a`) now carries a `Clubs` nav entry gated to `SystemAdmin`. The entry links to `S7a-clubs.html` and is shipped `hidden` so coaches never see it before `MockupApi.applyRoleGatedNav` runs.
+
+### Player-Club Invariant
+
+- Every player is reachable only via a team, and every team must belong to a club. The team-create path (`POST /v1/teams`) rejects requests without a non-empty `clubId` with a `400 validation_error` ("Please select a club for this team."), and Coach actors without an explicit `clubId` fall back to their first `coach_clubs` row in creation order. If neither is resolvable, the response is also `400`.
+- `apps/api/tests/contract/openapi.players.spec.ts` (Player-club invariant block) locks the rejection text and the `coach_clubs` fallback path on the serve-mockup side, so a future refactor cannot silently relax the invariant.

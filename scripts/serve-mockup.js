@@ -820,7 +820,7 @@ async function ensureDatabase() {
   await syncDefaultDashboardStats(pool);
 }
 
-async function listPlayers(teamName, query) {
+async function listPlayers(teamName, query, actor) {
   const values = [];
   const predicates = [];
 
@@ -832,6 +832,14 @@ async function listPlayers(teamName, query) {
   if (query) {
     values.push(`%${query}%`);
     predicates.push(`(LOWER(p.name) LIKE LOWER($${values.length}) OR LOWER(p.position) LIKE LOWER($${values.length}))`);
+  }
+
+  // Coach scoping: when the actor is an active Coach, narrow the result to
+  // players on teams whose club_id is in the coach's coach_clubs set. SystemAdmin
+  // and unknown actors always see the full roster (current behavior preserved).
+  if (actor && actor.role === 'Coach' && actor.status === 'active') {
+    values.push(actor.id);
+    predicates.push(`t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`);
   }
 
   const whereSql = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
@@ -856,6 +864,25 @@ async function listPlayers(teamName, query) {
   );
 
   return result.rows.map(toPlayerPayload);
+}
+
+// Resolves any active actor (Coach or SystemAdmin) by email. Returns null when
+// the email is unknown or the user is inactive. Used by listPlayers to decide
+// whether to apply coach scoping; SystemAdmin actors bypass scoping entirely.
+async function resolveActorForPlayersList(actorEmail) {
+  const email = String(actorEmail || '').trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+  const result = await pool.query(
+    `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email]
+  );
+  const actor = result.rows[0] || null;
+  if (!actor || actor.status !== 'active') {
+    return null;
+  }
+  return actor;
 }
 
 async function findTeamByName(teamName) {
@@ -2193,7 +2220,13 @@ async function handlePlayersApi(req, res, requestUrl) {
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/players`) {
     const teamName = requestUrl.searchParams.get('teamName') || 'all';
     const query = normalizeComparable(requestUrl.searchParams.get('query') || '');
-    const rows = await listPlayers(teamName, query);
+    const actorEmail = requestUrl.searchParams.get('actorEmail') || '';
+    // onlyMine is accepted for API completeness (the mockup never sends
+    // onlyMine=true for SystemAdmin, but the server should not 400 on it).
+    const onlyMine = String(requestUrl.searchParams.get('onlyMine') || '').toLowerCase() === 'true';
+    const actor = await resolveActorForPlayersList(actorEmail);
+    const scopedActor = onlyMine ? actor : null;
+    const rows = await listPlayers(teamName, query, scopedActor);
     sendJson(res, 200, { data: rows });
     return;
   }

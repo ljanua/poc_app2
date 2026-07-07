@@ -51,6 +51,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
     </nav>
   </div>
 
@@ -59,6 +63,7 @@
     (function () {
       const currentUser = MockupApi.getCurrentUser();
       document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
+      MockupApi.applyRoleGatedNav(currentUser);
       const teamFilter = document.getElementById('teamFilter');
       const resultsGrid = document.getElementById('resultsGrid');
       const headerMeta = document.getElementById('assessmentHeaderMeta');
