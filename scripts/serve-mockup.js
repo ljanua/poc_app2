@@ -569,6 +569,175 @@ function toUserClubPayload(row) {
   };
 }
 
+function toSportPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status || 'active',
+    positionCount: row.positionCount === undefined || row.positionCount === null ? null : Number(row.positionCount)
+  };
+}
+
+function toPositionPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    sportId: row.sportId || row.sport_id,
+    status: row.status || 'active',
+    skillCount: row.skillCount === undefined || row.skillCount === null ? null : Number(row.skillCount)
+  };
+}
+
+function toSkillPayload(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    status: row.status || 'active',
+    assignedPositionCount: row.assignedPositionCount === undefined || row.assignedPositionCount === null ? null : Number(row.assignedPositionCount)
+  };
+}
+
+function toPositionSkillPayload(row) {
+  return {
+    positionId: row.positionId || row.position_id,
+    skillId: row.skillId || row.skill_id,
+    skillName: row.skillName || row.skill_name || null,
+    status: row.status || 'active'
+  };
+}
+
+function validateName(name, minLen, maxLen, fieldLabel) {
+  const value = String(name || '').trim();
+  if (value.length < minLen || value.length > maxLen) {
+    return `${fieldLabel} name must be ${minLen}-${maxLen} characters.`;
+  }
+  return null;
+}
+
+async function findSportByName(name, client) {
+  const runner = client || pool;
+  const result = await runner.query(
+    `SELECT id, name, status FROM sports WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+    [name]
+  );
+  return result.rows[0] || null;
+}
+
+async function findPositionByName(sportId, name, client) {
+  const runner = client || pool;
+  const result = await runner.query(
+    `SELECT id, name, sport_id AS "sportId", status FROM positions WHERE sport_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1`,
+    [sportId, name]
+  );
+  return result.rows[0] || null;
+}
+
+async function findSkillByName(name, client) {
+  const runner = client || pool;
+  const result = await runner.query(
+    `SELECT id, name, status FROM skills WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+    [name]
+  );
+  return result.rows[0] || null;
+}
+
+async function listSportsWithCounts(statusFilter, client) {
+  const runner = client || pool;
+  const params = [];
+  let whereClause = '';
+  if (statusFilter === 'active' || statusFilter === 'inactive') {
+    whereClause = 'WHERE s.status = $1';
+    params.push(statusFilter);
+  }
+  const result = await runner.query(
+    `
+      SELECT
+        s.id,
+        s.name,
+        s.status,
+        (SELECT COUNT(*) FROM positions p WHERE p.sport_id = s.id) AS "positionCount"
+      FROM sports s
+      ${whereClause}
+      ORDER BY s.name ASC
+    `,
+    params
+  );
+  return result.rows.map(toSportPayload);
+}
+
+async function listPositionsWithCounts(sportId, statusFilter, client) {
+  const runner = client || pool;
+  const params = [];
+  const whereParts = [];
+  if (sportId) {
+    params.push(sportId);
+    whereParts.push(`p.sport_id = $${params.length}`);
+  }
+  if (statusFilter === 'active' || statusFilter === 'inactive') {
+    params.push(statusFilter);
+    whereParts.push(`p.status = $${params.length}`);
+  }
+  const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const result = await runner.query(
+    `
+      SELECT
+        p.id,
+        p.name,
+        p.sport_id AS "sportId",
+        p.status,
+        (SELECT COUNT(*) FROM position_skills ps WHERE ps.position_id = p.id) AS "skillCount"
+      FROM positions p
+      ${whereClause}
+      ORDER BY p.name ASC
+    `,
+    params
+  );
+  return result.rows.map(toPositionPayload);
+}
+
+async function listSkillsWithCounts(statusFilter, client) {
+  const runner = client || pool;
+  const params = [];
+  let whereClause = '';
+  if (statusFilter === 'active' || statusFilter === 'inactive') {
+    whereClause = 'WHERE s.status = $1';
+    params.push(statusFilter);
+  }
+  const result = await runner.query(
+    `
+      SELECT
+        s.id,
+        s.name,
+        s.status,
+        (SELECT COUNT(*) FROM position_skills ps WHERE ps.skill_id = s.id) AS "assignedPositionCount"
+      FROM skills s
+      ${whereClause}
+      ORDER BY s.name ASC
+    `,
+    params
+  );
+  return result.rows.map(toSkillPayload);
+}
+
+async function listPositionSkills(positionId, client) {
+  const runner = client || pool;
+  const result = await runner.query(
+    `
+      SELECT
+        ps.position_id AS "positionId",
+        ps.skill_id AS "skillId",
+        s.name AS "skillName",
+        s.status
+      FROM position_skills ps
+      JOIN skills s ON s.id = ps.skill_id
+      WHERE ps.position_id = $1
+      ORDER BY s.name ASC
+    `,
+    [positionId]
+  );
+  return result.rows.map(toPositionSkillPayload);
+}
+
 async function resolveSystemAdminActor(actorEmail) {
   const email = String(actorEmail || '').trim().toLowerCase();
   if (!email) {
@@ -2573,6 +2742,394 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     sendJson(res, 200, { data: found });
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Skills admin (sports / positions / skills / position_skills).
+  // SystemAdmin-only writes; reads require an active actor but accept any role.
+  // ---------------------------------------------------------------------------
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/sports`) {
+    const statusFilter = String(requestUrl.searchParams.get('status') || 'active').trim().toLowerCase();
+    const rows = await listSportsWithCounts(statusFilter);
+    sendJson(res, 200, { data: rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/sports`) {
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const nameError = validateName(payload.name, 2, 40, 'Sport');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    const trimmedName = String(payload.name).trim();
+    const existing = await findSportByName(trimmedName);
+    if (existing) {
+      sendJson(res, 409, appError(409, 'conflict', 'A sport with this name already exists.'));
+      return;
+    }
+    const sportId = `sport_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const insertResult = await pool.query(
+      `INSERT INTO sports (id, name, status) VALUES ($1, $2, 'active') RETURNING id, name, status`,
+      [sportId, trimmedName]
+    );
+    const row = (await listSportsWithCounts('all')).find((r) => r.id === insertResult.rows[0].id) || toSportPayload({ ...insertResult.rows[0], positionCount: 0 });
+    sendJson(res, 201, { data: row });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/v1\/sports\/[^/]+$/.test(requestUrl.pathname)) {
+    const sportId = decodeURIComponent(requestUrl.pathname.split('/').pop());
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const nameError = validateName(payload.name, 2, 40, 'Sport');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    const trimmedName = String(payload.name).trim();
+    const existing = await pool.query(`SELECT id FROM sports WHERE id = $1`, [sportId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Sport not found.'));
+      return;
+    }
+    const collision = await findSportByName(trimmedName);
+    if (collision && collision.id !== sportId) {
+      sendJson(res, 409, appError(409, 'conflict', 'A sport with this name already exists.'));
+      return;
+    }
+    await pool.query(`UPDATE sports SET name = $1, updated_at = NOW() WHERE id = $2`, [trimmedName, sportId]);
+    const row = (await listSportsWithCounts('all')).find((r) => r.id === sportId);
+    sendJson(res, 200, { data: row });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/v1\/sports\/[^/]+\/status$/.test(requestUrl.pathname)) {
+    const sportId = decodeURIComponent(requestUrl.pathname.split('/')[4]);
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const status = String(payload.status || '').trim().toLowerCase();
+    if (status !== 'active' && status !== 'inactive') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Status must be "active" or "inactive".'));
+      return;
+    }
+    const existing = await pool.query(`SELECT id FROM sports WHERE id = $1`, [sportId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Sport not found.'));
+      return;
+    }
+    await pool.query(`UPDATE sports SET status = $1, updated_at = NOW() WHERE id = $2`, [status, sportId]);
+    const row = (await listSportsWithCounts('all')).find((r) => r.id === sportId);
+    sendJson(res, 200, { data: row });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/positions`) {
+    const sportId = String(requestUrl.searchParams.get('sportId') || 'sport_soccer').trim();
+    const statusFilter = String(requestUrl.searchParams.get('status') || 'active').trim().toLowerCase();
+    const rows = await listPositionsWithCounts(sportId, statusFilter);
+    sendJson(res, 200, { data: rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/positions`) {
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const nameError = validateName(payload.name, 2, 80, 'Position');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    const sportId = String(payload.sportId || '').trim();
+    if (!sportId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Position requires a sportId.'));
+      return;
+    }
+    const sportRow = await pool.query(`SELECT id, status FROM sports WHERE id = $1`, [sportId]);
+    if (!sportRow.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Sport not found.'));
+      return;
+    }
+    if (sportRow.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Cannot add a position under an inactive sport.'));
+      return;
+    }
+    const trimmedName = String(payload.name).trim();
+    const collision = await findPositionByName(sportId, trimmedName);
+    if (collision) {
+      sendJson(res, 409, appError(409, 'conflict', 'A position with this name already exists under that sport.'));
+      return;
+    }
+    const positionId = `pos_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    await pool.query(
+      `INSERT INTO positions (id, name, sport_id, status) VALUES ($1, $2, $3, 'active')`,
+      [positionId, trimmedName, sportId]
+    );
+    const row = (await listPositionsWithCounts(sportId, 'all')).find((r) => r.id === positionId);
+    sendJson(res, 201, { data: row });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/v1\/positions\/[^/]+$/.test(requestUrl.pathname)) {
+    const positionId = decodeURIComponent(requestUrl.pathname.split('/').pop());
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const existing = await pool.query(`SELECT id, name, sport_id AS "sportId" FROM positions WHERE id = $1`, [positionId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Position not found.'));
+      return;
+    }
+    const nextName = payload.name !== undefined ? String(payload.name).trim() : existing.rows[0].name;
+    const nextSportId = payload.sportId !== undefined ? String(payload.sportId).trim() : existing.rows[0].sportId;
+    const nameError = validateName(nextName, 2, 80, 'Position');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    if (nextSportId !== existing.rows[0].sportId) {
+      const sportRow = await pool.query(`SELECT id FROM sports WHERE id = $1`, [nextSportId]);
+      if (!sportRow.rows[0]) {
+        sendJson(res, 404, appError(404, 'not_found', 'Target sport not found.'));
+        return;
+      }
+    }
+    const collision = await findPositionByName(nextSportId, nextName);
+    if (collision && collision.id !== positionId) {
+      sendJson(res, 409, appError(409, 'conflict', 'A position with this name already exists under that sport.'));
+      return;
+    }
+    await pool.query(
+      `UPDATE positions SET name = $1, sport_id = $2, updated_at = NOW() WHERE id = $3`,
+      [nextName, nextSportId, positionId]
+    );
+    const row = (await listPositionsWithCounts(nextSportId, 'all')).find((r) => r.id === positionId);
+    sendJson(res, 200, { data: row });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/v1\/positions\/[^/]+\/status$/.test(requestUrl.pathname)) {
+    const positionId = decodeURIComponent(requestUrl.pathname.split('/')[4]);
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const status = String(payload.status || '').trim().toLowerCase();
+    if (status !== 'active' && status !== 'inactive') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Status must be "active" or "inactive".'));
+      return;
+    }
+    const existing = await pool.query(`SELECT id, sport_id AS "sportId" FROM positions WHERE id = $1`, [positionId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Position not found.'));
+      return;
+    }
+    await pool.query(`UPDATE positions SET status = $1, updated_at = NOW() WHERE id = $2`, [status, positionId]);
+    const row = (await listPositionsWithCounts(existing.rows[0].sportId, 'all')).find((r) => r.id === positionId);
+    sendJson(res, 200, { data: row });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/skills`) {
+    const statusFilter = String(requestUrl.searchParams.get('status') || 'active').trim().toLowerCase();
+    const rows = await listSkillsWithCounts(statusFilter);
+    sendJson(res, 200, { data: rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/skills`) {
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const nameError = validateName(payload.name, 2, 60, 'Skill');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    const trimmedName = String(payload.name).trim();
+    const existing = await findSkillByName(trimmedName);
+    if (existing) {
+      sendJson(res, 409, appError(409, 'conflict', 'A skill with this name already exists.'));
+      return;
+    }
+    const skillId = `s_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    await pool.query(
+      `INSERT INTO skills (id, name, status) VALUES ($1, $2, 'active')`,
+      [skillId, trimmedName]
+    );
+    const row = (await listSkillsWithCounts('all')).find((r) => r.id === skillId);
+    sendJson(res, 201, { data: row });
+    return;
+  }
+
+  if (req.method === 'PATCH' && /^\/api\/v1\/skills\/[^/]+$/.test(requestUrl.pathname)) {
+    const skillId = decodeURIComponent(requestUrl.pathname.split('/').pop());
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const nameError = validateName(payload.name, 2, 60, 'Skill');
+    if (nameError) {
+      sendJson(res, 400, appError(400, 'validation_error', nameError));
+      return;
+    }
+    const trimmedName = String(payload.name).trim();
+    const existing = await pool.query(`SELECT id FROM skills WHERE id = $1`, [skillId]);
+    if (!existing.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Skill not found.'));
+      return;
+    }
+    const collision = await findSkillByName(trimmedName);
+    if (collision && collision.id !== skillId) {
+      sendJson(res, 409, appError(409, 'conflict', 'A skill with this name already exists.'));
+      return;
+    }
+    await pool.query(`UPDATE skills SET name = $1, updated_at = NOW() WHERE id = $2`, [trimmedName, skillId]);
+    const row = (await listSkillsWithCounts('all')).find((r) => r.id === skillId);
+    sendJson(res, 200, { data: row });
+    return;
+  }
+
+  if (req.method === 'DELETE' && /^\/api\/v1\/skills\/[^/]+$/.test(requestUrl.pathname)) {
+    const skillId = decodeURIComponent(requestUrl.pathname.split('/').pop());
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const skillRow = await pool.query(`SELECT id, name FROM skills WHERE id = $1`, [skillId]);
+    if (!skillRow.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Skill not found.'));
+      return;
+    }
+    const assignmentCount = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM position_skills WHERE skill_id = $1`,
+      [skillId]
+    );
+    if (assignmentCount.rows[0].n > 0) {
+      sendJson(res, 409, appError(
+        409,
+        'conflict',
+        `Cannot delete skill '${skillRow.rows[0].name}' because it is assigned to ${assignmentCount.rows[0].n} position(s). Remove the assignments first.`
+      ));
+      return;
+    }
+    await pool.query(`DELETE FROM skills WHERE id = $1`, [skillId]);
+    sendJson(res, 204, null);
+    return;
+  }
+
+  if (req.method === 'GET' && /^\/api\/v1\/positions\/[^/]+\/skills$/.test(requestUrl.pathname)) {
+    const positionId = decodeURIComponent(requestUrl.pathname.split('/')[4]);
+    const actor = await resolveSystemAdminActor(requestUrl.searchParams.get('actorEmail'));
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const positionRow = await pool.query(`SELECT id FROM positions WHERE id = $1`, [positionId]);
+    if (!positionRow.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Position not found.'));
+      return;
+    }
+    const rows = await listPositionSkills(positionId);
+    sendJson(res, 200, { data: rows });
+    return;
+  }
+
+  if (req.method === 'POST' && /^\/api\/v1\/positions\/[^/]+\/skills$/.test(requestUrl.pathname)) {
+    const positionId = decodeURIComponent(requestUrl.pathname.split('/')[4]);
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const skillId = String(payload.skillId || '').trim();
+    if (!skillId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'skillId is required.'));
+      return;
+    }
+    const positionRow = await pool.query(`SELECT id FROM positions WHERE id = $1`, [positionId]);
+    if (!positionRow.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Position not found.'));
+      return;
+    }
+    const skillRow = await pool.query(`SELECT id, status FROM skills WHERE id = $1`, [skillId]);
+    if (!skillRow.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Skill not found.'));
+      return;
+    }
+    if (skillRow.rows[0].status !== 'active') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Cannot assign an inactive skill.'));
+      return;
+    }
+    const existingAssignment = await pool.query(
+      `SELECT 1 FROM position_skills WHERE position_id = $1 AND skill_id = $2`,
+      [positionId, skillId]
+    );
+    if (existingAssignment.rowCount > 0) {
+      const rows = await listPositionSkills(positionId);
+      sendJson(res, 200, { data: rows });
+      return;
+    }
+    await pool.query(
+      `INSERT INTO position_skills (position_id, skill_id) VALUES ($1, $2)`,
+      [positionId, skillId]
+    );
+    const rows = await listPositionSkills(positionId);
+    sendJson(res, 201, { data: rows });
+    return;
+  }
+
+  if (req.method === 'DELETE' && /^\/api\/v1\/positions\/[^/]+\/skills\/[^/]+$/.test(requestUrl.pathname)) {
+    const parts = requestUrl.pathname.split('/');
+    const positionId = decodeURIComponent(parts[4]);
+    const skillId = decodeURIComponent(parts[6]);
+    const payload = await readJsonBody(req);
+    const actor = await resolveSystemAdminActor(payload.actorEmail);
+    if (!assertSystemAdminActor(actor)) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const result = await pool.query(
+      `DELETE FROM position_skills WHERE position_id = $1 AND skill_id = $2`,
+      [positionId, skillId]
+    );
+    if (result.rowCount === 0) {
+      sendJson(res, 404, appError(404, 'not_found', 'Assignment not found.'));
+      return;
+    }
+    sendJson(res, 204, null);
     return;
   }
 
