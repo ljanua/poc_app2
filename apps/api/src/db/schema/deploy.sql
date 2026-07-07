@@ -26,12 +26,14 @@ CREATE TABLE IF NOT EXISTS teams (
   age_group TEXT NOT NULL,
   lead_coach_user_id TEXT NOT NULL REFERENCES users(id),
   club_id TEXT REFERENCES clubs(id),
+  sport_id TEXT NOT NULL DEFAULT 'sport_soccer' REFERENCES sports(id) ON DELETE RESTRICT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_teams_lead_coach_user_id ON teams(lead_coach_user_id);
+CREATE INDEX IF NOT EXISTS idx_teams_sport_id ON teams(sport_id);
 
 CREATE TABLE IF NOT EXISTS clubs (
   id TEXT PRIMARY KEY,
@@ -132,5 +134,49 @@ CREATE TABLE IF NOT EXISTS player_stats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_stats_trend ON player_stats(trend);
+
+CREATE TABLE IF NOT EXISTS sports (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sports_name ON sports(name);
+CREATE INDEX IF NOT EXISTS idx_sports_status_name ON sports(status, name);
+
+CREATE TABLE IF NOT EXISTS positions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  sport_id TEXT NOT NULL REFERENCES sports(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (sport_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_positions_sport_id ON positions(sport_id);
+CREATE INDEX IF NOT EXISTS idx_positions_status_name ON positions(status, name);
+
+CREATE TABLE IF NOT EXISTS skills (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
+CREATE INDEX IF NOT EXISTS idx_skills_status_name ON skills(status, name);
+
+CREATE TABLE IF NOT EXISTS position_skills (
+  position_id TEXT NOT NULL REFERENCES positions(id) ON DELETE RESTRICT,
+  skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (position_id, skill_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_position_skills_skill_id ON position_skills(skill_id);
 
 COMMIT;
