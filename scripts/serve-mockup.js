@@ -358,7 +358,7 @@ function toMetricChangeIndicator(label, trendValue) {
   };
 }
 
-function toDashboardPayload(row) {
+function toDashboardPayload(row, skillRatings) {
   const averageScore = row.averageScore === null || row.averageScore === undefined ? 'N/A' : Number(row.averageScore).toFixed(1);
   const lastMatchScore = row.lastMatchScore === null || row.lastMatchScore === undefined ? 'N/A' : Number(row.lastMatchScore).toFixed(1);
   const currentLevelChange = toMetricChangeIndicator(row.currentLevelChangeLabel, row.currentLevelChangeTrend);
@@ -399,6 +399,7 @@ function toDashboardPayload(row) {
       fitnessChange,
       skillProgressChange
     },
+    skillRatings: Array.isArray(skillRatings) ? skillRatings : [],
     metrics: {
       currentLevel: row.currentLevel || 'N/A',
       fitness: row.fitness || 'N/A',
@@ -769,6 +770,128 @@ async function listPositionSkills(positionId, client) {
     [positionId]
   );
   return result.rows.map(toPositionSkillPayload);
+}
+
+// Returns one row per skill assigned to the player's current position, LEFT
+// JOIN'd to player_skill_ratings. Empty when the player has no team, no
+// resolvable position name, or the position has no skills.
+async function listSkillsForPlayer(playerId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT
+        ps.skill_id AS "skillId",
+        s.name AS "skillName",
+        p.id AS "positionId",
+        p.name AS "positionName",
+        psr.rating AS "rating"
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN positions p ON LOWER(p.name) = LOWER(pl.position) AND p.sport_id = t.sport_id
+      JOIN position_skills ps ON ps.position_id = p.id
+      JOIN skills s ON s.id = ps.skill_id
+      LEFT JOIN player_skill_ratings psr ON psr.player_id = pl.id AND psr.skill_id = ps.skill_id
+      WHERE pl.id = $1
+      ORDER BY s.name ASC
+    `,
+    [playerId]
+  );
+  return result.rows.map((row) => ({
+    skillId: row.skillId,
+    skillName: row.skillName,
+    positionId: row.positionId,
+    positionName: row.positionName,
+    rating: row.rating === null || row.rating === undefined ? null : Number(row.rating)
+  }));
+}
+
+async function resolvePositionIdForPlayer(executor, playerId, positionName) {
+  if (!positionName || positionName === 'Position not set') {
+    return null;
+  }
+  const result = await executor.query(
+    `
+      SELECT p.id
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN positions p ON LOWER(p.name) = LOWER($2) AND p.sport_id = t.sport_id
+      WHERE pl.id = $1
+      LIMIT 1
+    `,
+    [playerId, positionName]
+  );
+  return result.rows[0] ? result.rows[0].id : null;
+}
+
+// Replace-on-position-change: wipe existing ratings, then insert one NULL row
+// per skill in the new position's position_skills set. When newPositionId is
+// null (cleared position), only the DELETE runs.
+async function replaceSkillRatingsForPosition(client, playerId, newPositionId) {
+  await client.query('DELETE FROM player_skill_ratings WHERE player_id = $1', [playerId]);
+  if (!newPositionId) {
+    return;
+  }
+  await client.query(
+    `
+      INSERT INTO player_skill_ratings (player_id, skill_id, rating)
+      SELECT $1, ps.skill_id, NULL
+      FROM position_skills ps
+      WHERE ps.position_id = $2
+    `,
+    [playerId, newPositionId]
+  );
+}
+
+function parseUpdateSkillRatingsPayload(payload) {
+  if (!payload || !Array.isArray(payload.ratings)) {
+    return { error: 'ratings must be an array of { skillId, rating } objects.' };
+  }
+  const ratings = [];
+  for (const entry of payload.ratings) {
+    if (!entry || typeof entry !== 'object') {
+      return { error: 'Each rating entry must be an object with skillId and rating.' };
+    }
+    const skillId = String(entry.skillId || '').trim();
+    if (!skillId) {
+      return { error: 'Each rating entry requires a non-empty skillId.' };
+    }
+    if (entry.rating === null || entry.rating === undefined || entry.rating === '') {
+      ratings.push({ skillId, rating: null });
+      continue;
+    }
+    if (typeof entry.rating === 'number' && !Number.isInteger(entry.rating)) {
+      return { error: 'Skill rating must be a whole number from 0 to 100, or null.' };
+    }
+    const rating = Number(entry.rating);
+    if (!Number.isInteger(rating) || rating < 0 || rating > 100) {
+      return { error: 'Skill rating must be a whole number from 0 to 100, or null.' };
+    }
+    ratings.push({ skillId, rating });
+  }
+  return { ratings };
+}
+
+async function upsertSkillRatings(client, playerId, ratings) {
+  for (const entry of ratings) {
+    if (entry.rating === null) {
+      await client.query(
+        `DELETE FROM player_skill_ratings WHERE player_id = $1 AND skill_id = $2`,
+        [playerId, entry.skillId]
+      );
+      continue;
+    }
+    await client.query(
+      `
+        INSERT INTO player_skill_ratings (player_id, skill_id, rating, updated_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (player_id, skill_id) DO UPDATE SET
+          rating = EXCLUDED.rating,
+          updated_at = NOW()
+      `,
+      [playerId, entry.skillId, entry.rating]
+    );
+  }
 }
 
 async function resolveSystemAdminActor(actorEmail) {
@@ -1452,7 +1575,8 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    sendJson(res, 200, { data: toDashboardPayload(dashboardRows.rows[0]) });
+    const skillRatings = await listSkillsForPlayer(dashboardRows.rows[0].id);
+    sendJson(res, 200, { data: toDashboardPayload(dashboardRows.rows[0], skillRatings) });
     return;
   }
 
@@ -2804,8 +2928,91 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const payload = toDashboardPayload(row);
-    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats } });
+    const skillRatings = await listSkillsForPlayer(row.id);
+    const payload = toDashboardPayload(row, skillRatings);
+    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats, skillRatings: payload.skillRatings } });
+    return;
+  }
+
+  const skillRatingsMatch = requestUrl.pathname.match(/^\/api\/v1\/players\/([^/]+)\/skill-ratings$/);
+  if (req.method === 'GET' && skillRatingsMatch) {
+    const playerId = skillRatingsMatch[1];
+    const actor = await resolveCoachActor(requestUrl.searchParams.get('actorEmail'));
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    if (!existing) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const skillRatings = await listSkillsForPlayer(playerId);
+    sendJson(res, 200, { data: { skillRatings } });
+    return;
+  }
+
+  if (req.method === 'PUT' && skillRatingsMatch) {
+    const playerId = skillRatingsMatch[1];
+    const actor = await resolveCoachActor(requestUrl.searchParams.get('actorEmail'));
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    const parsed = parseUpdateSkillRatingsPayload(body);
+    if (parsed.error) {
+      sendJson(res, 400, appError(400, 'validation_error', parsed.error));
+      return;
+    }
+
+    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    if (!existing) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const allowedSkills = await listSkillsForPlayer(playerId);
+    const allowedById = new Map(allowedSkills.map((row) => [row.skillId, row]));
+
+    for (const entry of parsed.ratings) {
+      const skillRow = await pool.query(`SELECT id, name, status FROM skills WHERE id = $1`, [entry.skillId]);
+      if (!skillRow.rows[0]) {
+        sendJson(res, 400, appError(400, 'validation_error', `Unknown skillId '${entry.skillId}'.`));
+        return;
+      }
+      const allowed = allowedById.get(entry.skillId);
+      if (!allowed) {
+        sendJson(res, 400, appError(
+          400,
+          'validation_error',
+          `Skill '${skillRow.rows[0].name}' is not tracked for the player's position '${existing.position}'. Add it to the position in Manage Skills (S8) or change the player's position.`
+        ));
+        return;
+      }
+      if (entry.rating !== null && skillRow.rows[0].status !== 'active') {
+        sendJson(res, 400, appError(400, 'validation_error', `Cannot set a rating for inactive skill '${skillRow.rows[0].name}'.`));
+        return;
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await upsertSkillRatings(client, playerId, parsed.ratings);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const skillRatings = await listSkillsForPlayer(playerId);
+    sendJson(res, 200, { data: { skillRatings } });
     return;
   }
 
@@ -2877,6 +3084,16 @@ async function handlePlayersApi(req, res, requestUrl) {
 
       await upsertPlayerStats(client, playerId, parsed.stats);
 
+      // Replace-on-position-change: when the coach changes the player's
+      // position, wipe old ratings and seed NULL rows for the new position's
+      // skills. Same transaction as the identity/stats update.
+      const previousPosition = String(existing.position || '').trim();
+      const nextPosition = String(parsed.identity.position || '').trim();
+      if (previousPosition !== nextPosition) {
+        const newPositionId = await resolvePositionIdForPlayer(client, playerId, nextPosition);
+        await replaceSkillRatingsForPosition(client, playerId, newPositionId);
+      }
+
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -2886,8 +3103,9 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const row = await findPlayerProfileForCoach(playerId, actor.id);
-    const payload = toDashboardPayload(row);
-    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats } });
+    const skillRatings = await listSkillsForPlayer(playerId);
+    const payload = toDashboardPayload(row, skillRatings);
+    sendJson(res, 200, { data: { player: payload.player, stats: payload.stats, skillRatings: payload.skillRatings } });
     return;
   }
 

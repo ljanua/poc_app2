@@ -1,0 +1,4 @@
+{
+  "code": "validation_error",
+  "message": "Skill 'Shot stopping' is not tracked for the player's position 'ST – Striker'. Add it to the position in Manage Skills (S8) or change the player's position."
+}

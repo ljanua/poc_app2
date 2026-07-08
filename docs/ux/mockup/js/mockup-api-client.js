@@ -243,7 +243,8 @@
         { positionId: 'pos_st', skillId: 's_strength', skillName: 'Strength', status: 'active' },
         { positionId: 'pos_st', skillId: 's_heading', skillName: 'Heading', status: 'active' },
         { positionId: 'pos_st', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' }
-      ]
+      ],
+      playerSkillRatings: []
     };
   }
 
@@ -256,7 +257,7 @@
     }
     try {
       const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.teams) || !Array.isArray(parsed.skills) || !Array.isArray(parsed.positions) || !Array.isArray(parsed.sports)) {
+      if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.teams) || !Array.isArray(parsed.skills) || !Array.isArray(parsed.positions) || !Array.isArray(parsed.sports) || !Array.isArray(parsed.playerSkillRatings)) {
         throw new Error('Invalid store');
       }
       return parsed;
@@ -464,6 +465,7 @@
         fitnessChange: null,
         skillProgressChange: null
       },
+      skillRatings: [],
       metrics: {
         currentLevel: 'N/A',
         fitness: 'N/A',
@@ -524,7 +526,7 @@
     });
   }
 
-  function composeDashboardPayload(player, stats) {
+  function composeDashboardPayload(player, stats, skillRatings) {
     const enrichedPlayer = enrichPlayerWithAge(player);
     const currentLevel = stats.currentLevel || 'N/A';
     const fitness = stats.fitness || 'N/A';
@@ -557,6 +559,7 @@
         fitnessChange,
         skillProgressChange
       },
+      skillRatings: Array.isArray(skillRatings) ? skillRatings : [],
       metrics: {
         currentLevel,
         fitness,
@@ -585,18 +588,92 @@
     });
   }
 
+  // Offline mirror of listSkillsForPlayer: skills for the player's current
+  // position, LEFT JOIN'd to store.playerSkillRatings.
+  function listSkillsForPlayerOffline(store, player) {
+    if (!player) {
+      return [];
+    }
+    const team = findTeamByName(store, player.teamName);
+    if (!team) {
+      return [];
+    }
+    const sportId = team.sportId || 'sport_soccer';
+    const positionName = String(player.position || '').trim();
+    if (!positionName || positionName === 'Position not set') {
+      return [];
+    }
+    const position = (store.positions || []).find(function (entry) {
+      return String(entry.sportId) === String(sportId)
+        && String(entry.name || '').toLowerCase() === positionName.toLowerCase();
+    });
+    if (!position) {
+      return [];
+    }
+    const assigned = (store.positionSkills || []).filter(function (entry) {
+      return String(entry.positionId) === String(position.id);
+    });
+    const ratings = (store.playerSkillRatings || []).filter(function (entry) {
+      return String(entry.playerId) === String(player.id);
+    });
+    const ratingBySkill = {};
+    ratings.forEach(function (entry) {
+      ratingBySkill[String(entry.skillId)] = entry.rating === null || entry.rating === undefined
+        ? null
+        : Number(entry.rating);
+    });
+    return assigned
+      .map(function (entry) {
+        const skill = (store.skills || []).find(function (s) { return String(s.id) === String(entry.skillId); });
+        return {
+          skillId: entry.skillId,
+          skillName: (skill && skill.name) || entry.skillName || entry.skillId,
+          positionId: position.id,
+          positionName: position.name,
+          rating: Object.prototype.hasOwnProperty.call(ratingBySkill, String(entry.skillId))
+            ? ratingBySkill[String(entry.skillId)]
+            : null
+        };
+      })
+      .sort(function (a, b) {
+        return String(a.skillName).localeCompare(String(b.skillName));
+      });
+  }
+
+  function replaceSkillRatingsForPositionOffline(store, playerId, positionId) {
+    store.playerSkillRatings = (store.playerSkillRatings || []).filter(function (entry) {
+      return String(entry.playerId) !== String(playerId);
+    });
+    if (!positionId) {
+      return;
+    }
+    const assigned = (store.positionSkills || []).filter(function (entry) {
+      return String(entry.positionId) === String(positionId);
+    });
+    assigned.forEach(function (entry) {
+      store.playerSkillRatings.push({
+        playerId: playerId,
+        skillId: entry.skillId,
+        rating: null
+      });
+    });
+  }
+
   function buildDashboardSnapshot(store, selected) {
     const avatars = store.playerAvatars || {};
     const avatarUrl = avatars[selected.id] || avatars[String(selected.id)] || selected.avatarUrl || null;
     const selectedWithAvatar = Object.assign({}, selected, { avatarUrl: avatarUrl });
+    const skillRatings = listSkillsForPlayerOffline(store, selectedWithAvatar);
 
     const stored = getStoredStats(store, selectedWithAvatar.id);
     if (stored) {
-      return composeDashboardPayload(selectedWithAvatar, stored);
+      return composeDashboardPayload(selectedWithAvatar, stored, skillRatings);
     }
 
     if (!isNamedReferenceProfile(selectedWithAvatar)) {
-      return buildNoStatsDashboardSnapshot(store, selectedWithAvatar);
+      const snapshot = buildNoStatsDashboardSnapshot(store, selectedWithAvatar);
+      snapshot.skillRatings = skillRatings;
+      return snapshot;
     }
 
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
@@ -626,6 +703,7 @@
         fitnessChange: metricChanges.fitnessChange,
         skillProgressChange: metricChanges.skillProgressChange
       },
+      skillRatings,
       metrics: {
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
         fitness: selected.trend === 'declining' ? '79%' : '87%',
@@ -2335,7 +2413,7 @@
           return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
         }
         const fallbackSnapshot = buildDashboardSnapshot(fallbackStore, fallbackPlayer);
-        return { status: 200, data: { player: fallbackSnapshot.player, stats: fallbackSnapshot.stats } };
+        return { status: 200, data: { player: fallbackSnapshot.player, stats: fallbackSnapshot.stats, skillRatings: fallbackSnapshot.skillRatings || [] } };
       }
 
       const store = loadStore();
@@ -2345,7 +2423,114 @@
       }
 
       const snapshot = buildDashboardSnapshot(store, player);
-      return { status: 200, data: { player: snapshot.player, stats: snapshot.stats } };
+      return { status: 200, data: { player: snapshot.player, stats: snapshot.stats, skillRatings: snapshot.skillRatings || [] } };
+    },
+
+    listPlayerSkillRatings(playerId) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'GET',
+          '/players/' + encodeURIComponent(playerId) + '/skill-ratings' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '')
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, data: clone(response.body.data), skillRatings: clone(response.body.data.skillRatings || []) };
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          window.__MOCK_API_LAST_ERROR__ = response.body;
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+      const skillRatings = listSkillsForPlayerOffline(store, player);
+      return { status: 200, data: { skillRatings: clone(skillRatings) }, skillRatings: clone(skillRatings) };
+    },
+
+    updatePlayerSkillRatings(playerId, payload) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'PUT',
+          '/players/' + encodeURIComponent(playerId) + '/skill-ratings' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
+          payload
+        );
+
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', data: clone(response.body.data), skillRatings: clone(response.body.data.skillRatings || []) };
+        }
+
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
+      if (!payload || !Array.isArray(payload.ratings)) {
+        return { status: 400, code: 'validation_error', message: 'ratings must be an array of { skillId, rating } objects.' };
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const allowed = listSkillsForPlayerOffline(store, player);
+      const allowedById = {};
+      allowed.forEach(function (row) { allowedById[String(row.skillId)] = row; });
+
+      store.playerSkillRatings = store.playerSkillRatings || [];
+
+      for (let i = 0; i < payload.ratings.length; i += 1) {
+        const entry = payload.ratings[i];
+        const skillId = String((entry && entry.skillId) || '').trim();
+        if (!skillId) {
+          return { status: 400, code: 'validation_error', message: 'Each rating entry requires a non-empty skillId.' };
+        }
+        if (!allowedById[skillId]) {
+          const skill = (store.skills || []).find(function (s) { return String(s.id) === skillId; });
+          const skillName = skill ? skill.name : skillId;
+          return {
+            status: 400,
+            code: 'validation_error',
+            message: "Skill '" + skillName + "' is not tracked for the player's position '" + player.position + "'. Add it to the position in Manage Skills (S8) or change the player's position."
+          };
+        }
+
+        let rating = null;
+        if (entry.rating !== null && entry.rating !== undefined && entry.rating !== '') {
+          if (typeof entry.rating === 'number' && !Number.isInteger(entry.rating)) {
+            return { status: 400, code: 'validation_error', message: 'Skill rating must be a whole number from 0 to 100, or null.' };
+          }
+          rating = Number(entry.rating);
+          if (!Number.isInteger(rating) || rating < 0 || rating > 100) {
+            return { status: 400, code: 'validation_error', message: 'Skill rating must be a whole number from 0 to 100, or null.' };
+          }
+        }
+
+        store.playerSkillRatings = store.playerSkillRatings.filter(function (row) {
+          return !(String(row.playerId) === String(playerId) && String(row.skillId) === skillId);
+        });
+        if (rating !== null) {
+          store.playerSkillRatings.push({ playerId: playerId, skillId: skillId, rating: rating });
+        }
+      }
+
+      saveStore(store);
+      const skillRatings = listSkillsForPlayerOffline(store, player);
+      return { status: 200, code: 'ok', data: { skillRatings: clone(skillRatings) }, skillRatings: clone(skillRatings) };
     },
 
     updatePlayerProfile(playerId, payload) {
@@ -2358,7 +2543,14 @@
         );
 
         if (response.status === 200 && response.body && response.body.data) {
-          return { status: 200, code: 'ok', data: clone(response.body.data) };
+          const data = clone(response.body.data);
+          return {
+            status: 200,
+            code: 'ok',
+            data: data,
+            player: data.player || null,
+            skillRatings: clone(data.skillRatings || [])
+          };
         }
 
         if (response.status !== 0 && response.status !== 503) {
@@ -2395,6 +2587,7 @@
         return { status: 409, code: 'conflict', message: 'Another player already uses that name.' };
       }
 
+      const previousPosition = String(player.position || '');
       player.name = parsed.identity.name;
       player.normalizedName = parsed.identity.normalizedName;
       player.position = parsed.identity.position;
@@ -2414,10 +2607,31 @@
 
       store.playerStats = store.playerStats || {};
       store.playerStats[player.id] = clone(parsed.stats);
+
+      if (String(player.position || '') !== previousPosition) {
+        const sportId = team.sportId || 'sport_soccer';
+        const positionName = String(player.position || '').trim();
+        let positionId = null;
+        if (positionName && positionName !== 'Position not set') {
+          const position = (store.positions || []).find(function (entry) {
+            return String(entry.sportId) === String(sportId)
+              && String(entry.name || '').toLowerCase() === positionName.toLowerCase();
+          });
+          positionId = position ? position.id : null;
+        }
+        replaceSkillRatingsForPositionOffline(store, player.id, positionId);
+      }
+
       saveStore(store);
 
       const snapshot = buildDashboardSnapshot(store, player);
-      return { status: 200, code: 'ok', data: { player: snapshot.player, stats: snapshot.stats } };
+      return {
+        status: 200,
+        code: 'ok',
+        data: { player: snapshot.player, stats: snapshot.stats, skillRatings: snapshot.skillRatings || [] },
+        player: snapshot.player,
+        skillRatings: snapshot.skillRatings || []
+      };
     },
 
     updatePlayerAvatar(playerId, avatarDataUrl) {

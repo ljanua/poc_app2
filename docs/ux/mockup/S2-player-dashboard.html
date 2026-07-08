@@ -45,6 +45,25 @@
 
       <div class="notice" id="noStatsNotice" hidden style="margin-top: 1rem;"></div>
 
+      <div class="section stats-section" data-testid="skill-ratings-section">
+        <div class="section-title">Skill Ratings</div>
+        <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+          No skills are tracked for this player yet — pick a position in Edit Player (S5).
+        </div>
+        <div class="table-wrap" id="skillRatingsTableWrap" hidden>
+          <table class="data-table" data-testid="skill-ratings-table" style="min-width: 0;">
+            <thead>
+              <tr>
+                <th>Skill</th>
+                <th>Position</th>
+                <th>Rating</th>
+              </tr>
+            </thead>
+            <tbody id="skillRatingsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="section stats-section">
         <div class="section-title">Development Progress</div>
         <div class="metric-grid">
@@ -253,6 +272,48 @@
       statsSections.forEach(function (element) {
         element.hidden = false;
       });
+
+      (function renderSkillRatings() {
+        const rows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
+        const emptyEl = document.getElementById('skillRatingsEmpty');
+        const wrapEl = document.getElementById('skillRatingsTableWrap');
+        const bodyEl = document.getElementById('skillRatingsTableBody');
+        if (!emptyEl || !wrapEl || !bodyEl) {
+          return;
+        }
+        bodyEl.innerHTML = '';
+        if (rows.length === 0) {
+          emptyEl.hidden = false;
+          wrapEl.hidden = true;
+          return;
+        }
+        emptyEl.hidden = true;
+        wrapEl.hidden = false;
+        rows.forEach(function (row) {
+          const tr = document.createElement('tr');
+          tr.setAttribute('data-testid', 'skill-rating-row-' + row.skillId);
+          const skillTd = document.createElement('td');
+          skillTd.textContent = row.skillName || row.skillId;
+          const positionTd = document.createElement('td');
+          positionTd.textContent = row.positionName || '';
+          const ratingTd = document.createElement('td');
+          if (row.rating === null || row.rating === undefined) {
+            const muted = document.createElement('span');
+            muted.className = 'muted';
+            muted.style.color = 'var(--text-muted)';
+            muted.setAttribute('data-testid', 'skill-rating-not-rated');
+            muted.textContent = 'Not rated';
+            ratingTd.appendChild(muted);
+          } else {
+            ratingTd.setAttribute('data-testid', 'skill-rating-value-' + row.skillId);
+            ratingTd.textContent = String(row.rating) + '%';
+          }
+          tr.appendChild(skillTd);
+          tr.appendChild(positionTd);
+          tr.appendChild(ratingTd);
+          bodyEl.appendChild(tr);
+        });
+      })();
 
       function bindMetricChange(elementId, change) {
         if (!change) {

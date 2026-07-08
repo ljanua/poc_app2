@@ -16,6 +16,7 @@ Source plans:
 - docs/plans/2026-07-06-009-feat-s1-coach-scope-clubs-main-menu-plan.md
 - docs/plans/2026-07-06-010-feat-s8-manage-skills-per-position-plan.md
 - docs/plans/2026-07-07-012-feat-s3-team-sport-and-s5-player-position-plan.md
+- docs/plans/2026-07-08-015-feat-s2-s5-player-skill-ratings-plan.md
 
 ## Screen mapping
 
@@ -34,11 +35,13 @@ Source plans:
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
-| S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, and per-metric (Current Level, Fitness, Skill Progress) change indicators | 403 forbidden, 404 not_found |
+| S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, per-metric change indicators, and `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]` for the player's current position | 403 forbidden, 404 not_found |
 | S2-player-dashboard.html | Edit Player action (toolbar) | Navigation to S5 edit page | (client-side link to `S5-player-edit.html?playerId=`) | Opens S5 for the viewed player (shown even in the no-stats-yet state) | n/a |
 | S2-player-dashboard.html | Upload player avatar (click icon) | Upload avatar | PATCH /v1/players/{playerId}?actorEmail= with `{ avatarUrl }` | 200 OK with updated `{ player, stats }`; `player.avatarUrl` set | 400 validation_error, 403 forbidden, 404 not_found |
-| S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats }` (full editable identity + `PlayerDashboardStats`) | 403 forbidden, 404 not_found |
-| S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats }`; `missingDataMessage` cleared only when at least one Development Progress rating (Current Level, Fitness, or Skill Progress) is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+| S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats, skillRatings }` (full editable identity + `PlayerDashboardStats` + position-scoped skill ratings) | 403 forbidden, 404 not_found |
+| S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats, skillRatings }`; when `position` changes, server replaces all `player_skill_ratings` rows for the new position as null; `missingDataMessage` cleared only when at least one Development Progress rating is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+| S5-player-edit.html | Save Player (skill ratings) | Update player skill ratings | PUT /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` after partial upsert/delete of listed skills | 400 validation_error, 403 forbidden, 404 not_found |
+| S2-player-dashboard.html / S5-player-edit.html | Read skill ratings only | List player skill ratings | GET /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` for the player's current position (null ratings included) | 403 forbidden, 404 not_found |
 || S8-skills.html | Add Sport modal submit | Create sport | POST /v1/sports | 201 Created with sanitized sport object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
 || S8-skills.html | Rename Sport modal submit | Update sport | PATCH /v1/sports/{sportId} | 200 OK with updated sport | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
 || S8-skills.html | Sport Deactivate / Reactivate action | Set sport status | PATCH /v1/sports/{sportId}/status | 200 OK with updated status | 400 validation_error, 403 forbidden, 404 not_found |
@@ -280,3 +283,38 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - Switching the team's sport reloads every position dropdown against the new sport without page reload (handled on `#fieldTeam` / `#teamFilter` change handlers).
 - When the team's sport has no positions, the dropdown is disabled and a helper notice tells the coach to add positions in S8.
 - See `docs/plans/2026-07-07-012-feat-s3-team-sport-and-s5-player-position-plan.md` for full requirements, schema design, and rollback notes.
+
+## Player Skill Ratings (S2/S5)
+
+Source plan: `docs/plans/2026-07-08-015-feat-s2-s5-player-skill-ratings-plan.md`.
+
+### Schema
+
+- Migration `apps/api/src/db/migrations/018_player_skill_ratings.sql` adds `player_skill_ratings (player_id, skill_id, rating, created_at, updated_at)` with `PRIMARY KEY (player_id, skill_id)`, `rating SMALLINT NULL OR 0–100`, `ON DELETE CASCADE` from players, `ON DELETE RESTRICT` from skills. Mirrored in `tables.sql` / `deploy.sql`.
+- No seed rows: every player starts unrated. Skills in scope come from `position_skills` for the player's current position (resolved via team sport + case-insensitive position name).
+
+### API
+
+- `GET /v1/players/dashboard` and `GET /v1/players/{playerId}/profile` return additive `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]`.
+- `GET /v1/players/{playerId}/skill-ratings` returns the same array alone.
+- `PUT /v1/players/{playerId}/skill-ratings` accepts `{ ratings: [{ skillId, rating }] }` (partial replace). `rating: null` deletes the row; out-of-position skills return `400 validation_error` with the S8 guidance message.
+- `PATCH /v1/players/{playerId}` replaces all ratings when `position` changes: delete existing rows, insert null rows for the new position's `position_skills`.
+
+### Client
+
+- `MockupApi.listPlayerSkillRatings(playerId)` / `MockupApi.updatePlayerSkillRatings(playerId, payload)` dual-mode (backend + offline `store.playerSkillRatings`).
+- Offline seed includes `playerSkillRatings: []`; `loadStore()` requires the array or reseeds.
+
+### UI
+
+- **S2** — `[data-testid="skill-ratings-section"]` (`.stats-section`) before Development Progress; table or empty helper; `Not rated` for null.
+- **S5** — same section before Development Progress; per-skill `buildSliderControl` (0–100 + Record toggle); save runs profile PATCH then skill-ratings PUT (skipped payload when position just changed).
+
+### Test traceability
+
+- `apps/api/tests/integration/db/player-skill-ratings-migration.spec.ts`
+- `apps/api/tests/contract/openapi.players-skills.spec.ts`
+- `apps/api/tests/integration/players/player-skill-ratings-api-mockup.spec.ts`
+- `apps/api/tests/integration/players/mockup-api-client-skill-ratings.spec.ts`
+- `apps/api/tests/integration/players/s2-s5-skill-ratings.spec.ts`
+- `tests/playwright/player-skill-ratings.spec.js`

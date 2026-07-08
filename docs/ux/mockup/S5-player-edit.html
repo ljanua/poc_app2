@@ -188,6 +188,25 @@
           </div>
         </div>
 
+        <div class="section" data-testid="skill-ratings-section">
+          <div class="section-title">Skill Ratings</div>
+          <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+            No skills are tracked for this player yet — pick a position above.
+          </div>
+          <div class="table-wrap" id="skillRatingsTableWrap" hidden>
+            <table class="data-table" data-testid="skill-ratings-table" style="min-width: 0;">
+              <thead>
+                <tr>
+                  <th>Skill</th>
+                  <th>Position</th>
+                  <th>Rating</th>
+                </tr>
+              </thead>
+              <tbody id="skillRatingsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="section">
           <div class="section-title">Development Progress</div>
           <div class="form-grid">
@@ -563,6 +582,76 @@
         lastMatchScore: buildSliderControl('ctrlLastMatchScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 })
       };
 
+      var skillRatingControls = {};
+
+      function renderSkillRatings(skillRatings) {
+        const rows = Array.isArray(skillRatings) ? skillRatings : [];
+        const emptyEl = document.getElementById('skillRatingsEmpty');
+        const wrapEl = document.getElementById('skillRatingsTableWrap');
+        const bodyEl = document.getElementById('skillRatingsTableBody');
+        skillRatingControls = {};
+        if (!emptyEl || !wrapEl || !bodyEl) {
+          return;
+        }
+        bodyEl.innerHTML = '';
+        if (rows.length === 0) {
+          emptyEl.hidden = false;
+          wrapEl.hidden = true;
+          return;
+        }
+        emptyEl.hidden = true;
+        wrapEl.hidden = false;
+        rows.forEach(function (row) {
+          const skillId = String(row.skillId);
+          const tr = document.createElement('tr');
+          tr.setAttribute('data-testid', 'skill-rating-row-' + skillId);
+
+          const skillTd = document.createElement('td');
+          skillTd.textContent = row.skillName || skillId;
+
+          const positionTd = document.createElement('td');
+          positionTd.textContent = row.positionName || '';
+
+          const ratingTd = document.createElement('td');
+          const container = document.createElement('div');
+          container.className = 'form-field';
+          container.id = 'ctrlSkillRating_' + skillId;
+          container.innerHTML =
+            '<div class="ctrl-header">' +
+              '<span class="form-label" style="margin:0;">Rating</span>' +
+              '<label class="ctrl-toggle-label">' +
+                '<input type="checkbox" class="ctrl-toggle" data-testid="skill-rating-toggle-' + skillId + '" aria-label="Record ' + (row.skillName || skillId) + '">' +
+                '<span>Record</span>' +
+              '</label>' +
+            '</div>' +
+            '<div class="ctrl-row">' +
+              '<input type="range" class="ctrl-slider" min="0" max="100" step="1" data-testid="skill-rating-slider-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' slider" disabled>' +
+              '<input type="number" class="ctrl-box" min="0" max="100" step="1" data-testid="skill-rating-value-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' value" disabled>' +
+              '<span class="ctrl-suffix">%</span>' +
+            '</div>';
+          ratingTd.appendChild(container);
+          tr.appendChild(skillTd);
+          tr.appendChild(positionTd);
+          tr.appendChild(ratingTd);
+          bodyEl.appendChild(tr);
+
+          const control = buildSliderControl(container.id, { min: 0, max: 100, step: 1, midpoint: 50 });
+          control.setState(row.rating === null || row.rating === undefined ? null : Number(row.rating));
+          skillRatingControls[skillId] = control;
+        });
+      }
+
+      function readSkillRatingsPayload() {
+        const ratings = [];
+        Object.keys(skillRatingControls).forEach(function (skillId) {
+          ratings.push({
+            skillId: skillId,
+            rating: skillRatingControls[skillId].getState()
+          });
+        });
+        return { ratings: ratings };
+      }
+
       function fillTeamOptions(selectedTeamName) {
         const teams = MockupApi.listTeams();
         const select = document.getElementById('fieldTeam');
@@ -679,6 +768,8 @@
         setValue('fieldClipSubmitted', Number(stats.clipSubmittedCount || 0));
         setValue('fieldClipAssessed', Number(stats.clipAssessedCount || 0));
         setValue('fieldClipPending', Number(stats.clipPendingCount || 0));
+
+        renderSkillRatings(profile.skillRatings || []);
       }
 
       function buildPayload() {
@@ -738,10 +829,24 @@
         event.preventDefault();
         hideError();
 
+        const previousPosition = String((profileResponse.data.player && profileResponse.data.player.position) || '');
         const response = MockupApi.updatePlayerProfile(playerId, buildPayload());
         if (!response || response.status >= 400 || !response.data) {
           showError((response && response.message) || 'Unable to save this player right now.');
           return;
+        }
+
+        const savedPosition = String((response.data.player && response.data.player.position) || '');
+        // After a position change the server already replaced ratings with null
+        // rows for the new position. Skip the ratings PUT so we do not re-send
+        // the old position's skill ids (they would 400) or surface a spurious
+        // ratings error when the empty PUT fails.
+        if (savedPosition === previousPosition) {
+          const ratingsResponse = MockupApi.updatePlayerSkillRatings(playerId, readSkillRatingsPayload());
+          if (!ratingsResponse || ratingsResponse.status >= 400) {
+            showError((ratingsResponse && ratingsResponse.message) || 'Unable to save skill ratings right now.');
+            return;
+          }
         }
 
         showToast('Player saved successfully.');

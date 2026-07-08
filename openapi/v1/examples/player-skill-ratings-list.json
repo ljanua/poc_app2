@@ -1,0 +1,41 @@
+{
+  "data": {
+    "skillRatings": [
+      {
+        "skillId": "s_finishing",
+        "skillName": "Finishing",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": 78
+      },
+      {
+        "skillId": "s_positioning",
+        "skillName": "Positioning",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": null
+      },
+      {
+        "skillId": "s_strength",
+        "skillName": "Strength",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": null
+      },
+      {
+        "skillId": "s_heading",
+        "skillName": "Heading",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": 65
+      },
+      {
+        "skillId": "s_ball_control",
+        "skillName": "Ball Control",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": null
+      }
+    ]
+  }
+}

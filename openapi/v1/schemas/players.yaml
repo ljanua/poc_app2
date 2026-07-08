@@ -235,18 +235,85 @@ components:
           allOf:
             - $ref: '#/components/schemas/MetricChangeIndicator'
 
+    PlayerSkillRating:
+      type: object
+      required: [skillId, skillName, positionId, positionName]
+      properties:
+        skillId:
+          type: string
+        skillName:
+          type: string
+          description: >
+            Convenience denormalization of the skill's name so callers don't
+            need a second round-trip to render the Skill Ratings table.
+        positionId:
+          type: string
+        positionName:
+          type: string
+          description: >
+            Convenience denormalization of the player's current position name.
+        rating:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: >
+            Skill level from 0 to 100 inclusive. Null means "not yet rated"
+            (distinct from a deliberate 0%).
+
+    UpdatePlayerSkillRatingsRequest:
+      type: object
+      required: [ratings]
+      properties:
+        ratings:
+          type: array
+          items:
+            type: object
+            required: [skillId]
+            properties:
+              skillId:
+                type: string
+              rating:
+                type: integer
+                nullable: true
+                minimum: 0
+                maximum: 100
+                description: >
+                  Integer 0–100, or null to clear the rating. Floats are rejected.
+
+    PlayerSkillRatingsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [skillRatings]
+          properties:
+            skillRatings:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlayerSkillRating'
+
     PlayerDashboardResponse:
       type: object
       required: [data]
       properties:
         data:
           type: object
-          required: [player, stats, metrics, matchTime, performance, clipStats]
+          required: [player, stats, metrics, matchTime, performance, clipStats, skillRatings]
           properties:
             player:
               $ref: '#/components/schemas/Player'
             stats:
               $ref: '#/components/schemas/PlayerDashboardStats'
+            skillRatings:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlayerSkillRating'
+              description: >
+                Skills assigned to the player's current position, each with a
+                nullable 0–100 rating. Empty when the player has no resolvable
+                position or the position has no skills.
             metrics:
               type: object
               required: [currentLevel, fitness, skillProgress]
@@ -317,12 +384,20 @@ components:
       properties:
         data:
           type: object
-          required: [player, stats]
+          required: [player, stats, skillRatings]
           properties:
             player:
               $ref: '#/components/schemas/Player'
             stats:
               $ref: '#/components/schemas/PlayerDashboardStats'
+            skillRatings:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlayerSkillRating'
+              description: >
+                Skills assigned to the player's current position, each with a
+                nullable 0–100 rating. Empty when the player has no resolvable
+                position or the position has no skills.
 
     UpdatePlayerProfileRequest:
       type: object
