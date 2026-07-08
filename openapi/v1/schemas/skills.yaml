@@ -1,0 +1,241 @@
+components:
+  schemas:
+    Sport:
+      type: object
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 2
+          maxLength: 40
+        status:
+          type: string
+          enum: [active, inactive]
+        positionCount:
+          type: integer
+          nullable: true
+          description: >
+            Convenience count of positions whose sport_id references this sport.
+            Returned by admin-facing read endpoints; null on admin list responses
+            that do not compute the join.
+
+    SportListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Sport'
+
+    SportResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Sport'
+
+    CreateSportRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 40
+
+    UpdateSportRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 40
+
+    SportStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+
+    Position:
+      type: object
+      required: [id, name, sportId, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        sportId:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        skillCount:
+          type: integer
+          nullable: true
+          description: >
+            Convenience count of position_skills rows for this position.
+            Returned by admin-facing read endpoints; null on admin list responses
+            that do not compute the join.
+
+    PositionListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Position'
+
+    PositionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Position'
+
+    CreatePositionRequest:
+      type: object
+      required: [name, sportId]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        sportId:
+          type: string
+
+    UpdatePositionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 80
+        sportId:
+          type: string
+
+    PositionStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+
+    Skill:
+      type: object
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+        status:
+          type: string
+          enum: [active, inactive]
+        assignedPositionCount:
+          type: integer
+          nullable: true
+          description: >
+            Convenience count of position_skills rows that reference this skill.
+            Returned by admin-facing read endpoints; null on admin list responses
+            that do not compute the join.
+
+    SkillListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+
+    SkillResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/Skill'
+
+    CreateSkillRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+
+    UpdateSkillRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 60
+
+    PositionSkill:
+      type: object
+      required: [positionId, skillId, skillName, status]
+      properties:
+        positionId:
+          type: string
+        skillId:
+          type: string
+        skillName:
+          type: string
+          description: >
+            Convenience denormalization of the assigned skill's name. Returned
+            by `GET /v1/positions/{positionId}/skills` so callers don't need a
+            second round-trip to render the skill column.
+        status:
+          type: string
+          enum: [active, inactive]
+          description: >
+            Status of the assigned skill at the time of read. Inactive skills
+            remain visible to admins in the position assignment table.
+        createdAt:
+          type: string
+          format: date-time
+
+    PositionSkillListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PositionSkill'
+
+    AssignSkillToPositionRequest:
+      type: object
+      required: [skillId]
+      properties:
+        skillId:
+          type: string
+
+    SkillErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - validation_error
+            - forbidden
+            - not_found
+            - conflict
+        message:
+          type: string

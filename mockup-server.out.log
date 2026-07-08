@@ -1,0 +1,9 @@
+◇ injected env (1) from .env // tip: ⌘ enable debugging { debug: true }
+Mockup server running at http://0.0.0.0:5500
+Supported routes: /, /S0-login, /S1-player-list, /S2-player-dashboard, /S3-team-management, /S4-video-capture, /S6-assessment-list, /S7-admin-user-management, /api/v1/players
+API request GET /api/v1/teams
+API request GET /api/v1/teams
+API request POST /api/v1/teams
+API request POST /api/v1/teams/t_1783465492768_2205/update
+API request POST /api/v1/teams
+API request POST /api/v1/teams/t_1783465492768_2205/update

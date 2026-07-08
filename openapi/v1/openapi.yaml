@@ -964,6 +964,652 @@ paths:
             application/json:
               schema:
                 $ref: './schemas/teams.yaml#/components/schemas/TeamErrorResponse'
+
+  /sports:
+    get:
+      summary: List sports
+      description: >
+        SystemAdmin-only. Returns every sport with `positionCount`. By default
+        only `status = 'active'` sports are returned; pass `?status=inactive`
+        or `?status=all` to override.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: actorEmail
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, all]
+      responses:
+        '200':
+          description: Sport list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SportListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+    post:
+      summary: Create sport
+      description: >
+        SystemAdmin-only. Creates a new sport with `status = 'active'`.
+        Returns 409 when the name collides with an existing sport (case-
+        insensitive).
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/CreateSportRequest'
+      responses:
+        '201':
+          description: Sport created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SportResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /sports/{sportId}:
+    parameters:
+      - name: sportId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Update sport (rename)
+      description: >
+        SystemAdmin-only. Updates the sport's display name. Returns 409 when
+        the new name collides with another sport.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/UpdateSportRequest'
+      responses:
+        '200':
+          description: Sport updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SportResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /sports/{sportId}/status:
+    parameters:
+      - name: sportId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Set sport lifecycle status
+      description: >
+        SystemAdmin-only. Flips the sport between `active` and `inactive`.
+        Deactivating a sport does NOT cascade-deactivate its positions or
+        skill assignments; join rows are preserved so reactivate is a no-op.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/SportStatusRequest'
+      responses:
+        '200':
+          description: Sport status updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SportResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /positions:
+    get:
+      summary: List positions
+      description: >
+        SystemAdmin-only. Returns positions filtered by `sportId` (default
+        `sport_soccer`) with `skillCount`. By default only `status = 'active'`
+        positions are returned; pass `?status=inactive` or `?status=all` to
+        override.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sportId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Restrict to a single sport. Defaults to `sport_soccer`.
+        - name: actorEmail
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, all]
+      responses:
+        '200':
+          description: Position list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+    post:
+      summary: Create position
+      description: >
+        SystemAdmin-only. Creates a new position under the supplied sport
+        with `status = 'active'`. Returns 409 when the (sport_id, name) pair
+        collides with an existing position.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/CreatePositionRequest'
+      responses:
+        '201':
+          description: Position created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Sport not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name within sport)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /positions/{positionId}:
+    parameters:
+      - name: positionId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Update position (rename or move sport)
+      description: >
+        SystemAdmin-only. Updates the position's display name and/or moves
+        it to a different sport. Returns 409 when the new (sport_id, name)
+        pair collides with an existing position.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/UpdatePositionRequest'
+      responses:
+        '200':
+          description: Position updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Position or target sport not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name within sport)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /positions/{positionId}/status:
+    parameters:
+      - name: positionId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Set position lifecycle status
+      description: >
+        SystemAdmin-only. Flips the position between `active` and
+        `inactive`. Deactivating a position does NOT cascade-detach its skill
+        assignments.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/PositionStatusRequest'
+      responses:
+        '200':
+          description: Position status updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /skills:
+    get:
+      summary: List skills
+      description: >
+        SystemAdmin-only. Returns every skill with `assignedPositionCount`.
+        By default only `status = 'active'` skills are returned; pass
+        `?status=inactive` or `?status=all` to override.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: actorEmail
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, inactive, all]
+      responses:
+        '200':
+          description: Skill list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+    post:
+      summary: Create skill
+      description: >
+        SystemAdmin-only. Creates a new skill with `status = 'active'`.
+        Returns 409 when the name collides with an existing skill (case-
+        insensitive).
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/CreateSkillRequest'
+      responses:
+        '201':
+          description: Skill created
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /skills/{skillId}:
+    parameters:
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      summary: Update skill (rename)
+      description: >
+        SystemAdmin-only. Updates the skill's display name. Returns 409 when
+        the new name collides with another skill.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/UpdateSkillRequest'
+      responses:
+        '200':
+          description: Skill updated
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (duplicate name)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+    delete:
+      summary: Delete skill
+      description: >
+        SystemAdmin-only. Hard-deletes the skill row. Returns 409 when the
+        skill has any `position_skills` assignments — admin must remove the
+        assignments first.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Skill deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '409':
+          description: Conflict (skill has assignments)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /positions/{positionId}/skills:
+    parameters:
+      - name: positionId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: List skills assigned to a position
+      description: >
+        SystemAdmin-only. Returns the position's skill assignments joined with
+        each skill's display name and current status.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Position skill list
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionSkillListResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+    post:
+      summary: Assign a skill to a position (additive)
+      description: >
+        SystemAdmin-only. Idempotent insert of a `position_skills(position_id,
+        skill_id)` row. Returns 201 on first add and 200 when the row already
+        exists (mirroring the S7a user-club contract). Both position and skill
+        must be active.
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: './schemas/skills.yaml#/components/schemas/AssignSkillToPositionRequest'
+      responses:
+        '200':
+          description: Skill already assigned (idempotent)
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionSkillListResponse'
+        '201':
+          description: Skill assigned
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/PositionSkillListResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Position or skill not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+
+  /positions/{positionId}/skills/{skillId}:
+    parameters:
+      - name: positionId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      summary: Remove a skill from a position
+      description: >
+        SystemAdmin-only. Deletes the matching `position_skills` row. Returns
+        204 on success and 404 if the row didn't exist (not idempotent; caller
+        must distinguish "detached" from "wasn't there").
+      tags: [Skills]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Assignment removed
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
+        '404':
+          description: Assignment not found
+          content:
+            application/json:
+              schema:
+                $ref: './schemas/skills.yaml#/components/schemas/SkillErrorResponse'
 components:
   securitySchemes:
     bearerAuth:
