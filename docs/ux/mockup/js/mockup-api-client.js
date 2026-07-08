@@ -33,9 +33,9 @@
         { userId: 'u_coach_ana', clubId: 'c_default' }
       ],
       teams: [
-        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default', status: 'active' },
-        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club', clubId: 'c_default', status: 'active' },
-        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', status: 'active' }
+        { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' },
+        { id: 2, name: 'U19 Prime', ageGroup: 'U19', leadCoach: 'Joao Lima', leadCoachEmail: 'joao@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' },
+        { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' }
       ],
       players: [
         { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null },
@@ -54,6 +54,136 @@
         { id: 1, name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
         { id: 2, name: 'Joao Lima', email: 'joao@vantageiq.club', role: 'Coach', status: 'active', password: 'SecurePass123', lastLogin: 'Yesterday' },
         { id: 3, name: 'Ana Costa', email: 'ana@vantageiq.club', role: 'Coach', status: 'inactive', password: 'SecurePass123', lastLogin: '6 days ago' }
+      ],
+      sports: [
+        { id: 'sport_soccer', name: 'Soccer', status: 'active', positionCount: 13 }
+      ],
+      positions: [
+        { id: 'pos_any', name: 'Any Position', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_gk', name: 'GK – Goalkeeper', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_rb_lb', name: 'RB / LB – Full-Back', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_rwb_lwb', name: 'RWB / LWB – Wing-Back', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_cb', name: 'CB – Centre-Back', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_cdm', name: 'CDM – Defensive Midfielder', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_cm', name: 'CM – Central Midfielder', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_cam', name: 'CAM – Attacking Midfielder', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_rm_lm', name: 'RM / LM – Side Midfielder', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_rw_lw', name: 'RW / LW – Winger', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_rf_lf', name: 'RF / LF – Wide Forward', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_cf', name: 'CF – Centre Forward', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
+        { id: 'pos_st', name: 'ST – Striker', sportId: 'sport_soccer', status: 'active', skillCount: 5 }
+      ],
+      skills: [
+        { id: 's_acceleration', name: 'Acceleration', status: 'active', assignedPositionCount: 1 },
+        { id: 's_aerial_control', name: 'Aerial control', status: 'active', assignedPositionCount: 1 },
+        { id: 's_agility', name: 'Agility', status: 'active', assignedPositionCount: 1 },
+        { id: 's_ball_control', name: 'Ball Control', status: 'active', assignedPositionCount: 5 },
+        { id: 's_composure', name: 'Composure', status: 'active', assignedPositionCount: 1 },
+        { id: 's_creativity', name: 'Creativity', status: 'active', assignedPositionCount: 3 },
+        { id: 's_crossing', name: 'Crossing', status: 'active', assignedPositionCount: 4 },
+        { id: 's_defensive_awareness', name: 'Defensive awareness', status: 'active', assignedPositionCount: 1 },
+        { id: 's_defensive_contribution', name: 'Defensive contribution', status: 'active', assignedPositionCount: 1 },
+        { id: 's_dribbling', name: 'Dribbling', status: 'active', assignedPositionCount: 5 },
+        { id: 's_finishing', name: 'Finishing', status: 'active', assignedPositionCount: 4 },
+        { id: 's_fitness', name: 'Fitness', status: 'active', assignedPositionCount: 1 },
+        { id: 's_game_awareness', name: 'Game Awareness', status: 'active', assignedPositionCount: 1 },
+        { id: 's_handling', name: 'Handling', status: 'active', assignedPositionCount: 1 },
+        { id: 's_heading', name: 'Heading', status: 'active', assignedPositionCount: 2 },
+        { id: 's_high_stamina', name: 'High stamina', status: 'active', assignedPositionCount: 1 },
+        { id: 's_interceptions', name: 'Interceptions', status: 'active', assignedPositionCount: 2 },
+        { id: 's_link_up_play', name: 'Link-up play', status: 'active', assignedPositionCount: 1 },
+        { id: 's_long_shots', name: 'Long shots', status: 'active', assignedPositionCount: 1 },
+        { id: 's_marking', name: 'Marking', status: 'active', assignedPositionCount: 1 },
+        { id: 's_off_ball_movement', name: 'Off-ball movement', status: 'active', assignedPositionCount: 1 },
+        { id: 's_pace', name: 'Pace', status: 'active', assignedPositionCount: 4 },
+        { id: 's_passing', name: 'Passing', status: 'active', assignedPositionCount: 5 },
+        { id: 's_positioning', name: 'Positioning', status: 'active', assignedPositionCount: 3 },
+        { id: 's_reflexes', name: 'Reflexes', status: 'active', assignedPositionCount: 1 },
+        { id: 's_shot_stopping', name: 'Shot stopping', status: 'active', assignedPositionCount: 1 },
+        { id: 's_speed', name: 'Speed', status: 'active', assignedPositionCount: 1 },
+        { id: 's_stamina', name: 'Stamina', status: 'active', assignedPositionCount: 2 },
+        { id: 's_strength', name: 'Strength', status: 'active', assignedPositionCount: 2 },
+        { id: 's_tackling', name: 'Tackling', status: 'active', assignedPositionCount: 3 },
+        { id: 's_vision', name: 'Vision', status: 'active', assignedPositionCount: 4 }
+      ],
+      positionSkills: [
+        { positionId: 'pos_any', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' },
+        { positionId: 'pos_any', skillId: 's_passing', skillName: 'Passing', status: 'active' },
+        { positionId: 'pos_any', skillId: 's_game_awareness', skillName: 'Game Awareness', status: 'active' },
+        { positionId: 'pos_any', skillId: 's_fitness', skillName: 'Fitness', status: 'active' },
+        { positionId: 'pos_any', skillId: 's_speed', skillName: 'Speed', status: 'active' },
+
+        { positionId: 'pos_gk', skillId: 's_shot_stopping', skillName: 'Shot stopping', status: 'active' },
+        { positionId: 'pos_gk', skillId: 's_reflexes', skillName: 'Reflexes', status: 'active' },
+        { positionId: 'pos_gk', skillId: 's_handling', skillName: 'Handling', status: 'active' },
+        { positionId: 'pos_gk', skillId: 's_positioning', skillName: 'Positioning', status: 'active' },
+        { positionId: 'pos_gk', skillId: 's_aerial_control', skillName: 'Aerial control', status: 'active' },
+
+        { positionId: 'pos_rb_lb', skillId: 's_tackling', skillName: 'Tackling', status: 'active' },
+        { positionId: 'pos_rb_lb', skillId: 's_marking', skillName: 'Marking', status: 'active' },
+        { positionId: 'pos_rb_lb', skillId: 's_pace', skillName: 'Pace', status: 'active' },
+        { positionId: 'pos_rb_lb', skillId: 's_crossing', skillName: 'Crossing', status: 'active' },
+        { positionId: 'pos_rb_lb', skillId: 's_stamina', skillName: 'Stamina', status: 'active' },
+
+        { positionId: 'pos_rwb_lwb', skillId: 's_high_stamina', skillName: 'High stamina', status: 'active' },
+        { positionId: 'pos_rwb_lwb', skillId: 's_pace', skillName: 'Pace', status: 'active' },
+        { positionId: 'pos_rwb_lwb', skillId: 's_crossing', skillName: 'Crossing', status: 'active' },
+        { positionId: 'pos_rwb_lwb', skillId: 's_defensive_awareness', skillName: 'Defensive awareness', status: 'active' },
+        { positionId: 'pos_rwb_lwb', skillId: 's_dribbling', skillName: 'Dribbling', status: 'active' },
+
+        { positionId: 'pos_cb', skillId: 's_strength', skillName: 'Strength', status: 'active' },
+        { positionId: 'pos_cb', skillId: 's_heading', skillName: 'Heading', status: 'active' },
+        { positionId: 'pos_cb', skillId: 's_tackling', skillName: 'Tackling', status: 'active' },
+        { positionId: 'pos_cb', skillId: 's_interceptions', skillName: 'Interceptions', status: 'active' },
+        { positionId: 'pos_cb', skillId: 's_composure', skillName: 'Composure', status: 'active' },
+
+        { positionId: 'pos_cdm', skillId: 's_positioning', skillName: 'Positioning', status: 'active' },
+        { positionId: 'pos_cdm', skillId: 's_interceptions', skillName: 'Interceptions', status: 'active' },
+        { positionId: 'pos_cdm', skillId: 's_tackling', skillName: 'Tackling', status: 'active' },
+        { positionId: 'pos_cdm', skillId: 's_passing', skillName: 'Passing', status: 'active' },
+        { positionId: 'pos_cdm', skillId: 's_vision', skillName: 'Vision', status: 'active' },
+
+        { positionId: 'pos_cm', skillId: 's_passing', skillName: 'Passing', status: 'active' },
+        { positionId: 'pos_cm', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' },
+        { positionId: 'pos_cm', skillId: 's_vision', skillName: 'Vision', status: 'active' },
+        { positionId: 'pos_cm', skillId: 's_stamina', skillName: 'Stamina', status: 'active' },
+        { positionId: 'pos_cm', skillId: 's_defensive_contribution', skillName: 'Defensive contribution', status: 'active' },
+
+        { positionId: 'pos_cam', skillId: 's_creativity', skillName: 'Creativity', status: 'active' },
+        { positionId: 'pos_cam', skillId: 's_vision', skillName: 'Vision', status: 'active' },
+        { positionId: 'pos_cam', skillId: 's_dribbling', skillName: 'Dribbling', status: 'active' },
+        { positionId: 'pos_cam', skillId: 's_passing', skillName: 'Passing', status: 'active' },
+        { positionId: 'pos_cam', skillId: 's_long_shots', skillName: 'Long shots', status: 'active' },
+
+        { positionId: 'pos_rm_lm', skillId: 's_crossing', skillName: 'Crossing', status: 'active' },
+        { positionId: 'pos_rm_lm', skillId: 's_pace', skillName: 'Pace', status: 'active' },
+        { positionId: 'pos_rm_lm', skillId: 's_off_ball_movement', skillName: 'Off-ball movement', status: 'active' },
+        { positionId: 'pos_rm_lm', skillId: 's_dribbling', skillName: 'Dribbling', status: 'active' },
+        { positionId: 'pos_rm_lm', skillId: 's_passing', skillName: 'Passing', status: 'active' },
+
+        { positionId: 'pos_rw_lw', skillId: 's_acceleration', skillName: 'Acceleration', status: 'active' },
+        { positionId: 'pos_rw_lw', skillId: 's_dribbling', skillName: 'Dribbling', status: 'active' },
+        { positionId: 'pos_rw_lw', skillId: 's_crossing', skillName: 'Crossing', status: 'active' },
+        { positionId: 'pos_rw_lw', skillId: 's_agility', skillName: 'Agility', status: 'active' },
+        { positionId: 'pos_rw_lw', skillId: 's_finishing', skillName: 'Finishing', status: 'active' },
+
+        { positionId: 'pos_rf_lf', skillId: 's_dribbling', skillName: 'Dribbling', status: 'active' },
+        { positionId: 'pos_rf_lf', skillId: 's_finishing', skillName: 'Finishing', status: 'active' },
+        { positionId: 'pos_rf_lf', skillId: 's_pace', skillName: 'Pace', status: 'active' },
+        { positionId: 'pos_rf_lf', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' },
+        { positionId: 'pos_rf_lf', skillId: 's_creativity', skillName: 'Creativity', status: 'active' },
+
+        { positionId: 'pos_cf', skillId: 's_vision', skillName: 'Vision', status: 'active' },
+        { positionId: 'pos_cf', skillId: 's_creativity', skillName: 'Creativity', status: 'active' },
+        { positionId: 'pos_cf', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' },
+        { positionId: 'pos_cf', skillId: 's_finishing', skillName: 'Finishing', status: 'active' },
+        { positionId: 'pos_cf', skillId: 's_link_up_play', skillName: 'Link-up play', status: 'active' },
+
+        { positionId: 'pos_st', skillId: 's_finishing', skillName: 'Finishing', status: 'active' },
+        { positionId: 'pos_st', skillId: 's_positioning', skillName: 'Positioning', status: 'active' },
+        { positionId: 'pos_st', skillId: 's_strength', skillName: 'Strength', status: 'active' },
+        { positionId: 'pos_st', skillId: 's_heading', skillName: 'Heading', status: 'active' },
+        { positionId: 'pos_st', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' }
       ]
     };
   }
@@ -67,7 +197,7 @@
     }
     try {
       const parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.teams)) {
+      if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.teams) || !Array.isArray(parsed.skills) || !Array.isArray(parsed.positions) || !Array.isArray(parsed.sports)) {
         throw new Error('Invalid store');
       }
       return parsed;
@@ -793,6 +923,568 @@
       );
     },
 
+    // ---------------------------------------------------------------------------
+    // S8 Skills admin: sports / positions / skills / position_skills.
+    // SystemAdmin-only writes mirroring the clubs/teams pattern.
+    // ---------------------------------------------------------------------------
+
+    listSports(actorRole, actorEmail, statusFilter) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        if (statusFilter) params.set('status', statusFilter);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', `/sports${query}`);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
+      const status = String(statusFilter || 'active').trim().toLowerCase();
+      const matchStatus = (sport) => {
+        if (status === 'all') return true;
+        return (sport.status || 'active') === status;
+      };
+      const decorate = (sport) => {
+        const positionCount = store.positions.filter((entry) => entry.sportId === sport.id).length;
+        return Object.assign({}, sport, {
+          status: sport.status || 'active',
+          positionCount: positionCount
+        });
+      };
+      return clone((store.sports || []).filter(matchStatus).map(decorate));
+    },
+
+    createSport(payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/sports', {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', sport: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 40) {
+        return { status: 400, code: 'validation_error', message: 'Sport name must be 2-40 characters.' };
+      }
+      if (!Array.isArray(store.sports)) store.sports = [];
+      if (store.sports.some((sport) => sport.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A sport with this name already exists.' };
+      }
+
+      const nextId = 'sport_' + Date.now().toString(36);
+      const created = { id: nextId, name: name, status: 'active', positionCount: 0 };
+      store.sports.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', sport: clone(created) };
+    },
+
+    updateSport(sportId, payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/sports/' + encodeURIComponent(sportId), {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', sport: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.sports)) store.sports = [];
+      const sport = store.sports.find((entry) => entry.id === sportId);
+      if (!sport) {
+        return { status: 404, code: 'not_found', message: 'The selected sport was not found anymore. Refresh and try again.' };
+      }
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 40) {
+        return { status: 400, code: 'validation_error', message: 'Sport name must be 2-40 characters.' };
+      }
+      if (store.sports.some((other) => other.id !== sportId && other.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A sport with this name already exists.' };
+      }
+      sport.name = name;
+      saveStore(store);
+      return { status: 200, code: 'ok', sport: clone(sport) };
+    },
+
+    setSportStatus(sportId, status, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/sports/' + encodeURIComponent(sportId) + '/status', {
+          status: status,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', sport: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.sports)) store.sports = [];
+      const sport = store.sports.find((entry) => entry.id === sportId);
+      if (!sport) {
+        return { status: 404, code: 'not_found', message: 'The selected sport was not found anymore. Refresh and try again.' };
+      }
+      if (!['active', 'inactive'].includes(status)) {
+        return { status: 400, code: 'validation_error', message: 'Status must be active or inactive.' };
+      }
+      sport.status = status;
+      saveStore(store);
+      return { status: 200, code: 'ok', sport: clone(sport) };
+    },
+
+    listPositions(actorRole, actorEmail, sportId, statusFilter) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        if (sportId) params.set('sportId', sportId);
+        if (statusFilter) params.set('status', statusFilter);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', `/positions${query}`);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
+      const status = String(statusFilter || 'active').trim().toLowerCase();
+      const sportFilter = sportId || 'sport_soccer';
+      const matchSport = (entry) => !sportFilter || entry.sportId === sportFilter;
+      const matchStatus = (position) => {
+        if (status === 'all') return true;
+        return (position.status || 'active') === status;
+      };
+      const decorate = (position) => {
+        const skillCount = (store.positionSkills || []).filter((entry) => entry.positionId === position.id).length;
+        return Object.assign({}, position, {
+          status: position.status || 'active',
+          sportId: position.sportId,
+          skillCount: skillCount
+        });
+      };
+      return clone((store.positions || []).filter(matchSport).filter(matchStatus).map(decorate));
+    },
+
+    createPosition(payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/positions', {
+          name: payload && payload.name,
+          sportId: payload && payload.sportId,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', position: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const name = toTitleCase(payload && payload.name);
+      const sportId = String((payload && payload.sportId) || '').trim() || 'sport_soccer';
+      if (!name || name.length < 2 || name.length > 80) {
+        return { status: 400, code: 'validation_error', message: 'Position name must be 2-80 characters.' };
+      }
+      if (!Array.isArray(store.sports)) store.sports = [];
+      if (!Array.isArray(store.positions)) store.positions = [];
+      const parentSport = store.sports.find((entry) => entry.id === sportId);
+      if (!parentSport) {
+        return { status: 404, code: 'not_found', message: 'The selected sport was not found anymore. Refresh and try again.' };
+      }
+      if ((parentSport.status || 'active') !== 'active') {
+        return { status: 400, code: 'validation_error', message: 'Cannot add a position under an inactive sport.' };
+      }
+      if (store.positions.some((entry) => entry.sportId === sportId && entry.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A position with this name already exists under the selected sport.' };
+      }
+
+      const nextId = 'pos_' + Date.now().toString(36);
+      const created = { id: nextId, name: name, sportId: sportId, status: 'active', skillCount: 0 };
+      store.positions.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', position: clone(created) };
+    },
+
+    updatePosition(positionId, payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/positions/' + encodeURIComponent(positionId), {
+          name: payload && payload.name,
+          sportId: payload && payload.sportId,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', position: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.positions)) store.positions = [];
+      const position = store.positions.find((entry) => entry.id === positionId);
+      if (!position) {
+        return { status: 404, code: 'not_found', message: 'The selected position was not found anymore. Refresh and try again.' };
+      }
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 80) {
+        return { status: 400, code: 'validation_error', message: 'Position name must be 2-80 characters.' };
+      }
+      const newSportId = payload && payload.sportId ? String(payload.sportId).trim() : position.sportId;
+      if (!newSportId) {
+        return { status: 400, code: 'validation_error', message: 'Position requires a sportId.' };
+      }
+      if (!Array.isArray(store.sports)) store.sports = [];
+      const parentSport = store.sports.find((entry) => entry.id === newSportId);
+      if (!parentSport) {
+        return { status: 404, code: 'not_found', message: 'The selected sport was not found anymore. Refresh and try again.' };
+      }
+      if (store.positions.some((other) => other.id !== positionId && other.sportId === newSportId && other.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A position with this name already exists under the selected sport.' };
+      }
+      position.name = name;
+      position.sportId = newSportId;
+      saveStore(store);
+      return { status: 200, code: 'ok', position: clone(position) };
+    },
+
+    setPositionStatus(positionId, status, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/positions/' + encodeURIComponent(positionId) + '/status', {
+          status: status,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', position: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.positions)) store.positions = [];
+      const position = store.positions.find((entry) => entry.id === positionId);
+      if (!position) {
+        return { status: 404, code: 'not_found', message: 'The selected position was not found anymore. Refresh and try again.' };
+      }
+      if (!['active', 'inactive'].includes(status)) {
+        return { status: 400, code: 'validation_error', message: 'Status must be active or inactive.' };
+      }
+      position.status = status;
+      saveStore(store);
+      return { status: 200, code: 'ok', position: clone(position) };
+    },
+
+    listSkills(actorRole, actorEmail, statusFilter) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        if (statusFilter) params.set('status', statusFilter);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', `/skills${query}`);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
+      const status = String(statusFilter || 'active').trim().toLowerCase();
+      const matchStatus = (skill) => {
+        if (status === 'all') return true;
+        return (skill.status || 'active') === status;
+      };
+      const decorate = (skill) => {
+        const assignedPositionCount = (store.positionSkills || []).filter((entry) => entry.skillId === skill.id).length;
+        return Object.assign({}, skill, {
+          status: skill.status || 'active',
+          assignedPositionCount: assignedPositionCount
+        });
+      };
+      return clone((store.skills || []).filter(matchStatus).map(decorate));
+    },
+
+    createSkill(payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/skills', {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 201 && response.body && response.body.data) {
+          return { status: 201, code: 'created', skill: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 60) {
+        return { status: 400, code: 'validation_error', message: 'Skill name must be 2-60 characters.' };
+      }
+      if (!Array.isArray(store.skills)) store.skills = [];
+      if (store.skills.some((skill) => skill.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A skill with this name already exists.' };
+      }
+
+      const nextId = 's_' + Date.now().toString(36);
+      const created = { id: nextId, name: name, status: 'active', assignedPositionCount: 0 };
+      store.skills.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', skill: clone(created) };
+    },
+
+    updateSkill(skillId, payload, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/skills/' + encodeURIComponent(skillId), {
+          name: payload && payload.name,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', skill: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.skills)) store.skills = [];
+      const skill = store.skills.find((entry) => entry.id === skillId);
+      if (!skill) {
+        return { status: 404, code: 'not_found', message: 'The selected skill was not found anymore. Refresh and try again.' };
+      }
+      const name = toTitleCase(payload && payload.name);
+      if (!name || name.length < 2 || name.length > 60) {
+        return { status: 400, code: 'validation_error', message: 'Skill name must be 2-60 characters.' };
+      }
+      if (store.skills.some((other) => other.id !== skillId && other.name.toLowerCase() === name.toLowerCase())) {
+        return { status: 409, code: 'conflict', message: 'A skill with this name already exists.' };
+      }
+      const oldName = skill.name;
+      skill.name = name;
+      // Cascade the renamed label onto existing position_skills rows so the
+      // position-Skills table keeps showing the latest skill label.
+      if (Array.isArray(store.positionSkills)) {
+        store.positionSkills.forEach(function (entry) {
+          if (entry.skillId === skillId && entry.skillName === oldName) {
+            entry.skillName = name;
+          }
+        });
+      }
+      saveStore(store);
+      return { status: 200, code: 'ok', skill: clone(skill) };
+    },
+
+    setSkillStatus(skillId, status, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('PATCH', '/skills/' + encodeURIComponent(skillId) + '/status', {
+          status: status,
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', skill: clone(response.body.data) };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.skills)) store.skills = [];
+      const skill = store.skills.find((entry) => entry.id === skillId);
+      if (!skill) {
+        return { status: 404, code: 'not_found', message: 'The selected skill was not found anymore. Refresh and try again.' };
+      }
+      if (!['active', 'inactive'].includes(status)) {
+        return { status: 400, code: 'validation_error', message: 'Status must be active or inactive.' };
+      }
+      skill.status = status;
+      saveStore(store);
+      return { status: 200, code: 'ok', skill: clone(skill) };
+    },
+
+    deleteSkill(skillId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('DELETE', '/skills/' + encodeURIComponent(skillId), {
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 204) {
+          return { status: 204, code: 'ok' };
+        }
+        if (response.status === 409) {
+          return clone(Object.assign({ status: 409 }, response.body || { code: 'conflict', message: 'Cannot delete this skill because it is still assigned to one or more positions.' }));
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.skills)) store.skills = [];
+      const skill = store.skills.find((entry) => entry.id === skillId);
+      if (!skill) {
+        return { status: 404, code: 'not_found', message: 'The selected skill was not found anymore. Refresh and try again.' };
+      }
+      const assignedCount = (store.positionSkills || []).filter((entry) => entry.skillId === skillId).length;
+      if (assignedCount > 0) {
+        return {
+          status: 409,
+          code: 'conflict',
+          message: "Cannot delete skill '" + skill.name + "' because it is assigned to " + assignedCount + " position(s). Remove the assignments first."
+        };
+      }
+      store.skills = store.skills.filter((entry) => entry.id !== skillId);
+      saveStore(store);
+      return { status: 204, code: 'ok' };
+    },
+
+    listPositionSkills(positionId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const response = backendRequest('GET', '/positions/' + encodeURIComponent(positionId) + '/skills' + query);
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
+      if (!Array.isArray(store.positionSkills)) store.positionSkills = [];
+      return clone(store.positionSkills.filter((entry) => entry.positionId === positionId));
+    },
+
+    assignSkillToPosition(positionId, skillId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/positions/' + encodeURIComponent(positionId) + '/skills', {
+          skillId: skillId,
+          actorRole,
+          actorEmail
+        });
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.positions)) store.positions = [];
+      if (!Array.isArray(store.skills)) store.skills = [];
+      if (!Array.isArray(store.positionSkills)) store.positionSkills = [];
+      const position = store.positions.find((entry) => entry.id === positionId);
+      if (!position) {
+        return { status: 404, code: 'not_found', message: 'The selected position was not found anymore. Refresh and try again.' };
+      }
+      const skill = store.skills.find((entry) => entry.id === skillId);
+      if (!skill) {
+        return { status: 404, code: 'not_found', message: 'The selected skill was not found anymore. Refresh and try again.' };
+      }
+      if ((skill.status || 'active') !== 'active') {
+        return { status: 400, code: 'validation_error', message: 'Cannot assign an inactive skill.' };
+      }
+      const existing = store.positionSkills.find((entry) => entry.positionId === positionId && entry.skillId === skillId);
+      if (existing) {
+        return { status: 200, code: 'ok', assignment: clone(existing) };
+      }
+      const created = {
+        positionId: positionId,
+        skillId: skillId,
+        skillName: skill.name,
+        status: 'active'
+      };
+      store.positionSkills.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', assignment: clone(created) };
+    },
+
+    removeSkillFromPosition(positionId, skillId, actorRole, actorEmail) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('DELETE', '/positions/' + encodeURIComponent(positionId) + '/skills/' + encodeURIComponent(skillId), {
+          actorRole,
+          actorEmail
+        });
+        if (response.status === 204) {
+          return { status: 204, code: 'ok' };
+        }
+        return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' });
+      }
+
+      const store = loadStore();
+      const actor = resolveActorContext(store, actorRole, actorEmail);
+      if (actor.role !== 'SystemAdmin' || !actor.actorUser || actor.actorUser.status !== 'active') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+      if (!Array.isArray(store.positionSkills)) store.positionSkills = [];
+      const before = store.positionSkills.length;
+      store.positionSkills = store.positionSkills.filter(function (entry) {
+        return !(entry.positionId === positionId && entry.skillId === skillId);
+      });
+      if (store.positionSkills.length === before) {
+        return { status: 404, code: 'not_found', message: 'Assignment not found.' };
+      }
+      saveStore(store);
+      return { status: 204, code: 'ok' };
+    },
+
     assignUserToClub(userId, clubId, actorRole, actorEmail) {
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users/' + encodeURIComponent(userId) + '/clubs', {
@@ -927,6 +1619,7 @@
           ageGroup: payload && payload.ageGroup,
           coachEmail: payload && payload.coachEmail,
           clubId: payload && payload.clubId,
+          sportId: payload && payload.sportId,
           actorRole,
           actorEmail
         });
@@ -990,6 +1683,8 @@
       }
 
       const nextId = store.teams.reduce((max, team) => Math.max(max, team.id), 0) + 1;
+      const resolvedSportId = String(payload && payload.sportId || 'sport_soccer').trim() || 'sport_soccer';
+      const resolvedSport = (store.sports || []).find((sport) => sport.id === resolvedSportId) || (store.sports || []).find((sport) => sport.id === 'sport_soccer') || null;
       const created = {
         id: nextId,
         name: teamName,
@@ -998,6 +1693,8 @@
         leadCoachEmail: assignedCoach.email,
         clubId: resolvedClubId,
         clubName: targetClub.name,
+        sportId: resolvedSport ? resolvedSport.id : 'sport_soccer',
+        sportName: resolvedSport ? resolvedSport.name : 'Soccer',
         status: 'active'
       };
 
@@ -1079,6 +1776,7 @@
           coachEmail: body.coachEmail,
           clubId: body.clubId,
           status: body.status,
+          sportId: body.sportId,
           actorRole: body.actorRole,
           actorEmail: body.actorEmail
         });
@@ -1131,6 +1829,18 @@
       team.clubId = newClubId;
       team.clubName = club.name;
       team.status = newStatus;
+      const newSportId = String(body.sportId || '').trim();
+      if (newSportId) {
+        const newSport = (store.sports || []).find((sport) => sport.id === newSportId);
+        if (!newSport) {
+          return { status: 400, code: 'validation_error', message: 'The selected sport could not be found.' };
+        }
+        team.sportId = newSport.id;
+        team.sportName = newSport.name;
+      } else if (!team.sportId) {
+        team.sportId = 'sport_soccer';
+        team.sportName = 'Soccer';
+      }
       const assignedId = newCoach.id || newCoach.email;
       if (!Array.isArray(store.coachClubs)) store.coachClubs = [];
       if (assignedId && !store.coachClubs.some((entry) => entry.userId === assignedId && entry.clubId === newClubId)) {
@@ -1299,7 +2009,8 @@
         const response = backendRequest('POST', '/players', {
           name: payload.lookup,
           teamName: payload.teamName,
-          confirmCreate: Boolean(payload.confirmCreate)
+          confirmCreate: Boolean(payload.confirmCreate),
+          position: payload.position || ''
         });
         if (response.status === 200 || response.status === 201 || response.status === 400 || response.status === 404 || response.status === 409) {
           return clone(response.body);
@@ -1349,12 +2060,25 @@
       }
 
       const nextId = store.players.reduce((max, player) => Math.max(max, player.id), 0) + 1;
+      // Resolve the requested position against the team's sport. If the caller
+      // picked a value that doesn't exist for this team's sport we silently
+      // fall back to "Position not set" — the dropdown in the UI should make
+      // this unreachable, but offline callers may bypass it.
+      const requestedPosition = String(payload.position || '').trim();
+      const teamEntry = (store.teams || []).find(function (entry) { return entry.name === teamName; });
+      const sportId = teamEntry ? (teamEntry.sportId || 'sport_soccer') : 'sport_soccer';
+      const sportPositions = (store.positions || []).filter(function (position) {
+        return position.sportId === sportId && position.status !== 'inactive';
+      });
+      const matchedPosition = requestedPosition
+        ? sportPositions.find(function (position) { return position.name === requestedPosition; })
+        : null;
       const created = {
         id: nextId,
         name: preview.normalizedName,
         normalizedName: normalizeComparable(preview.normalizedName),
         teamName,
-        position: 'Position not set',
+        position: matchedPosition ? matchedPosition.name : 'Position not set',
         trend: 'plateau',
         updated: 'Updated just now'
       };
@@ -1412,6 +2136,8 @@
             leadCoachEmail: team.leadCoachEmail || null,
             clubId: team.clubId || null,
             clubName: team.clubName || null,
+            sportId: team.sportId || null,
+            sportName: team.sportName || null,
             status: team.status || 'active',
             playerCount: Number(team.playerCount || 0)
           }))
@@ -1423,6 +2149,7 @@
         store.teams.map((team) => {
           const playerCount = store.players.filter((player) => player.teamName === team.name).length;
           const club = store.clubs.find((entry) => entry.id === team.clubId);
+          const sport = (store.sports || []).find((entry) => entry.id === team.sportId);
           return {
             id: team.id,
             name: team.name,
@@ -1431,6 +2158,8 @@
             leadCoachEmail: team.leadCoachEmail || null,
             clubId: team.clubId || null,
             clubName: club ? club.name : null,
+            sportId: team.sportId || null,
+            sportName: sport ? sport.name : null,
             status: team.status || 'active',
             playerCount
           };

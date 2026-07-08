@@ -36,6 +36,11 @@
             <input id="addPlayerInput" type="text" list="addPlayerOptions" placeholder="Type player name...">
             <datalist id="addPlayerOptions"></datalist>
           </div>
+          <div>
+            <label class="form-label" for="addPlayerPosition">Position</label>
+            <select id="addPlayerPosition" data-testid="add-player-position"></select>
+            <span id="addPlayerPositionEmpty" class="validation-hint" hidden>No positions are defined for this team's sport yet. Add them in Manage Skills (S8).</span>
+          </div>
           <div class="inline-actions">
             <button id="addPlayerSubmit" class="btn btn-primary" type="button">Add to Team</button>
             <button id="addPlayerCancel" class="btn btn-secondary" type="button">Cancel</button>
@@ -81,6 +86,10 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
     </nav>
   </div>
 
@@ -118,6 +127,8 @@
       const addPlayerSubmit = document.getElementById('addPlayerSubmit');
       const addPlayerInput = document.getElementById('addPlayerInput');
       const addPlayerOptions = document.getElementById('addPlayerOptions');
+      const addPlayerPosition = document.getElementById('addPlayerPosition');
+      const addPlayerPositionEmpty = document.getElementById('addPlayerPositionEmpty');
       const addPlayerHint = document.getElementById('addPlayerHint');
       const createPreview = document.getElementById('createPreview');
       const createConfirm = document.getElementById('createConfirm');
@@ -377,10 +388,56 @@
         renderCreatePreview();
       }
 
+      function renderAddPlayerPositions() {
+        if (!addPlayerPosition) return;
+        if (state.selectedTeam === 'all') {
+          addPlayerPosition.innerHTML = '';
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'Pick a team first';
+          addPlayerPosition.appendChild(placeholder);
+          addPlayerPosition.disabled = true;
+          if (addPlayerPositionEmpty) addPlayerPositionEmpty.hidden = true;
+          return;
+        }
+        const teamEntry = (MockupApi.listTeams() || []).find(function (team) { return team.name === state.selectedTeam; });
+        const sportId = teamEntry ? (teamEntry.sportId || 'sport_soccer') : 'sport_soccer';
+        const positions = MockupApi.listPositions(null, null, sportId, 'active') || [];
+        const previous = addPlayerPosition.value || '';
+        addPlayerPosition.innerHTML = '';
+        if (positions.length === 0) {
+          addPlayerPosition.disabled = true;
+          if (addPlayerPositionEmpty) addPlayerPositionEmpty.hidden = false;
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'No positions available';
+          addPlayerPosition.appendChild(placeholder);
+          return;
+        }
+        addPlayerPosition.disabled = false;
+        if (addPlayerPositionEmpty) addPlayerPositionEmpty.hidden = true;
+        const unset = document.createElement('option');
+        unset.value = '';
+        unset.textContent = 'Position not set';
+        addPlayerPosition.appendChild(unset);
+        positions.forEach(function (position) {
+          const option = document.createElement('option');
+          option.value = position.name;
+          option.textContent = position.name;
+          addPlayerPosition.appendChild(option);
+        });
+        if (previous && Array.from(addPlayerPosition.options).some(function (opt) { return opt.value === previous; })) {
+          addPlayerPosition.value = previous;
+        } else {
+          addPlayerPosition.value = '';
+        }
+      }
+
       function executeAddPlayer(confirmCreate) {
         const response = MockupApi.addPlayerFlow({
           teamName: state.selectedTeam,
           lookup: addPlayerInput.value,
+          position: addPlayerPosition ? addPlayerPosition.value : '',
           confirmCreate: Boolean(confirmCreate)
         });
 
@@ -413,6 +470,7 @@
         if (show) {
           resetTransientPanels();
           renderSuggestions();
+          renderAddPlayerPositions();
           addPlayerInput.focus();
         }
       }
@@ -426,6 +484,7 @@
         state.selectedTeam = teamFilter.value;
         renderPlayers();
         renderSuggestions();
+        renderAddPlayerPositions();
       });
 
       onlyMineToggle.addEventListener('change', function () {
@@ -483,6 +542,7 @@
       hydrateActor();
       renderPlayers();
       renderSuggestions();
+      renderAddPlayerPositions();
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
       if (exitButton) {

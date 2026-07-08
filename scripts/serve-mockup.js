@@ -2575,13 +2575,20 @@ async function handlePlayersApi(req, res, requestUrl) {
         return;
       }
 
+      const requestedPosition = String(payload.position || '').trim();
+      const positionRows = await client.query(
+        `SELECT p.name AS "name" FROM positions p WHERE p.sport_id = $1 AND p.status = 'active' AND p.name = $2 LIMIT 1`,
+        [team.sport_id, requestedPosition]
+      );
+      const persistedPosition = (positionRows.rows[0] && positionRows.rows[0].name) ? requestedPosition : 'Position not set';
+
       const playerId = `p_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
       await client.query(
         `
           INSERT INTO players (id, name, normalized_name, position, trend)
-          VALUES ($1, $2, $3, 'Position not set', 'plateau')
+          VALUES ($1, $2, $3, $4, 'plateau')
         `,
-        [playerId, normalizedName, comparable]
+        [playerId, normalizedName, comparable, persistedPosition]
       );
       await client.query(
         `
