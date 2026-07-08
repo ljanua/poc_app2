@@ -59,6 +59,7 @@
                 <tr>
                   <th>Team</th>
                   <th>Age Group</th>
+                  <th>Sport</th>
                   <th>Players</th>
                   <th>Lead Coach</th>
                   <th>Club</th>
@@ -67,7 +68,7 @@
               </thead>
               <tbody>
                 <tr>
-                  <td colspan="6">Loading teams...</td>
+                  <td colspan="7">Loading teams...</td>
                 </tr>
               </tbody>
             </table>
@@ -97,6 +98,10 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
     </nav>
   </div>
 
@@ -112,6 +117,9 @@
 
         <label class="form-label" for="teamAgeGroupInput">Age Group <span class="required">*</span></label>
         <input id="teamAgeGroupInput" type="text" required>
+
+        <label class="form-label" for="teamSportSelect">Sport <span class="required">*</span></label>
+        <select id="teamSportSelect" data-testid="team-sport-select" required></select>
 
         <div id="coachSelfNotice" class="notice" hidden>Coach create flow: you will be assigned as lead coach automatically.</div>
 
@@ -177,6 +185,7 @@
       const teamFormError = document.getElementById('teamFormError');
       const teamClubSelect = document.getElementById('teamClubSelect');
       const clubPickerWrap = document.getElementById('clubPickerWrap');
+      const teamSportSelect = document.getElementById('teamSportSelect');
 
       const clubFilter = document.getElementById('clubFilter');
       const onlyMyClubsWrap = document.getElementById('onlyMyClubsWrap');
@@ -271,6 +280,30 @@
         });
       }
 
+      function fillSportSelect(selectEl, currentSportId) {
+        const sports = MockupApi.listSports(state.actorRole, state.actorEmail, 'active') || [];
+        const previous = currentSportId || (selectEl.value || 'sport_soccer');
+        selectEl.innerHTML = '';
+        if (sports.length === 0) {
+          const option = document.createElement('option');
+          option.value = 'sport_soccer';
+          option.textContent = 'Soccer';
+          selectEl.appendChild(option);
+        } else {
+          sports.forEach(function (sport) {
+            const option = document.createElement('option');
+            option.value = sport.id;
+            option.textContent = sport.name;
+            selectEl.appendChild(option);
+          });
+        }
+        if (previous && Array.from(selectEl.options).some(function (opt) { return opt.value === previous; })) {
+          selectEl.value = previous;
+        } else {
+          selectEl.value = 'sport_soccer';
+        }
+      }
+
       function refreshKpis(teams) {
         const allPlayers = MockupApi.listPlayers({ teamName: 'all' });
         document.getElementById('kpiActiveTeams').textContent = String(teams.length);
@@ -331,6 +364,7 @@
           row.innerHTML =
             '<td>' + team.name + statusBadge + '</td>' +
             '<td>' + team.ageGroup + '</td>' +
+            '<td data-testid="row-sport">' + (team.sportName || '—') + '</td>' +
             '<td>' + team.playerCount + '</td>' +
             '<td>' + team.leadCoach + '</td>' +
             '<td>' + (team.clubName || '—') + '</td>' +
@@ -352,6 +386,7 @@
         hideError(teamFormError);
         teamNameInput.value = '';
         teamAgeGroupInput.value = '';
+        fillSportSelect(teamSportSelect, 'sport_soccer');
 
         if (state.actorRole === 'SystemAdmin') {
           coachPickerWrap.hidden = false;
@@ -399,7 +434,8 @@
             name: teamNameInput.value,
             ageGroup: teamAgeGroupInput.value,
             coachEmail: teamCoachSelect.value,
-            clubId: state.actorRole === 'SystemAdmin' ? teamClubSelect.value : ''
+            clubId: state.actorRole === 'SystemAdmin' ? teamClubSelect.value : '',
+            sportId: teamSportSelect.value
           },
           state.actorRole,
           state.actorEmail
