@@ -17,10 +17,8 @@
 
     <div class="content">
       <div class="toolbar">
-        <select class="pill-select" aria-label="Selected team">
-          <option>Team: Senior Squad</option>
-          <option>Team: U19 Prime</option>
-          <option>Team: U17 Elite</option>
+        <select id="dashboardTeamSelect" class="pill-select" data-testid="team-select" aria-label="Player's current team" disabled>
+          <option value="">Team: \u2014</option>
         </select>
         <a class="btn btn-secondary" id="editPlayerLink" href="./S1-player-list.html" hidden>Edit Player</a>
         <a class="btn btn-secondary" href="./S1-player-list.html">Back to Player List</a>
@@ -202,6 +200,20 @@
       document.getElementById('dashboardPlayerName').textContent = player.name;
       document.getElementById('dashboardPlayerMeta').textContent = player.position + ' • Age 24';
       document.getElementById('dashboardTeamChip').textContent = player.teamName;
+
+      // The team dropdown is locked to the player being viewed. A coach
+      // cannot change a player's team assignment from the dashboard, so the
+      // <select> is rendered with a single option mirroring the chip below
+      // and marked disabled. Both stay in sync with player.teamName.
+      const teamSelect = document.getElementById('dashboardTeamSelect');
+      if (teamSelect) {
+        const teamOption = teamSelect.querySelector('option');
+        if (teamOption) {
+          teamOption.value = String(player.teamName || '');
+          teamOption.textContent = 'Team: ' + (player.teamName || '—');
+        }
+        teamSelect.value = String(player.teamName || '');
+      }
 
       const trendBadge = document.getElementById('dashboardTrendBadge');
       trendBadge.className = 'badge ' + trendClass;

@@ -116,6 +116,29 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=10/);
   });
 
+  test('locks the team dropdown to the viewed player\u2019s current team', async ({ page }) => {
+    // Default player (Lionel Messi) is on Senior Squad in the seeded offline store.
+    const teamSelect = page.locator('#dashboardTeamSelect');
+    await expect(teamSelect).toBeVisible();
+    await expect(teamSelect).toBeDisabled();
+
+    // Exactly one option, locked to the player\u2019s team, and matching the chip.
+    const options = teamSelect.locator('option');
+    await expect(options).toHaveCount(1);
+    await expect(teamSelect).toHaveValue('Senior Squad');
+    await expect(options.first()).toHaveText('Team: Senior Squad');
+    await expect(page.locator('#dashboardTeamChip')).toHaveText('Senior Squad');
+
+    // Switching to a different player must rebind the dropdown to that
+    // player\u2019s teamName, not retain the previous one. Rookie Carter is on
+    // U19 Prime in the offline store.
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Rookie Carter'));
+    await expect(teamSelect).toBeDisabled();
+    await expect(teamSelect).toHaveValue('U19 Prime');
+    await expect(options.first()).toHaveText('Team: U19 Prime');
+    await expect(page.locator('#dashboardTeamChip')).toHaveText('U19 Prime');
+  });
+
   test('shows emoji avatar for a player with no uploaded photo', async ({ page }) => {
     const emoji = page.locator('#playerAvatarEmoji');
     await expect(emoji).toBeVisible();
