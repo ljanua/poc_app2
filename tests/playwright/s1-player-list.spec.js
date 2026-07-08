@@ -224,4 +224,47 @@ test.describe('S1 Player List avatar renders against live backend', () => {
     await expect(targetCard.locator('.player-image')).not.toContainText('⚽');
     await expect(targetCard.locator('.player-image')).toHaveClass(/has-avatar/);
   });
+
+  test('inline add-player panel accepts birth month and year and persists them', async ({ page }) => {
+    // Open the add-player panel and submit a new player with birth fields.
+    await page.locator('#toggleAddPlayer').click();
+    await expect(page.locator('#addPlayerPanel')).toBeVisible();
+
+    // Pick a sport-defined position so the create flow doesn't fall back to
+    // "Position not set" -- birth fields work either way, but a real position
+    // makes the assertions cleaner.
+    await page.selectOption('#addPlayerPosition', { index: 1 });
+    await page.fill('#addPlayerInput', 'Birth Test Carter');
+    await page.selectOption('#addPlayerBirthMonth', '3');
+    await page.fill('#addPlayerBirthYear', '2005');
+    await page.locator('#createConfirm').check();
+    await page.locator('#addPlayerSubmit').click();
+
+    // The new player is in the offline store with the birth fields preserved.
+    const stored = await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      return store.players.find((p) => p.name === 'Birth Test Carter');
+    });
+    expect(stored).toBeTruthy();
+    expect(stored.birthMonth).toBe(3);
+    expect(stored.birthYear).toBe(2005);
+  });
+
+  test('inline add-player panel rejects a partial birth pair (only month) and shows a validation error', async ({ page }) => {
+    await page.locator('#toggleAddPlayer').click();
+    await expect(page.locator('#addPlayerPanel')).toBeVisible();
+    await page.selectOption('#addPlayerPosition', { index: 1 });
+    await page.fill('#addPlayerInput', 'Partial Birth Carter');
+    await page.selectOption('#addPlayerBirthMonth', '3');
+    // Year left blank intentionally.
+    await page.locator('#createConfirm').check();
+    await page.locator('#addPlayerSubmit').click();
+    // The hint text surfaces the strict-pair error and no player is created.
+    await expect(page.locator('#addPlayerHint')).toContainText(/set together|blank/i);
+    const stored = await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      return (store.players || []).find((p) => p.name === 'Partial Birth Carter');
+    });
+    expect(stored).toBeUndefined();
+  });
 });

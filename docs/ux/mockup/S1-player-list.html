@@ -41,6 +41,27 @@
             <select id="addPlayerPosition" data-testid="add-player-position"></select>
             <span id="addPlayerPositionEmpty" class="validation-hint" hidden>No positions are defined for this team's sport yet. Add them in Manage Skills (S8).</span>
           </div>
+          <div class="birth-fields">
+            <label class="form-label" for="addPlayerBirthMonth">Birth month</label>
+            <select id="addPlayerBirthMonth" data-testid="add-player-birth-month">
+              <option value="">Not set</option>
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            <label class="form-label" for="addPlayerBirthYear" style="margin-top:0.6rem;display:block;">Birth year</label>
+            <input id="addPlayerBirthYear" type="number" min="1960" max="2026" step="1" placeholder="Year" data-testid="add-player-birth-year">
+            <span class="validation-hint">Leave both blank if unknown. Setting only one returns a validation error.</span>
+          </div>
           <div class="inline-actions">
             <button id="addPlayerSubmit" class="btn btn-primary" type="button">Add to Team</button>
             <button id="addPlayerCancel" class="btn btn-secondary" type="button">Cancel</button>
@@ -129,6 +150,8 @@
       const addPlayerOptions = document.getElementById('addPlayerOptions');
       const addPlayerPosition = document.getElementById('addPlayerPosition');
       const addPlayerPositionEmpty = document.getElementById('addPlayerPositionEmpty');
+      const addPlayerBirthMonth = document.getElementById('addPlayerBirthMonth');
+      const addPlayerBirthYear = document.getElementById('addPlayerBirthYear');
       const addPlayerHint = document.getElementById('addPlayerHint');
       const createPreview = document.getElementById('createPreview');
       const createConfirm = document.getElementById('createConfirm');
@@ -438,6 +461,10 @@
           teamName: state.selectedTeam,
           lookup: addPlayerInput.value,
           position: addPlayerPosition ? addPlayerPosition.value : '',
+          // Birth fields are optional; parseBirthFields enforces the strict-pair
+          // rule. Empty strings collapse to null so the helper sees "both blank".
+          birthMonth: addPlayerBirthMonth ? addPlayerBirthMonth.value : '',
+          birthYear: addPlayerBirthYear ? addPlayerBirthYear.value : '',
           confirmCreate: Boolean(confirmCreate)
         });
 

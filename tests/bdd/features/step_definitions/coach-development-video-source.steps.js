@@ -71,6 +71,19 @@ When('I open the development dashboard for player {string}', function (playerNam
       ? 'Performance metrics are not available yet.'
       : null;
 
+  // Mirror the server-side computeAge formula so the BDD mock exposes the
+  // same derived age the live API would. Tests run with the system clock.
+  if (profile.birthMonth != null && profile.birthYear != null) {
+    const now = new Date();
+    let age = now.getFullYear() - profile.birthYear;
+    if (now.getMonth() + 1 < profile.birthMonth) {
+      age -= 1;
+    }
+    profile.age = age >= 0 ? age : null;
+  } else {
+    profile.age = null;
+  }
+
   if (profile.missingData === 'all') {
     // Player exists but has no player_stats recorded yet: only the identity
     // card (name, team, trend) may render -- every stats-derived field must
@@ -129,6 +142,50 @@ When('I save player {string} with no development ratings recorded', function (pl
 
   // All rating toggles off — missingData stays 'all' and the notice is kept.
   this.lastStatus = 200;
+});
+
+When('I save player {string} with birth month {int} and birth year {int}', function (playerName, month, year) {
+  this.resetResponse();
+
+  if (!requireCoach(this)) {
+    return;
+  }
+
+  const profile = this.playerProfiles.get(playerName);
+  if (!profile) {
+    setError(this, 404, 'not_found', 'The selected player was not found anymore. Refresh and try again.');
+    return;
+  }
+
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    setError(this, 400, 'validation_error', 'Birth month must be a whole number from 1 (January) to 12 (December).');
+    return;
+  }
+  if (!Number.isInteger(year) || year < 1960 || year > new Date().getFullYear()) {
+    setError(this, 400, 'validation_error', 'Birth year must be between 1960 and ' + new Date().getFullYear() + '.');
+    return;
+  }
+
+  profile.birthMonth = month;
+  profile.birthYear = year;
+  this.lastStatus = 200;
+});
+
+When('I save player {string} with birth month {int} and no birth year', function (playerName, month) {
+  this.resetResponse();
+
+  if (!requireCoach(this)) {
+    return;
+  }
+
+  const profile = this.playerProfiles.get(playerName);
+  if (!profile) {
+    setError(this, 404, 'not_found', 'The selected player was not found anymore. Refresh and try again.');
+    return;
+  }
+
+  // Strict-pair rule: only one of the pair is set, so the server returns 400.
+  setError(this, 400, 'validation_error', 'Birth month and year must be set together, or both left blank.');
 });
 
 Then('the dashboard should not show a missing data message', function () {
@@ -193,6 +250,28 @@ Then('the dashboard should show trend indicator {string}', function (trend) {
 
 Then('the dashboard should show missing data message {string}', function (message) {
   assert.equal(this.dashboardMissingMessage, message);
+});
+
+Then('the dashboard should show birth month {int} and birth year {int}', function (month, year) {
+  const profile = this.playerProfiles.get(this.dashboardCurrentPlayer);
+  assert.ok(profile, 'Expected a player profile to be resolved on the dashboard');
+  assert.equal(profile.birthMonth, month, 'Expected the dashboard to surface the recorded birth month');
+  assert.equal(profile.birthYear, year, 'Expected the dashboard to surface the recorded birth year');
+});
+
+Then('the dashboard should show a derived age matching the recorded birth date', function () {
+  const profile = this.playerProfiles.get(this.dashboardCurrentPlayer);
+  assert.ok(profile, 'Expected a player profile to be resolved on the dashboard');
+  assert.ok(profile.birthMonth != null && profile.birthYear != null, 'Expected a recorded birth date');
+  // Mirror the server-side computeAge formula: (year diff) - 1 if today's month
+  // is before the birth month, else 0. Tests run with the system clock.
+  const now = new Date();
+  let expectedAge = now.getFullYear() - profile.birthYear;
+  if (now.getMonth() + 1 < profile.birthMonth) {
+    expectedAge -= 1;
+  }
+  assert.equal(profile.age, expectedAge, 'Expected the derived age to match the birth date and current date');
+  assert.ok(profile.age >= 0, 'Expected the derived age to be non-negative');
 });
 
 Then('the dashboard should show only the player identity card with no stats', function () {

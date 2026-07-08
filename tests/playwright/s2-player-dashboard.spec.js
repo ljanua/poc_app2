@@ -160,4 +160,36 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.locator('#playerAvatarImg')).toBeVisible();
     await expect(page.locator('#playerAvatarEmoji')).toBeHidden();
   });
+
+  test('shows the seeded player age on the S2 meta line (Lionel Messi born 1987-06)', async ({ page }) => {
+    // Default player on the seeded offline store. Messi's birth month/year
+    // produce a numeric Age derived from the current year.
+    const meta = await page.locator('#dashboardPlayerMeta').textContent();
+    expect(meta).toMatch(/Age \d+/);
+    // The age is at least 30 (Messi was born 1987).
+    const match = meta.match(/Age (\d+)/);
+    expect(match).not.toBeNull();
+    expect(Number(match[1])).toBeGreaterThanOrEqual(30);
+  });
+
+  test('omits the age segment when the player has no birth date', async ({ page }) => {
+    // Add a player without birth fields and assert the meta line drops the
+    // "Age N" segment, falling back to just the position.
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 9999,
+        name: 'Age Test Carter',
+        normalizedName: 'age test carter',
+        teamName: 'U19 Prime',
+        position: 'Forward - Center Forward',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Age Test Carter'));
+    const meta = await page.locator('#dashboardPlayerMeta').textContent();
+    expect(meta).not.toMatch(/Age \d+/);
+  });
 });

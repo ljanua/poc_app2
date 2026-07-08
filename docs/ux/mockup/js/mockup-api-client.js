@@ -22,6 +22,65 @@
       .join(' ');
   }
 
+  // Validates the optional birth month/year pair on the offline/local fallback
+  // path. Mirrors scripts/serve-mockup.js parseBirthFields so the S2 dashboard
+  // shows the same age in both modes. Strict-pair rule: both set, or both
+  // absent; a partial pair is rejected.
+  function parseBirthFields(payload, now) {
+    if (payload == null || typeof payload !== 'object') {
+      return { birthMonth: null, birthYear: null };
+    }
+
+    const monthRaw = payload.birthMonth;
+    const yearRaw = payload.birthYear;
+    const monthBlank = monthRaw == null || monthRaw === '';
+    const yearBlank = yearRaw == null || yearRaw === '';
+    if (monthBlank && yearBlank) {
+      return { birthMonth: null, birthYear: null };
+    }
+    if (monthBlank || yearBlank) {
+      return { error: 'Birth month and year must be set together, or both left blank.' };
+    }
+
+    const month = Number(monthRaw);
+    const year = Number(yearRaw);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
+    }
+    if (!Number.isInteger(year)) {
+      return { error: 'Birth year must be a whole number.' };
+    }
+    const currentYear = (now instanceof Date ? now : new Date()).getFullYear();
+    if (year < 1960 || year > currentYear) {
+      return { error: 'Birth year must be between 1960 and ' + currentYear + '.' };
+    }
+    return { birthMonth: month, birthYear: year };
+  }
+
+  // Derives age from a birth month/year pair. Pure function; mirrors the
+  // server-side helper so the offline S2 dashboard shows the same age as
+  // backend mode. Returns null when either input is missing.
+  function computeAge(birthMonth, birthYear, now) {
+    if (birthMonth == null || birthYear == null) {
+      return null;
+    }
+    const reference = now instanceof Date ? now : new Date();
+    const month = Number(birthMonth);
+    const year = Number(birthYear);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return null;
+    }
+    if (!Number.isInteger(year)) {
+      return null;
+    }
+    const referenceMonth = reference.getMonth() + 1;
+    let age = reference.getFullYear() - year;
+    if (referenceMonth < month) {
+      age -= 1;
+    }
+    return age >= 0 ? age : null;
+  }
+
   function createSeed() {
     return {
       clubs: [
@@ -38,10 +97,10 @@
         { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' }
       ],
       players: [
-        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null },
-        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null },
-        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null },
-        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null }
+        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null, birthMonth: 6, birthYear: 1987 },
+        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null, birthMonth: 2, birthYear: 1985 },
+        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null, birthMonth: 2, birthYear: 1992 },
+        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null, birthMonth: 12, birthYear: 1998 }
       ],
       playerAvatars: {},
       clips: [
@@ -384,7 +443,7 @@
     const missingDataMessage = 'Performance metrics are not available yet.';
 
     return clone({
-      player: selected,
+      player: enrichPlayerWithAge(selected),
       stats: {
         growthStatus,
         currentLevel: 'N/A',
@@ -451,7 +510,22 @@
   // Builds the full dashboard payload from a canonical stats object (the same
   // shape the backend stores/returns), mirroring toDashboardPayload in
   // scripts/serve-mockup.js so a coach-saved override renders identically.
+  // Adds the read-only derived age to a player record so dashboard reads
+  // surface it consistently across stored-stats, no-stats, and named-profile
+  // paths. Pure function; never mutates the input.
+  function enrichPlayerWithAge(player) {
+    if (!player) return player;
+    const birthMonth = player.birthMonth == null ? null : Number(player.birthMonth);
+    const birthYear = player.birthYear == null ? null : Number(player.birthYear);
+    return Object.assign({}, player, {
+      birthMonth: Number.isInteger(birthMonth) ? birthMonth : (player.birthMonth == null ? null : player.birthMonth),
+      birthYear: Number.isInteger(birthYear) ? birthYear : (player.birthYear == null ? null : player.birthYear),
+      age: computeAge(birthMonth, birthYear)
+    });
+  }
+
   function composeDashboardPayload(player, stats) {
+    const enrichedPlayer = enrichPlayerWithAge(player);
     const currentLevel = stats.currentLevel || 'N/A';
     const fitness = stats.fitness || 'N/A';
     const skillProgress = stats.skillProgress || 'N/A';
@@ -462,7 +536,7 @@
     const skillProgressChange = stats.skillProgressChange || null;
 
     return clone({
-      player,
+      player: enrichedPlayer,
       stats: {
         growthStatus: stats.growthStatus || growthStatusForTrend(player.trend),
         currentLevel,
@@ -531,7 +605,7 @@
     const metricChanges = getMetricChangeIndicators(selected);
 
     return clone({
-      player: selected,
+      player: enrichPlayerWithAge(selected),
       stats: {
         growthStatus: selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch',
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',
@@ -683,8 +757,21 @@
 
     var avatarUrl = (payload && payload.avatarUrl !== undefined) ? String(payload.avatarUrl || '').trim() || null : null;
 
+    // Birth date: strict-pair rule -- both fields set together, or both absent.
+    // Returns the validated pair (with nulls) or an error message.
+    var birth = parseBirthFields(payload || {});
+
     return {
-      identity: { name: name, normalizedName: normalizeComparable(name), teamName: teamName, position: position, trend: trend, avatarUrl: avatarUrl },
+      identity: {
+        name: name,
+        normalizedName: normalizeComparable(name),
+        teamName: teamName,
+        position: position,
+        trend: trend,
+        avatarUrl: avatarUrl,
+        birthMonth: birth.birthMonth,
+        birthYear: birth.birthYear
+      },
       stats: {
         growthStatus: growthStatus,
         currentLevel: currentLevel,
@@ -2010,7 +2097,9 @@
           name: payload.lookup,
           teamName: payload.teamName,
           confirmCreate: Boolean(payload.confirmCreate),
-          position: payload.position || ''
+          position: payload.position || '',
+          birthMonth: payload.birthMonth == null ? null : Number(payload.birthMonth),
+          birthYear: payload.birthYear == null ? null : Number(payload.birthYear)
         });
         if (response.status === 200 || response.status === 201 || response.status === 400 || response.status === 404 || response.status === 409) {
           return clone(response.body);
@@ -2059,6 +2148,15 @@
         return { status: 400, code: 'validation_error', message: 'Explicit confirmation is required to create this player.' };
       }
 
+      // Strict-pair validation: birth month and year must be set together.
+      const birth = parseBirthFields({
+        birthMonth: payload.birthMonth == null ? null : Number(payload.birthMonth),
+        birthYear: payload.birthYear == null ? null : Number(payload.birthYear)
+      });
+      if (birth.error) {
+        return { status: 400, code: 'validation_error', message: birth.error };
+      }
+
       const nextId = store.players.reduce((max, player) => Math.max(max, player.id), 0) + 1;
       // Resolve the requested position against the team's sport. If the caller
       // picked a value that doesn't exist for this team's sport we silently
@@ -2080,7 +2178,9 @@
         teamName,
         position: matchedPosition ? matchedPosition.name : 'Position not set',
         trend: 'plateau',
-        updated: 'Updated just now'
+        updated: 'Updated just now',
+        birthMonth: birth.birthMonth,
+        birthYear: birth.birthYear
       };
 
       store.players.push(created);
@@ -2291,6 +2391,11 @@
       player.trend = parsed.identity.trend;
       player.teamName = team.name;
       player.updated = 'Updated just now';
+      // Persist the birth date pair verbatim -- parseUpdateProfilePayload has
+      // already enforced the strict-pair rule above, so both values are
+      // either set together or null together here.
+      player.birthMonth = parsed.identity.birthMonth;
+      player.birthYear = parsed.identity.birthYear;
 
       if (parsed.identity.avatarUrl !== undefined && parsed.identity.avatarUrl !== null) {
         store.playerAvatars = store.playerAvatars || {};

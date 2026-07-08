@@ -198,4 +198,52 @@ test.describe('S5 Edit Player', () => {
     // Score recorded but no development ratings: notice stays visible
     await expect(page.locator('#noStatsNotice')).toBeVisible();
   });
+
+  test('saving birth month and year makes the S2 dashboard show the derived age', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await expect(page.locator('#playerEditForm')).toBeVisible();
+    await page.selectOption('#fieldBirthMonth', '3');
+    await page.fill('#fieldBirthYear', '2005');
+    await page.locator('#saveEdit').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
+    // The S2 meta line picks up the derived age from the offline store.
+    const meta = await page.locator('#dashboardPlayerMeta').textContent();
+    expect(meta).toMatch(/Age \d+/);
+  });
+
+  test('saving a partial birth pair (only month) shows a validation error and does not navigate', async ({ page }) => {
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await expect(page.locator('#playerEditForm')).toBeVisible();
+    await page.selectOption('#fieldBirthMonth', '3');
+    // Year left blank intentionally.
+    await page.locator('#saveEdit').click();
+    // The error notice appears and the URL has not changed.
+    await expect(page.locator('#editFormError')).toBeVisible();
+    await expect(page.locator('#editFormError')).toContainText(/set together|blank/i);
+    expect(page.url()).toContain('S5-player-edit.html');
+  });
+
+  test('clearing both birth fields removes the age segment from the S2 meta line', async ({ page }) => {
+    // Seed a birth date via the store so we have something to clear.
+    await page.goto('/S2-player-dashboard.html?player=Rookie%20Carter');
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      const player = store.players.find((p) => p.id === 999);
+      player.birthMonth = 6;
+      player.birthYear = 1990;
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S5-player-edit.html?playerId=999');
+    await expect(page.locator('#fieldBirthMonth')).toHaveValue('6');
+    await expect(page.locator('#fieldBirthYear')).toHaveValue('1990');
+
+    await page.selectOption('#fieldBirthMonth', '');
+    await page.fill('#fieldBirthYear', '');
+    await page.locator('#saveEdit').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
+    // The S2 meta line omits the "Age" segment once the birth date is cleared.
+    const meta = await page.locator('#dashboardPlayerMeta').textContent();
+    expect(meta).not.toMatch(/Age \d+/);
+  });
 });

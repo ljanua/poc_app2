@@ -156,6 +156,27 @@
               <select id="fieldPosition" data-testid="field-position"></select>
               <span id="fieldPositionEmpty" class="validation-hint" hidden>No positions are defined for this team's sport yet. Add them in Manage Skills (S8).</span>
             </div>
+            <div class="form-field birth-field">
+              <label class="form-label" for="fieldBirthMonth">Birth month</label>
+              <select id="fieldBirthMonth" data-testid="field-birth-month">
+                <option value="">Not set</option>
+                <option value="1">January</option>
+                <option value="2">February</option>
+                <option value="3">March</option>
+                <option value="4">April</option>
+                <option value="5">May</option>
+                <option value="6">June</option>
+                <option value="7">July</option>
+                <option value="8">August</option>
+                <option value="9">September</option>
+                <option value="10">October</option>
+                <option value="11">November</option>
+                <option value="12">December</option>
+              </select>
+              <label class="form-label" for="fieldBirthYear" style="margin-top:0.6rem;display:block;">Birth year</label>
+              <input id="fieldBirthYear" type="number" min="1960" max="2026" step="1" placeholder="Year" data-testid="field-birth-year">
+              <span class="validation-hint">Leave both blank to clear the birth date. Setting only one returns a validation error.</span>
+            </div>
             <div class="form-field">
               <label class="form-label" for="fieldTrend">Trend <span class="required">*</span></label>
               <select id="fieldTrend">
@@ -629,6 +650,10 @@
         fillTeamOptions(player.teamName);
         fillPositionOptionsForTeam(player.teamName, player.position === 'Position not set' ? '' : player.position);
 
+        // Birth date pair -- null/blank renders blank; setValue tolerates null.
+        setValue('fieldBirthMonth', player.birthMonth == null ? '' : String(player.birthMonth));
+        setValue('fieldBirthYear', player.birthYear == null ? '' : String(player.birthYear));
+
         setValue('fieldGrowthStatus', stats.growthStatus || '');
 
         // Avatar display and hover overlay
@@ -661,6 +686,10 @@
           name: value('fieldName'),
           teamName: value('fieldTeam'),
           position: value('fieldPosition'),
+          // Birth date pair: parseBirthFields in mockup-api-client enforces the
+          // strict-pair rule (both set or both blank) and surfaces a clear error.
+          birthMonth: value('fieldBirthMonth'),
+          birthYear: value('fieldBirthYear'),
           trend: value('fieldTrend'),
           growthStatus: value('fieldGrowthStatus'),
           currentLevel: formatRating(controls.currentLevel.getState()),

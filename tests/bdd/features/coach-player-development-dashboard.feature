@@ -90,3 +90,21 @@ Feature: Coach player development dashboard
     When I open the development dashboard for player "Lionel Messi"
     Then the operation status should be 403
     And the API error code should be "forbidden"
+
+  Scenario: Coach records a player's birth date and the dashboard shows the derived age
+    Given the following player development profiles exist:
+      | player      | growthStatus | matchMinutes | performanceScore | trend | missingData |
+      | Birth Test  |              | 0            |                  | plateau | all         |
+    When I save player "Birth Test" with birth month 3 and birth year 2005
+    Then the operation status should be 200
+    When I open the development dashboard for player "Birth Test"
+    Then the dashboard should show birth month 3 and birth year 2005
+    And the dashboard should show a derived age matching the recorded birth date
+
+  Scenario: Saving only a birth month (partial pair) returns 400 validation_error
+    Given the following player development profiles exist:
+      | player      | growthStatus | matchMinutes | performanceScore | trend | missingData |
+      | Birth Test  |              | 0            |                  | plateau | all         |
+    When I save player "Birth Test" with birth month 3 and no birth year
+    Then the operation status should be 400
+    And the API error code should be "validation_error"

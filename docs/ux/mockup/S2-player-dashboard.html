@@ -198,7 +198,12 @@
       // Player identity always renders, even when this player has no real
       // stats yet -- only the stats-derived sections below are conditional.
       document.getElementById('dashboardPlayerName').textContent = player.name;
-      document.getElementById('dashboardPlayerMeta').textContent = player.position + ' • Age 24';
+      // The player meta line shows "Position • Age N" when the birth date is
+      // known, and just the position when it isn't. The age comes from
+      // MockupApi.getDashboardPlayer (server-derived in backend mode, computed
+      // locally in offline mode via the same computeAge helper).
+      const ageSuffix = (player.age != null) ? ' • Age ' + player.age : '';
+      document.getElementById('dashboardPlayerMeta').textContent = player.position + ageSuffix;
       document.getElementById('dashboardTeamChip').textContent = player.teamName;
 
       // The team dropdown is locked to the player being viewed. A coach
