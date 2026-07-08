@@ -14,6 +14,8 @@ Source plans:
 - docs/plans/2026-07-06-007-feat-team-update-screen-plan.md
 - docs/plans/2026-07-06-008-feat-s7-user-club-assignment-and-s7a-clubs-page-plan.md
 - docs/plans/2026-07-06-009-feat-s1-coach-scope-clubs-main-menu-plan.md
+- docs/plans/2026-07-06-010-feat-s8-manage-skills-per-position-plan.md
+- docs/plans/2026-07-07-012-feat-s3-team-sport-and-s5-player-position-plan.md
 
 ## Screen mapping
 
@@ -37,6 +39,17 @@ Source plans:
 | S2-player-dashboard.html | Upload player avatar (click icon) | Upload avatar | PATCH /v1/players/{playerId}?actorEmail= with `{ avatarUrl }` | 200 OK with updated `{ player, stats }`; `player.avatarUrl` set | 400 validation_error, 403 forbidden, 404 not_found |
 | S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats }` (full editable identity + `PlayerDashboardStats`) | 403 forbidden, 404 not_found |
 | S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats }`; `missingDataMessage` cleared only when at least one Development Progress rating (Current Level, Fitness, or Skill Progress) is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Add Sport modal submit | Create sport | POST /v1/sports | 201 Created with sanitized sport object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
+|| S8-skills.html | Rename Sport modal submit | Update sport | PATCH /v1/sports/{sportId} | 200 OK with updated sport | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Sport Deactivate / Reactivate action | Set sport status | PATCH /v1/sports/{sportId}/status | 200 OK with updated status | 400 validation_error, 403 forbidden, 404 not_found |
+|| S8-skills.html | Add Position modal submit | Create position | POST /v1/positions | 201 Created with new position (requires `sportId`) | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Rename Position modal submit | Update position | PATCH /v1/positions/{positionId} | 200 OK with updated position | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Position Deactivate / Reactivate action | Set position status | PATCH /v1/positions/{positionId}/status | 200 OK with updated status | 400 validation_error, 403 forbidden, 404 not_found |
+|| S8-skills.html | Add Skill modal submit | Create skill | POST /v1/skills | 201 Created with sanitized skill object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
+|| S8-skills.html | Rename Skill modal submit | Update skill | PATCH /v1/skills/{skillId} | 200 OK with updated skill | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Delete Skill action | Delete skill | DELETE /v1/skills/{skillId} | 204 No Content when no `position_skills` row references the skill | 403 forbidden, 404 not_found, 409 conflict (when assignments exist) |
+|| S8-skills.html | Assign Skills picker save (per newly-checked skill) | Assign skill to position (idempotent) | POST /v1/positions/{positionId}/skills | 201 Created on first add, 200 OK on idempotent re-add | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+|| S8-skills.html | Position Skills row `Remove` action | Remove skill from position | DELETE /v1/positions/{positionId}/skills/{skillId} | 204 No Content on success | 403 forbidden, 404 not_found |
 
 Player persistence mode notes:
 - S1 runs backend mode by default (`window.__USE_BACKEND__ = true`) so create/assign operations target `/api/v1/players*`.
@@ -155,6 +168,16 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - UI integration: tests/playwright/team-update.spec.js
 - UI integration: tests/playwright/s7a-clubs.spec.js
 - UI integration: tests/playwright/s7-user-club-assignment.spec.js
+- UI integration: tests/playwright/s8-skills.spec.js
+- UI integration: tests/playwright/team-sport.spec.js
+- UI integration: tests/playwright/s5-position.spec.js
+- UI integration: tests/playwright/s1-add-player-position.spec.js
+- Contract: apps/api/tests/contract/openapi.skills-admin.spec.ts
+- Schema/migration: apps/api/tests/integration/db/skills-migration.spec.ts
+- API integration: apps/api/tests/integration/skills/skills-api-mockup.spec.ts
+- API integration: apps/api/tests/integration/skills/mockup-api-client.spec.ts
+- React unit: apps/web/tests/unit/features/admin-skills/skills-page.spec.tsx
+- React integration: apps/web/tests/integration/admin-skills/skill-lifecycle-flow.spec.tsx
 - BDD: tests/bdd/features/player-source-of-record-and-confirmed-create.feature
 - BDD: tests/bdd/features/coach-player-development-dashboard.feature
 - Schema/migration: apps/api/tests/integration/db/schema-bootstrap.spec.ts
@@ -173,6 +196,18 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps the offline store in lockstep: `clubs` items in `createSeed` gain `status: 'active'`, `listClubs` accepts a status filter and returns `coachCount`/`teamCount`, and the new methods (`createClub`, `updateClub`, `setClubStatus`, `listUserClubs`, `assignUserToClub`, `removeUserFromClub`, `assignTeamToClub`) cover the same lifecycle in the offline fallback.
 - S7a-clubs.html is reached from S7's "View List of Clubs" page action and from the bottom-nav Users link; the page is SystemAdmin-only and shows the full club roster with KPI cards (Active Clubs / Inactive / Total Coaches / Total Teams) plus the four CRUD verbs (Add, Update, Assign Coach(s), Assign Team(s), Deactivate/Reactivate).
 - S7-admin-user-management.html renders a per-user Clubs column with the user's existing `coach_clubs` rows as removable chips plus an "Assign" button that opens the picker modal. The picker calls `MockupApi.assignUserToClub` and `MockupApi.removeUserFromClub` so the chip × button does an explicit `DELETE`, matching the API contract.
+
+## Skills Admin (S8) + per-position skill catalog
+
+- Four new tables (`sports`, `positions`, `skills`, `position_skills`) land via `apps/api/src/db/migrations/015_skills_positions_sports.sql` (idempotent via `IF NOT EXISTS` and `ON CONFLICT DO NOTHING`). The migration is mirrored into `apps/api/src/db/schema/tables.sql` and `apps/api/src/db/schema/deploy.sql` so a fresh database (`scripts/db-bootstrap.js`) gets the catalog without re-running the migration.
+- The `position_skills` table has a composite primary key `(position_id, skill_id)` plus a supporting index `idx_position_skills_skill_id` for the per-skill reverse lookup ("which positions is this skill in?"). Both FKs use `ON DELETE RESTRICT` so deleting a skill or position with assignments is blocked by the database — the API surfaces `409 conflict` (see below) before it ever reaches the FK violation.
+- All Skills-Admin write endpoints (`POST /v1/sports`, `PATCH /v1/sports/{id}`, `PATCH /v1/sports/{id}/status`, `POST /v1/positions`, `PATCH /v1/positions/{id}`, `PATCH /v1/positions/{id}/status`, `POST /v1/skills`, `PATCH /v1/skills/{id}`, `DELETE /v1/skills/{id}`, `POST /v1/positions/{id}/skills`, `DELETE /v1/positions/{id}/skills/{skillId}`) are SystemAdmin-gated using the existing `resolveSystemAdminActor(payload.actorEmail)` + `assertSystemAdminActor(actor)` pattern from `scripts/serve-mockup.js`. Coach tokens receive `403 forbidden` for every write; the read endpoints (`GET /v1/sports`, `GET /v1/positions?sportId=`, `GET /v1/skills`, `GET /v1/positions/{id}/skills`) are also SystemAdmin-only, scoped to the catalog surface, and are not used by any non-admin page.
+- `POST /v1/positions/{positionId}/skills` is idempotent: it upserts the `position_skills` row and returns `201 Created` on first add and `200 OK` on a re-add, mirroring the S7a user-club pattern. The seed uses `ON CONFLICT DO NOTHING` on the same composite key. The picker modal fires one POST per newly-checked skill; uncheck fires one `DELETE /v1/positions/{positionId}/skills/{skillId}` per previously-assigned skill — there is no bulk-replace verb.
+- `DELETE /v1/skills/{skillId}` is a soft-preconditioned hard-delete: the API checks for any `position_skills` row referencing the skill and returns `409 conflict` with message `'Cannot delete skill '<name>' because it is assigned to N position(s). Remove the assignments first.'` when assignments exist. The admin must remove the assignments first; once the row is unassigned, the hard `DELETE` returns `204 No Content`. Sports and positions are never hard-deleted — they use the `status: 'active' | 'inactive'` soft-disable shape matching `clubs`.
+- The seed dataset on a fresh database is: 1 sport (`Soccer`), 13 positions (12 named Soccer positions plus the `Any Position` wildcard), 31 skills in the flat catalog, and 65 `position_skills` rows (5 skills per position). Seed counts and ID list per `docs/plans/2026-07-06-010-feat-s8-manage-skills-per-position-plan.md` § Seed Data. The migration uses `INSERT ... ON CONFLICT DO NOTHING` on every seed row keyed by natural name (`sports.name`, `(sport_id, name)`, `skills.name`), so re-running the migration is a no-op.
+- `S8-skills.html` is reached via a new bottom-nav entry `🧠 Skills` with `data-role-visible-to="SystemAdmin"` and `data-testid="nav-skills"`, shipped `hidden` so coaches never see it before `MockupApi.applyRoleGatedNav` runs. The nav item mirrors the existing `data-testid="nav-clubs"` + `data-testid="nav-users"` pattern.
+- Direct navigation to `S8-skills.html` while `MockupApi.getCurrentUser()` returns null OR `actorRole !== 'SystemAdmin'` renders the `403 forbidden` notice (`#roleNotice`) instead of the four admin panels. The page is built as four stacked panels (Sports → Positions → Skills → Position Skills) with KPI cards (`# Sports`, `# Active Positions`, `# Skills`, `# Assignments`) live-updated after every successful mutation.
+- Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps the offline store in lockstep: `sports`, `positions`, `skills`, and `positionSkills` keys are added to `createSeed`, and the new 12 methods (`listSports`, `createSport`, `updateSport`, `setSportStatus`, `listPositions`, `createPosition`, `updatePosition`, `setPositionStatus`, `listSkills`, `createSkill`, `updateSkill`, `deleteSkill`, `listPositionSkills`, `assignSkillToPosition`, `removeSkillFromPosition`) cover the same CRUD + assignment surface as the backend handlers. `assignSkillToPosition` returns the `200/201` status split; `deleteSkill` returns `204` or `409`.
 
 ## S1 Coach Scoping + Clubs Main Menu (2026-07-06-009)
 
@@ -201,3 +236,41 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 
 - Every player is reachable only via a team, and every team must belong to a club. The team-create path (`POST /v1/teams`) rejects requests without a non-empty `clubId` with a `400 validation_error` ("Please select a club for this team."), and Coach actors without an explicit `clubId` fall back to their first `coach_clubs` row in creation order. If neither is resolvable, the response is also `400`.
 - `apps/api/tests/contract/openapi.players.spec.ts` (Player-club invariant block) locks the rejection text and the `coach_clubs` fallback path on the serve-mockup side, so a future refactor cannot silently relax the invariant.
+
+## S3 Team Sport + S5 / S1 Sport-Filtered Position Dropdown (2026-07-07-012)
+
+### Schema
+
+- `apps/api/src/db/migrations/016_teams_sport.sql` adds a NOT NULL `teams.sport_id TEXT REFERENCES sports(id) ON DELETE RESTRICT` column with `DEFAULT 'sport_soccer'`. Every existing team backfills to `sport_soccer` (the only seeded sport, from migration `015_skills_positions_sports.sql`) before the column is locked `NOT NULL`. The DDL is mirrored into `apps/api/src/db/schema/tables.sql` and `apps/api/src/db/schema/deploy.sql` so fresh databases pick it up without re-running the migration.
+- `apps/api/tests/integration/db/teams-sport-migration.spec.ts` locks the migration file contents (FK + backfill + NOT NULL ordering + default + supporting index) and the mirrored DDL in `tables.sql` / `deploy.sql`.
+
+### API
+
+- `POST /api/v1/teams` accepts `sportId` in the body. Omitted → defaults to `sport_soccer`. Unknown or inactive `sportId` → `400 validation_error`. The handler validates against `SELECT id FROM sports WHERE id = $1 AND status = 'active'` before persisting; `toTeamPayload` returns `sportId` and `sportName` (LEFT JOIN sports) on every create/list response.
+- `POST /api/v1/teams/:id/update` accepts `sportId`; the same validation runs and the persisted `sportId` reflects the new value. A request that omits `sportId` preserves the team's current sport.
+- `GET /api/v1/teams` and `GET /api/v1/clubs/:clubId/teams` include `sportId` and `sportName` on every row via `LEFT JOIN sports s ON s.id = t.sport_id`.
+- `POST /api/v1/players` accepts an optional `position` field. When set, the handler validates the value against `positions` filtered by the target team's `sport_id` and `status = 'active'`; a name that does not match an active position for the team's sport falls back to `'Position not set'` so a malicious or stale UI value cannot poison the row.
+- `apps/api/tests/integration/teams/teams-sport-api-mockup.spec.ts` and `apps/api/tests/integration/teams/mockup-api-client.spec.ts` lock the handler body shapes and the `MockupApi.createTeam` / `MockupApi.updateTeamCoachAndClub` / `MockupApi.listTeamSummary` client shape changes.
+
+### Client
+
+- `MockupApi.listSports(actorRole, actorEmail, statusFilter)` and `MockupApi.listPositions(actorRole, actorEmail, sportId, statusFilter)` are reused from feature 010 unchanged. The `sports` and `positions` keys in `createSeed()` ship with every seeded team on `sport_soccer`.
+- `MockupApi.createTeam` forwards `sportId` in both backend (`POST /v1/teams` body) and offline modes; offline-created rows persist `sportId` + `sportName` via a `resolvedSport` lookup that falls back to `sport_soccer` / `Soccer` when the requested sport is missing.
+- `MockupApi.updateTeamCoachAndClub` carries `sportId` through both modes. Offline branch updates the team's `sportId` / `sportName` only when the requested sport exists in the offline store; unknown sport → `400 validation_error` (`'The selected sport could not be found.'`).
+- `MockupApi.listTeamSummary` exposes `sportId` and `sportName` on every team row (backend LEFT JOIN or offline `store.sports` lookup), so S3 can render the column without a second lookup.
+- `MockupApi.addPlayerFlow` accepts an optional `position` in the payload, forwards it on backend `POST /v1/players`, and persists it offline only when it matches an active position for the target team's sport. Mismatched values fall back to `'Position not set'` (server-side enforcement already happens in `serve-mockup.js`).
+
+### UI
+
+- **S3** (`docs/ux/mockup/S3-team-management.html`) gains a `Sport` `<select>` (`#teamSportSelect`, `[data-testid="team-sport-select"]`) inside the Create Team modal, sourced from `MockupApi.listSports(...)` with `sport_soccer` preselected. The teams table gains a `Sport` column between `Age Group` and `Players`, rendered from `team.sportName` with a `data-testid="row-sport"` cell for spec hooks. The Create Team submit handler forwards `sportId` to `MockupApi.createTeam`.
+- **S3a** (`docs/ux/mockup/S3a-team-update.html`) gains a `Sport` `<select>` (`#updateSportSelect`, `[data-testid="update-sport-select"]`) on the update form, sourced from `MockupApi.listSports(...)` with the team's current sport preselected. The `Current Snapshot` panel grows a `Sport` row rendered from `team.sportName`. The submit handler forwards `sportId` to `MockupApi.updateTeamCoachAndClub`; omitting it preserves the team's current sport.
+- **S5** (`docs/ux/mockup/S5-player-edit.html`) replaces the free-text `#fieldPosition` with a sport-filtered `<select>` (`[data-testid="field-position"]`) sourced from `MockupApi.listPositions(...)` against the **team's** sport (resolved from `MockupApi.listTeams()` → `team.sportId`). A `#fieldPositionEmpty` helper notice is shown — *"No positions are defined for this team's sport yet. Add them in Manage Skills (S8)."* — and the select is `disabled` whenever the resolved list is empty. Changing `#fieldTeam` reloads the position dropdown against the new team's sport and preserves the prior value only when it still exists in the new options; otherwise it falls back to the seeded `Any Position` (the wildcard for the team's sport) or the first available position. The submit handler writes `position: <option value>` (the position **name**) into the PATCH payload, since `players.position` remains `TEXT NOT NULL` in v1.
+- **S1** (`docs/ux/mockup/S1-player-list.html`) grows a `Position` `<select>` (`#addPlayerPosition`, `[data-testid="add-player-position"]`) inside the `addPlayerPanel`, sourced from `MockupApi.listPositions(...)` against the **team filter's** sport. The default first option is `Position not set` so existing flows that don't care about position still work. Changing `#teamFilter` reloads the dropdown; the helper notice is shown when the team has no positions for its sport. The submit handler forwards `position` to `MockupApi.addPlayerFlow`, which writes it on the new player row.
+- **Bulk Assign Players flow** — the plan's §5.6 mentions a per-row position `<select>` for a bulk-assign table that does not yet exist as UI in S1 (the only current "assign existing player" path is the inline `#duplicateAction` quick action, which does not write a position). The per-row bulk-assign dropdown is deferred to a future feature; today's inline assign preserves the existing player's position by design.
+
+### Acceptance
+
+- Every UI that writes `players.position` (S5 edit, S1 create) uses a sport-filtered `<select>` sourced from `MockupApi.listPositions(...)`. There is no free-text position input left in the mockup.
+- Switching the team's sport reloads every position dropdown against the new sport without page reload (handled on `#fieldTeam` / `#teamFilter` change handlers).
+- When the team's sport has no positions, the dropdown is disabled and a helper notice tells the coach to add positions in S8.
+- See `docs/plans/2026-07-07-012-feat-s3-team-sport-and-s5-player-position-plan.md` for full requirements, schema design, and rollback notes.
