@@ -40,8 +40,10 @@ describe('parseBirthFields helper', () => {
     expect(body).toMatch(/year\s+<\s+1960\s*\|\|\s*year\s+>\s*currentYear/);
   });
 
-  it('uses getFullYear() so the upper bound follows the calendar year', () => {
-    expect(body).toContain('reference.getFullYear()');
+  it('uses the current calendar year to bound birthYear', () => {
+    // The helper reads the year from `now` (default = new Date()), so the
+    // upper bound always tracks today's date.
+    expect(body).toContain('currentYear = (now instanceof Date ? now : new Date()).getFullYear()');
   });
 });
 
@@ -82,5 +84,25 @@ describe('computeAge helper', () => {
       'utf8'
     );
     expect(clientSource).toContain('function computeAge');
+  });
+});
+
+describe('offline parseUpdateProfilePayload birth-error short-circuit', () => {
+  // The offline update flow (mockup-api-client.js parseUpdateProfilePayload)
+  // must propagate parseBirthFields errors so partial pairs are rejected in
+  // both backend and offline modes. Regression for a bug where the function
+  // returned identity with undefined birth fields instead of an error.
+  const source = fs.readFileSync(
+    path.join(process.cwd(), 'docs', 'ux', 'mockup', 'js', 'mockup-api-client.js'),
+    'utf8'
+  );
+
+  it('short-circuits with the birth error rather than returning identity with undefined birth fields', () => {
+    const fnStart = source.indexOf('function parseUpdateProfilePayload(');
+    expect(fnStart).toBeGreaterThanOrEqual(0);
+    const fnEnd = source.indexOf('\n  function ', fnStart + 1);
+    const body = source.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 4000);
+    expect(body).toMatch(/var birth = parseBirthFields\([\s\S]*?\n\s*if \(birth\.error\) \{/);
+    expect(body).toContain('return { error: birth.error }');
   });
 });

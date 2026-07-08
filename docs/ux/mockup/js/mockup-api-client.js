@@ -760,6 +760,9 @@
     // Birth date: strict-pair rule -- both fields set together, or both absent.
     // Returns the validated pair (with nulls) or an error message.
     var birth = parseBirthFields(payload || {});
+    if (birth.error) {
+      return { error: birth.error };
+    }
 
     return {
       identity: {
@@ -2149,9 +2152,16 @@
       }
 
       // Strict-pair validation: birth month and year must be set together.
+      // Empty strings collapse to null (NOT to 0 via Number('')) so the helper
+      // correctly sees "both blank" when one input is left empty.
+      const toBirthNumber = function (value) {
+        if (value == null || value === '') return null;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+      };
       const birth = parseBirthFields({
-        birthMonth: payload.birthMonth == null ? null : Number(payload.birthMonth),
-        birthYear: payload.birthYear == null ? null : Number(payload.birthYear)
+        birthMonth: toBirthNumber(payload.birthMonth),
+        birthYear: toBirthNumber(payload.birthYear)
       });
       if (birth.error) {
         return { status: 400, code: 'validation_error', message: birth.error };

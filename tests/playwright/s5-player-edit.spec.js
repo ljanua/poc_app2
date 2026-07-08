@@ -215,7 +215,9 @@ test.describe('S5 Edit Player', () => {
     await page.goto('/S5-player-edit.html?playerId=999');
     await expect(page.locator('#playerEditForm')).toBeVisible();
     await page.selectOption('#fieldBirthMonth', '3');
-    // Year left blank intentionally.
+    // Clear the year (a previous test may have left a value here) so we
+    // exercise the strict-pair rejection with only month set.
+    await page.fill('#fieldBirthYear', '');
     await page.locator('#saveEdit').click();
     // The error notice appears and the URL has not changed.
     await expect(page.locator('#editFormError')).toBeVisible();

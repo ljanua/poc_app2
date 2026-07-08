@@ -226,7 +226,17 @@ test.describe('S1 Player List avatar renders against live backend', () => {
   });
 
   test('inline add-player panel accepts birth month and year and persists them', async ({ page }) => {
-    // Open the add-player panel and submit a new player with birth fields.
+    // Force offline mode for this test so the create lands in the local
+    // store (and we can assert directly against localStorage). The other
+    // tests in this describe block intentionally exercise the live backend.
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S1-player-list.html');
+    // First pick a real team so the inline add-player panel populates
+    // sport-defined positions and unlocks the create button.
+    await page.selectOption('#teamFilter', 'U19 Prime');
     await page.locator('#toggleAddPlayer').click();
     await expect(page.locator('#addPlayerPanel')).toBeVisible();
 
@@ -242,7 +252,9 @@ test.describe('S1 Player List avatar renders against live backend', () => {
 
     // The new player is in the offline store with the birth fields preserved.
     const stored = await page.evaluate(() => {
-      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      const raw = window.localStorage.getItem('vantageiq_mockup_v2');
+      if (!raw) return null;
+      const store = JSON.parse(raw);
       return store.players.find((p) => p.name === 'Birth Test Carter');
     });
     expect(stored).toBeTruthy();
@@ -251,6 +263,16 @@ test.describe('S1 Player List avatar renders against live backend', () => {
   });
 
   test('inline add-player panel rejects a partial birth pair (only month) and shows a validation error', async ({ page }) => {
+    // Force offline mode for this test so the strict-pair rejection we
+    // exercise lives entirely in the offline validator and we can assert
+    // against localStorage directly. The other tests in this describe block
+    // intentionally exercise the live backend.
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S1-player-list.html');
+    await page.selectOption('#teamFilter', 'U19 Prime');
     await page.locator('#toggleAddPlayer').click();
     await expect(page.locator('#addPlayerPanel')).toBeVisible();
     await page.selectOption('#addPlayerPosition', { index: 1 });
@@ -262,7 +284,9 @@ test.describe('S1 Player List avatar renders against live backend', () => {
     // The hint text surfaces the strict-pair error and no player is created.
     await expect(page.locator('#addPlayerHint')).toContainText(/set together|blank/i);
     const stored = await page.evaluate(() => {
-      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      const raw = window.localStorage.getItem('vantageiq_mockup_v2');
+      if (!raw) return undefined;
+      const store = JSON.parse(raw);
       return (store.players || []).find((p) => p.name === 'Partial Birth Carter');
     });
     expect(stored).toBeUndefined();
