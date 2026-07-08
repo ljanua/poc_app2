@@ -28,6 +28,7 @@
           <div class="snapshot-row"><dt>Lead coach</dt><dd id="snapshotCoach">—</dd></div>
           <div class="snapshot-row"><dt>Club</dt><dd id="snapshotClub">—</dd></div>
           <div class="snapshot-row"><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
+          <div class="snapshot-row"><dt>Sport</dt><dd id="snapshotSport">—</dd></div>
           <div class="snapshot-row"><dt>Players</dt><dd id="snapshotPlayerCount">—</dd></div>
         </dl>
       </section>
@@ -46,6 +47,9 @@
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
+
+          <label class="form-label" for="updateSportSelect">Sport <span class="required">*</span></label>
+          <select id="updateSportSelect" data-testid="update-sport-select" required></select>
 
           <p id="updateFormError" class="error-msg">Please review the form fields and try again.</p>
 
@@ -78,6 +82,10 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
     </nav>
   </div>
 
@@ -101,6 +109,8 @@
       const updateCoachSelect = document.getElementById('updateCoachSelect');
       const updateClubSelect = document.getElementById('updateClubSelect');
       const updateStatusSelect = document.getElementById('updateStatusSelect');
+      const updateSportSelect = document.getElementById('updateSportSelect');
+      const snapshotSport = document.getElementById('snapshotSport');
       const updateFormError = document.getElementById('updateFormError');
       const cancelUpdate = document.getElementById('cancelUpdate');
       const toast = document.getElementById('toast');
@@ -172,6 +182,29 @@
         });
       }
 
+      function fillSportSelect(selectEl, currentSportId) {
+        const sports = (window.MockupApi && window.MockupApi.listSports) ? window.MockupApi.listSports(state.actorRole, state.actorEmail, 'active') : [];
+        selectEl.innerHTML = '';
+        const fallback = (sports || []).slice();
+        if (!fallback.some(function (sport) { return sport.id === 'sport_soccer'; })) {
+          fallback.push({ id: 'sport_soccer', name: 'Soccer' });
+        }
+        fallback.forEach(function (sport) {
+          const option = document.createElement('option');
+          option.value = sport.id;
+          option.textContent = sport.name;
+          if (sport.id === currentSportId) {
+            option.selected = true;
+          }
+          selectEl.appendChild(option);
+        });
+        if (currentSportId && Array.from(selectEl.options).some(function (opt) { return opt.value === currentSportId; })) {
+          selectEl.value = currentSportId;
+        } else {
+          selectEl.value = 'sport_soccer';
+        }
+      }
+
       function init() {
         const sessionUser = getSessionUser();
         if (!sessionUser || !sessionUser.email) {
@@ -207,6 +240,7 @@
         snapshotCoach.textContent = state.team.leadCoach + (state.team.leadCoachEmail ? ' (' + state.team.leadCoachEmail + ')' : '');
         snapshotClub.textContent = state.team.clubName || '—';
         snapshotStatus.textContent = (state.team.status || 'active');
+        snapshotSport.textContent = state.team.sportName || '—';
         snapshotPlayerCount.textContent = String(state.team.playerCount || 0);
 
         fillCoachSelect(updateCoachSelect, state.team.leadCoachEmail);
@@ -215,6 +249,7 @@
           : state.availableClubs.concat([{ id: state.team.clubId, name: state.team.clubName || '(unknown club)' }]);
         fillClubSelect(updateClubSelect, clubsForForm, state.team.clubId);
         updateStatusSelect.value = state.team.status || 'active';
+        fillSportSelect(updateSportSelect, state.team.sportId || 'sport_soccer');
         updateCard.hidden = false;
       }
 
@@ -230,6 +265,7 @@
           coachEmail: updateCoachSelect.value,
           clubId: updateClubSelect.value,
           status: updateStatusSelect.value,
+          sportId: updateSportSelect.value,
           actorRole: state.actorRole,
           actorEmail: state.actorEmail
         });
