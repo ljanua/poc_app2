@@ -153,7 +153,8 @@
             </div>
             <div class="form-field">
               <label class="form-label" for="fieldPosition">Position</label>
-              <input id="fieldPosition" type="text">
+              <select id="fieldPosition" data-testid="field-position"></select>
+              <span id="fieldPositionEmpty" class="validation-hint" hidden>No positions are defined for this team's sport yet. Add them in Manage Skills (S8).</span>
             </div>
             <div class="form-field">
               <label class="form-label" for="fieldTrend">Trend <span class="required">*</span></label>
@@ -366,6 +367,10 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
     </nav>
   </div>
 
@@ -561,6 +566,47 @@
         }
       }
 
+      // Build the sport-filtered Position dropdown. The team's sportId is the
+      // upstream source of truth — switching the team reloads the list and
+      // preserves the prior value only when it still exists in the new options.
+      // When the team has no positions for its sport the select is disabled
+      // and a helper notice is surfaced.
+      function fillPositionOptionsForTeam(teamName, currentPositionName) {
+        const select = document.getElementById('fieldPosition');
+        const emptyHint = document.getElementById('fieldPositionEmpty');
+        const teams = MockupApi.listTeams() || [];
+        const matched = teams.find(function (team) { return team.name === teamName; }) || null;
+        const sportId = matched ? (matched.sportId || 'sport_soccer') : 'sport_soccer';
+        const positions = MockupApi.listPositions(null, null, sportId, 'active') || [];
+        const previous = currentPositionName || select.value || '';
+        select.innerHTML = '';
+        if (positions.length === 0) {
+          select.disabled = true;
+          if (emptyHint) emptyHint.hidden = false;
+          const placeholder = document.createElement('option');
+          placeholder.value = '';
+          placeholder.textContent = 'No positions available';
+          select.appendChild(placeholder);
+          select.value = '';
+          return;
+        }
+        select.disabled = false;
+        if (emptyHint) emptyHint.hidden = true;
+        positions.forEach(function (position) {
+          const option = document.createElement('option');
+          option.value = position.name;
+          option.textContent = position.name;
+          select.appendChild(option);
+        });
+        if (previous && positions.some(function (position) { return position.name === previous; })) {
+          select.value = previous;
+        } else {
+          // Default to the seeded "Any Position" when no prior value is usable.
+          const fallback = positions.find(function (position) { return position.id === 'pos_any'; });
+          select.value = fallback ? fallback.name : positions[0].name;
+        }
+      }
+
       function fillMetricChange(prefix, change) {
         setValue('field' + prefix + 'Label', change ? change.label : '');
         setValue('field' + prefix + 'Trend', change ? change.trend : '');
@@ -579,9 +625,9 @@
         const stats = profile.stats;
 
         setValue('fieldName', player.name);
-        setValue('fieldPosition', player.position === 'Position not set' ? '' : player.position);
         setValue('fieldTrend', player.trend || 'plateau');
         fillTeamOptions(player.teamName);
+        fillPositionOptionsForTeam(player.teamName, player.position === 'Position not set' ? '' : player.position);
 
         setValue('fieldGrowthStatus', stats.growthStatus || '');
 
@@ -652,6 +698,12 @@
 
       populate(profileResponse.data);
       cancelEdit.href = './S2-player-dashboard.html?player=' + encodeURIComponent(profileResponse.data.player.name);
+
+      // When the user changes the team, reload the position dropdown against
+      // the new team's sport, preserving the current value when possible.
+      document.getElementById('fieldTeam').addEventListener('change', function (event) {
+        fillPositionOptionsForTeam(event.target.value, document.getElementById('fieldPosition').value);
+      });
 
       form.addEventListener('submit', function (event) {
         event.preventDefault();
