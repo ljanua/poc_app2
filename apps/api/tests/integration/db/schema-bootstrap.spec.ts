@@ -116,4 +116,37 @@ describe('db bootstrap artifacts', () => {
     expect(body).toContain('ensurePlayerStatsRowExists');
     expect(body).not.toContain('upsertPlayerStats');
   });
+
+  it('includes birth_month and birth_year columns on players in both schema files', () => {
+    const schemaPath = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'schema', 'tables.sql');
+    const deployPath = path.join(process.cwd(), 'apps', 'api', 'src', 'db', 'schema', 'deploy.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    const deploy = fs.readFileSync(deployPath, 'utf8');
+
+    for (const file of [schema, deploy]) {
+      expect(file).toContain('birth_month SMALLINT');
+      expect(file).toContain('birth_year SMALLINT');
+      expect(file).toMatch(/birth_month[^a-z_]+BETWEEN 1 AND 12/);
+      expect(file).toMatch(/birth_year[^a-z_]+BETWEEN 1960/);
+    }
+  });
+
+  it('has an idempotent migration adding birth_month and birth_year to players', () => {
+    const migrationPath = path.join(
+      process.cwd(),
+      'apps',
+      'api',
+      'src',
+      'db',
+      'migrations',
+      '017_players_birth_month_year.sql'
+    );
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+
+    expect(migration).toContain('ALTER TABLE players');
+    expect(migration).toContain('ADD COLUMN IF NOT EXISTS birth_month');
+    expect(migration).toContain('ADD COLUMN IF NOT EXISTS birth_year');
+    expect(migration).toMatch(/birth_month[\s\S]*?BETWEEN 1 AND 12/);
+    expect(migration).toMatch(/birth_year[\s\S]*?BETWEEN 1960/);
+  });
 });

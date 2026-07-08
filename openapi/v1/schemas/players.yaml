@@ -17,6 +17,32 @@ components:
         trend:
           type: string
           enum: [improving, plateau, declining]
+        birthMonth:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 12
+          description: >-
+            Month of the player's birth (1=January, 12=December). Always
+            paired with birthYear when set; the API rejects partial pairs.
+        birthYear:
+          type: integer
+          nullable: true
+          minimum: 1960
+          maximum: 2100
+          description: >-
+            Year of the player's birth. Always paired with birthMonth when
+            set; the API rejects partial pairs. Upper bound is the current
+            calendar year.
+        age:
+          type: integer
+          nullable: true
+          readOnly: true
+          description: >-
+            Auto-calculated from birthMonth and birthYear at read time.
+            Null when either birth field is missing. The value reflects the
+            player's age as of the current date, not the value at the time
+            the row was last written.
         updated:
           type: string
         avatarUrl:
@@ -69,6 +95,24 @@ components:
           maxLength: 60
         teamName:
           type: string
+        position:
+          type: string
+        birthMonth:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 12
+          description: >-
+            Month of birth. Must be paired with birthYear (both set, or both
+            omitted/null). The server returns 400 if only one is provided.
+        birthYear:
+          type: integer
+          nullable: true
+          minimum: 1960
+          maximum: 2100
+          description: >-
+            Year of birth. Must be paired with birthMonth (both set, or both
+            omitted/null). The server returns 400 if only one is provided.
         confirmCreate:
           type: boolean
 
@@ -300,6 +344,24 @@ components:
           type: string
         position:
           type: string
+        birthMonth:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 12
+          description: >-
+            Month of birth. Send together with birthYear (or omit/null both)
+            to record or clear the player's birth date. Sending only one of
+            the two fields returns 400 validation_error.
+        birthYear:
+          type: integer
+          nullable: true
+          minimum: 1960
+          maximum: 2100
+          description: >-
+            Year of birth. Send together with birthMonth (or omit/null both)
+            to record or clear the player's birth date. Sending only one of
+            the two fields returns 400 validation_error.
         trend:
           type: string
           enum: [improving, plateau, declining]

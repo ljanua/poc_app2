@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS players (
   normalized_name TEXT NOT NULL UNIQUE,
   position TEXT NOT NULL DEFAULT 'Position not set',
   trend TEXT NOT NULL DEFAULT 'plateau' CHECK (trend IN ('improving', 'plateau', 'declining')),
+  birth_month SMALLINT CHECK (birth_month IS NULL OR birth_month BETWEEN 1 AND 12),
+  birth_year SMALLINT CHECK (
+    birth_year IS NULL
+    OR (birth_year BETWEEN 1960 AND EXTRACT(YEAR FROM NOW())::SMALLINT)
+  ),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

@@ -58,6 +58,8 @@ function toTitleCase(value) {
 }
 
 function toPlayerPayload(row) {
+  const birthMonth = row.birthMonth != null ? row.birthMonth : null;
+  const birthYear = row.birthYear != null ? row.birthYear : null;
   return {
     id: row.id,
     name: row.name,
@@ -66,8 +68,36 @@ function toPlayerPayload(row) {
     teamName: row.teamName,
     position: row.position,
     trend: row.trend,
+    birthMonth,
+    birthYear,
+    age: computeAge(birthMonth, birthYear),
     updated: 'Updated just now'
   };
+}
+
+// Derives a player's age from their birth month/year pair. Pure function so the
+// mockup client and the server stay in sync. Returns null when either input is
+// missing -- the S2 dashboard omits the "Age" segment in that case.
+function computeAge(birthMonth, birthYear, now) {
+  if (birthMonth == null || birthYear == null) {
+    return null;
+  }
+  const reference = now instanceof Date ? now : new Date();
+  const month = Number(birthMonth);
+  const year = Number(birthYear);
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  if (!Number.isInteger(year)) {
+    return null;
+  }
+  // JavaScript Date months are 0-indexed; normalize before comparing.
+  const referenceMonth = reference.getMonth() + 1;
+  let age = reference.getFullYear() - year;
+  if (referenceMonth < month) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
 }
 
 function mapTrendToGrowthStatus(trend) {
@@ -344,6 +374,9 @@ function toDashboardPayload(row) {
       teamName: row.teamName,
       position: row.position,
       trend: row.trend,
+      birthMonth: row.birthMonth != null ? row.birthMonth : null,
+      birthYear: row.birthYear != null ? row.birthYear : null,
+      age: computeAge(row.birthMonth, row.birthYear),
       updated: 'Updated just now'
     },
     stats: {
@@ -1071,7 +1104,9 @@ async function findPlayerById(playerId, executor = pool) {
         p.player_avatar_url AS "avatarUrl",
         t.name AS "teamName",
         p.position,
-        p.trend
+        p.trend,
+        p.birth_month AS "birthMonth",
+        p.birth_year AS "birthYear"
       FROM players p
       JOIN player_team_assignments a ON a.player_id = p.id
       JOIN teams t ON t.id = a.team_id
@@ -1116,6 +1151,8 @@ async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
         t.name AS "teamName",
         p.position,
         p.trend,
+        p.birth_month AS "birthMonth",
+        p.birth_year AS "birthYear",
         ps.growth_status AS "growthStatus",
         ps.current_level AS "currentLevel",
         ps.fitness,
@@ -1206,6 +1243,46 @@ function parseMetricChange(value) {
   return { label, trend };
 }
 
+// Validates and normalizes the optional birthMonth/birthYear pair from a
+// player create/update payload. The pair is the unit of meaning -- both must
+// be set together, or both absent. Returns:
+//   - { birthMonth: null, birthYear: null } when neither key is supplied or both
+//     are explicitly blank/null.
+//   - { birthMonth: 1-12, birthYear: 1960-currentYear } when both are valid.
+//   - { error: '...' } on any other shape.
+function parseBirthFields(payload, now) {
+  if (payload == null || typeof payload !== 'object') {
+    return { birthMonth: null, birthYear: null };
+  }
+
+  const monthRaw = payload.birthMonth;
+  const yearRaw = payload.birthYear;
+
+  const monthBlank = monthRaw == null || monthRaw === '';
+  const yearBlank = yearRaw == null || yearRaw === '';
+  if (monthBlank && yearBlank) {
+    return { birthMonth: null, birthYear: null };
+  }
+  if (monthBlank || yearBlank) {
+    return { error: 'Birth month and year must be set together, or both left blank.' };
+  }
+
+  const month = Number(monthRaw);
+  const year = Number(yearRaw);
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
+  }
+  if (!Number.isInteger(year)) {
+    return { error: 'Birth year must be a whole number.' };
+  }
+  const currentYear = (now instanceof Date ? now : new Date()).getFullYear();
+  if (year < 1960 || year > currentYear) {
+    return { error: 'Birth year must be between 1960 and ' + currentYear + '.' };
+  }
+
+  return { birthMonth: month, birthYear: year };
+}
+
 // Validates and normalizes a PATCH /players/{id} body into the identity and
 // stats shapes the persistence helpers expect. Returns { error } (a message)
 // on the first validation failure, otherwise { identity, stats }.
@@ -1227,6 +1304,11 @@ function parseUpdateProfilePayload(payload) {
   }
 
   const position = toNullableString(payload.position) || 'Position not set';
+
+  const birth = parseBirthFields(payload);
+  if (birth.error) {
+    return { error: birth.error };
+  }
 
   const growthStatus = toNullableString(payload.growthStatus);
   if (growthStatus !== null && !GROWTH_STATUS_VALUES.has(growthStatus)) {
@@ -1263,7 +1345,16 @@ function parseUpdateProfilePayload(payload) {
   const avatarUrl = (payload && payload.avatarUrl !== undefined) ? String(payload.avatarUrl || '').trim() || null : null;
 
   return {
-    identity: { name, normalizedName: normalizeComparable(name), teamName, position, trend, avatarUrl },
+    identity: {
+      name,
+      normalizedName: normalizeComparable(name),
+      teamName,
+      position,
+      trend,
+      avatarUrl,
+      birthMonth: birth.birthMonth,
+      birthYear: birth.birthYear
+    },
     stats: {
       growthStatus,
       currentLevel,
@@ -1321,6 +1412,8 @@ async function handlePlayersApi(req, res, requestUrl) {
           t.name AS "teamName",
           p.position,
           p.trend,
+          p.birth_month AS "birthMonth",
+          p.birth_year AS "birthYear",
           ps.growth_status AS "growthStatus",
           ps.current_level AS "currentLevel",
           ps.fitness,
@@ -2582,13 +2675,20 @@ async function handlePlayersApi(req, res, requestUrl) {
       );
       const persistedPosition = (positionRows.rows[0] && positionRows.rows[0].name) ? requestedPosition : 'Position not set';
 
+      const birth = parseBirthFields(payload);
+      if (birth.error) {
+        await client.query('ROLLBACK');
+        sendJson(res, 400, appError(400, 'validation_error', birth.error));
+        return;
+      }
+
       const playerId = `p_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
       await client.query(
         `
-          INSERT INTO players (id, name, normalized_name, position, trend)
-          VALUES ($1, $2, $3, $4, 'plateau')
+          INSERT INTO players (id, name, normalized_name, position, trend, birth_month, birth_year)
+          VALUES ($1, $2, $3, $4, 'plateau', $5, $6)
         `,
-        [playerId, normalizedName, comparable, persistedPosition]
+        [playerId, normalizedName, comparable, persistedPosition, birth.birthMonth, birth.birthYear]
       );
       await client.query(
         `
@@ -2754,10 +2854,20 @@ async function handlePlayersApi(req, res, requestUrl) {
       await client.query(
         `
           UPDATE players
-          SET name = $1, normalized_name = $2, position = $3, trend = $4, player_avatar_url = $5, updated_at = NOW()
-          WHERE id = $6
+          SET name = $1, normalized_name = $2, position = $3, trend = $4, player_avatar_url = $5,
+              birth_month = $6, birth_year = $7, updated_at = NOW()
+          WHERE id = $8
         `,
-        [parsed.identity.name, parsed.identity.normalizedName, parsed.identity.position, parsed.identity.trend, parsed.identity.avatarUrl, playerId]
+        [
+          parsed.identity.name,
+          parsed.identity.normalizedName,
+          parsed.identity.position,
+          parsed.identity.trend,
+          parsed.identity.avatarUrl,
+          parsed.identity.birthMonth,
+          parsed.identity.birthYear,
+          playerId
+        ]
       );
 
       await client.query(

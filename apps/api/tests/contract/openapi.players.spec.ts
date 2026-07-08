@@ -49,6 +49,54 @@ describe('OpenAPI players contract', () => {
     expect(listOperation.description).toMatch(/coach_clubs/);
     expect(listOperation.description).toMatch(/SystemAdmin/);
   });
+
+  it('exposes birthMonth / birthYear on Player and a readOnly derived age', () => {
+    // Player carries the persisted pair and the derived age.
+    expect(playersSchema).toMatch(/Player:[\s\S]*birthMonth:[\s\S]*nullable: true/);
+    expect(playersSchema).toMatch(/Player:[\s\S]*birthYear:[\s\S]*nullable: true/);
+    expect(playersSchema).toMatch(/age:[\s\S]*readOnly: true/);
+
+    // The pair is optional on Player -- not part of the required list. Scope the
+    // negative check to the Player schema block so a later schema's required
+    // list doesn't accidentally satisfy it.
+    const playerBlock = playersSchema.split('Player:')[1].split('PlayerResponse:')[0];
+    expect(playerBlock).toMatch(/required: \[id, name, normalizedName, teamName, position, trend, updated\]/);
+    expect(playerBlock).not.toMatch(/required: \[[^\]]*birthMonth/);
+    expect(playerBlock).not.toMatch(/required: \[[^\]]*birthYear/);
+
+    // Bounds match the migration's CHECK constraints.
+    expect(playersSchema).toMatch(/birthMonth:[\s\S]*minimum: 1/);
+    expect(playersSchema).toMatch(/birthMonth:[\s\S]*maximum: 12/);
+    expect(playersSchema).toMatch(/birthYear:[\s\S]*minimum: 1960/);
+  });
+
+  it('exposes birthMonth / birthYear on both create and update requests', () => {
+    expect(playersSchema).toMatch(/CreatePlayerRequest:[\s\S]*birthMonth:[\s\S]*nullable: true/);
+    expect(playersSchema).toMatch(/CreatePlayerRequest:[\s\S]*birthYear:[\s\S]*nullable: true/);
+    expect(playersSchema).toMatch(/UpdatePlayerProfileRequest:[\s\S]*birthMonth:[\s\S]*nullable: true/);
+    expect(playersSchema).toMatch(/UpdatePlayerProfileRequest:[\s\S]*birthYear:[\s\S]*nullable: true/);
+
+    // The pair must not be required on either request -- both are optional
+    // inputs that the server validates together. Use a function to scope each
+    // check to just the relevant schema block so a later schema's required
+    // list doesn't accidentally satisfy the negative assertion.
+    const createBlock = playersSchema.split('CreatePlayerRequest:')[1].split('UpdatePlayerProfileRequest:')[0];
+    const updateBlock = playersSchema.split('UpdatePlayerProfileRequest:')[1].split('PlayerDashboardStats:')[0];
+    expect(createBlock).toMatch(/required: \[name, teamName\]/);
+    expect(updateBlock).toMatch(/required: \[name, teamName, position, trend\]/);
+    expect(createBlock).not.toMatch(/required: \[[^\]]*birthMonth/);
+    expect(createBlock).not.toMatch(/required: \[[^\]]*birthYear/);
+    expect(updateBlock).not.toMatch(/required: \[[^\]]*birthMonth/);
+    expect(updateBlock).not.toMatch(/required: \[[^\]]*birthYear/);
+  });
+
+  it('documents that the server rejects partial birth-date pairs', () => {
+    // Either request schema's description text must warn about the strict pair rule.
+    const block = playersSchema.split('CreatePlayerRequest:')[1] || '';
+    expect(block).toMatch(/Birth month and year must be set together|Must be paired|partial pairs|Send together|set together/i);
+    const updateBlock = playersSchema.split('UpdatePlayerProfileRequest:')[1] || '';
+    expect(updateBlock).toMatch(/Birth month and year must be set together|Must be paired|partial pairs|Send together|set together/i);
+  });
 });
 
 describe('Player-club invariant', () => {
