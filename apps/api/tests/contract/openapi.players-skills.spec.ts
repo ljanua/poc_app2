@@ -44,7 +44,7 @@ describe('OpenAPI player skill ratings contract', () => {
 
   it('documents PUT /players/{playerId}/skill-ratings', () => {
     expect(openapiText).toContain('/players/{playerId}/skill-ratings:');
-    expect(openapiText).toContain('Update player skill ratings for the current position');
+    expect(openapiText).toContain('Update player skill ratings for Any Position and role-unique skills');
     expect(openapiText).toContain('UpdatePlayerSkillRatingsRequest');
     expect(openapiText).toContain('PlayerSkillRatingsResponse');
   });

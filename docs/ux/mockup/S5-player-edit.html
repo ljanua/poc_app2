@@ -193,17 +193,33 @@
           <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
             No skills are tracked for this player yet — pick a position above.
           </div>
-          <div class="table-wrap" id="skillRatingsTableWrap" hidden>
-            <table class="data-table" data-testid="skill-ratings-table" style="min-width: 0;">
-              <thead>
-                <tr>
-                  <th>Skill</th>
-                  <th>Position</th>
-                  <th>Rating</th>
-                </tr>
-              </thead>
-              <tbody id="skillRatingsTableBody"></tbody>
-            </table>
+          <div id="skillRatingsAnyBlock" data-testid="skill-ratings-any-section" hidden style="margin-top: 0.75rem;">
+            <div class="section-title" style="font-size: 0.95rem;">Any Position</div>
+            <div class="table-wrap">
+              <table class="data-table" data-testid="skill-ratings-any-table" style="min-width: 0;">
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="skillRatingsAnyBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="skillRatingsRoleBlock" data-testid="skill-ratings-role-section" hidden style="margin-top: 1rem;">
+            <div class="section-title" id="skillRatingsRoleTitle" style="font-size: 0.95rem;">Position</div>
+            <div class="table-wrap">
+              <table class="data-table" data-testid="skill-ratings-role-table" style="min-width: 0;">
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="skillRatingsRoleBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -583,67 +599,106 @@
       };
 
       var skillRatingControls = {};
+      var anyPositionSkillIds = {};
+
+      function isAnySkillRow(row) {
+        return String(row.positionName || '').toLowerCase() === 'any position';
+      }
 
       function renderSkillRatings(skillRatings) {
         const rows = Array.isArray(skillRatings) ? skillRatings : [];
         const emptyEl = document.getElementById('skillRatingsEmpty');
-        const wrapEl = document.getElementById('skillRatingsTableWrap');
-        const bodyEl = document.getElementById('skillRatingsTableBody');
+        const anyBlock = document.getElementById('skillRatingsAnyBlock');
+        const roleBlock = document.getElementById('skillRatingsRoleBlock');
+        const anyBody = document.getElementById('skillRatingsAnyBody');
+        const roleBody = document.getElementById('skillRatingsRoleBody');
+        const roleTitle = document.getElementById('skillRatingsRoleTitle');
         skillRatingControls = {};
-        if (!emptyEl || !wrapEl || !bodyEl) {
+        anyPositionSkillIds = {};
+        if (!emptyEl || !anyBlock || !roleBlock || !anyBody || !roleBody) {
           return;
         }
-        bodyEl.innerHTML = '';
+
+        function appendEditableRows(bodyEl, list) {
+          bodyEl.innerHTML = '';
+          list.forEach(function (row) {
+            const skillId = String(row.skillId);
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-testid', 'skill-rating-row-' + skillId);
+
+            const skillTd = document.createElement('td');
+            skillTd.textContent = row.skillName || skillId;
+
+            const ratingTd = document.createElement('td');
+            const container = document.createElement('div');
+            container.className = 'form-field';
+            container.id = 'ctrlSkillRating_' + skillId;
+            container.innerHTML =
+              '<div class="ctrl-header">' +
+                '<span class="form-label" style="margin:0;">Rating</span>' +
+                '<label class="ctrl-toggle-label">' +
+                  '<input type="checkbox" class="ctrl-toggle" data-testid="skill-rating-toggle-' + skillId + '" aria-label="Record ' + (row.skillName || skillId) + '">' +
+                  '<span>Record</span>' +
+                '</label>' +
+              '</div>' +
+              '<div class="ctrl-row">' +
+                '<input type="range" class="ctrl-slider" min="0" max="100" step="1" data-testid="skill-rating-slider-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' slider" disabled>' +
+                '<input type="number" class="ctrl-box" min="0" max="100" step="1" data-testid="skill-rating-value-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' value" disabled>' +
+                '<span class="ctrl-suffix">%</span>' +
+              '</div>';
+            ratingTd.appendChild(container);
+            tr.appendChild(skillTd);
+            tr.appendChild(ratingTd);
+            bodyEl.appendChild(tr);
+
+            const control = buildSliderControl(container.id, { min: 0, max: 100, step: 1, midpoint: 50 });
+            control.setState(row.rating === null || row.rating === undefined ? null : Number(row.rating));
+            skillRatingControls[skillId] = control;
+            if (isAnySkillRow(row)) {
+              anyPositionSkillIds[skillId] = true;
+            }
+          });
+        }
+
         if (rows.length === 0) {
           emptyEl.hidden = false;
-          wrapEl.hidden = true;
+          anyBlock.hidden = true;
+          roleBlock.hidden = true;
+          anyBody.innerHTML = '';
+          roleBody.innerHTML = '';
           return;
         }
+
         emptyEl.hidden = true;
-        wrapEl.hidden = false;
-        rows.forEach(function (row) {
-          const skillId = String(row.skillId);
-          const tr = document.createElement('tr');
-          tr.setAttribute('data-testid', 'skill-rating-row-' + skillId);
+        const anyRows = rows.filter(isAnySkillRow);
+        const roleRows = rows.filter(function (row) { return !isAnySkillRow(row); });
 
-          const skillTd = document.createElement('td');
-          skillTd.textContent = row.skillName || skillId;
+        if (anyRows.length > 0) {
+          anyBlock.hidden = false;
+          appendEditableRows(anyBody, anyRows);
+        } else {
+          anyBlock.hidden = true;
+          anyBody.innerHTML = '';
+        }
 
-          const positionTd = document.createElement('td');
-          positionTd.textContent = row.positionName || '';
-
-          const ratingTd = document.createElement('td');
-          const container = document.createElement('div');
-          container.className = 'form-field';
-          container.id = 'ctrlSkillRating_' + skillId;
-          container.innerHTML =
-            '<div class="ctrl-header">' +
-              '<span class="form-label" style="margin:0;">Rating</span>' +
-              '<label class="ctrl-toggle-label">' +
-                '<input type="checkbox" class="ctrl-toggle" data-testid="skill-rating-toggle-' + skillId + '" aria-label="Record ' + (row.skillName || skillId) + '">' +
-                '<span>Record</span>' +
-              '</label>' +
-            '</div>' +
-            '<div class="ctrl-row">' +
-              '<input type="range" class="ctrl-slider" min="0" max="100" step="1" data-testid="skill-rating-slider-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' slider" disabled>' +
-              '<input type="number" class="ctrl-box" min="0" max="100" step="1" data-testid="skill-rating-value-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' value" disabled>' +
-              '<span class="ctrl-suffix">%</span>' +
-            '</div>';
-          ratingTd.appendChild(container);
-          tr.appendChild(skillTd);
-          tr.appendChild(positionTd);
-          tr.appendChild(ratingTd);
-          bodyEl.appendChild(tr);
-
-          const control = buildSliderControl(container.id, { min: 0, max: 100, step: 1, midpoint: 50 });
-          control.setState(row.rating === null || row.rating === undefined ? null : Number(row.rating));
-          skillRatingControls[skillId] = control;
-        });
+        if (roleRows.length > 0) {
+          roleBlock.hidden = false;
+          if (roleTitle) {
+            roleTitle.textContent = roleRows[0].positionName || 'Position';
+          }
+          appendEditableRows(roleBody, roleRows);
+        } else {
+          roleBlock.hidden = true;
+          roleBody.innerHTML = '';
+        }
       }
 
-      function readSkillRatingsPayload() {
+      function readSkillRatingsPayload(anyOnly) {
         const ratings = [];
         Object.keys(skillRatingControls).forEach(function (skillId) {
+          if (anyOnly && !anyPositionSkillIds[skillId]) {
+            return;
+          }
           ratings.push({
             skillId: skillId,
             rating: skillRatingControls[skillId].getState()
@@ -837,16 +892,16 @@
         }
 
         const savedPosition = String((response.data.player && response.data.player.position) || '');
-        // After a position change the server already replaced ratings with null
-        // rows for the new position. Skip the ratings PUT so we do not re-send
-        // the old position's skill ids (they would 400) or surface a spurious
-        // ratings error when the empty PUT fails.
-        if (savedPosition === previousPosition) {
-          const ratingsResponse = MockupApi.updatePlayerSkillRatings(playerId, readSkillRatingsPayload());
-          if (!ratingsResponse || ratingsResponse.status >= 400) {
-            showError((ratingsResponse && ratingsResponse.message) || 'Unable to save skill ratings right now.');
-            return;
-          }
+        // When position changes, PATCH already swapped role-unique rows while
+        // preserving Any Position ratings. Still PUT Any Position controls so
+        // same-save baseline edits are not lost; omit stale role skillIds.
+        const ratingsPayload = savedPosition === previousPosition
+          ? readSkillRatingsPayload(false)
+          : readSkillRatingsPayload(true);
+        const ratingsResponse = MockupApi.updatePlayerSkillRatings(playerId, ratingsPayload);
+        if (!ratingsResponse || ratingsResponse.status >= 400) {
+          showError((ratingsResponse && ratingsResponse.message) || 'Unable to save skill ratings right now.');
+          return;
         }
 
         showToast('Player saved successfully.');

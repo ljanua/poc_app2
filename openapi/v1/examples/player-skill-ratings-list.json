@@ -2,11 +2,53 @@
   "data": {
     "skillRatings": [
       {
+        "skillId": "s_ball_control",
+        "skillName": "Ball Control",
+        "positionId": "pos_any",
+        "positionName": "Any Position",
+        "rating": null
+      },
+      {
+        "skillId": "s_fitness",
+        "skillName": "Fitness",
+        "positionId": "pos_any",
+        "positionName": "Any Position",
+        "rating": null
+      },
+      {
+        "skillId": "s_game_awareness",
+        "skillName": "Game Awareness",
+        "positionId": "pos_any",
+        "positionName": "Any Position",
+        "rating": null
+      },
+      {
+        "skillId": "s_passing",
+        "skillName": "Passing",
+        "positionId": "pos_any",
+        "positionName": "Any Position",
+        "rating": 70
+      },
+      {
+        "skillId": "s_speed",
+        "skillName": "Speed",
+        "positionId": "pos_any",
+        "positionName": "Any Position",
+        "rating": null
+      },
+      {
         "skillId": "s_finishing",
         "skillName": "Finishing",
         "positionId": "pos_st",
         "positionName": "ST – Striker",
         "rating": 78
+      },
+      {
+        "skillId": "s_heading",
+        "skillName": "Heading",
+        "positionId": "pos_st",
+        "positionName": "ST – Striker",
+        "rating": 65
       },
       {
         "skillId": "s_positioning",
@@ -18,20 +60,6 @@
       {
         "skillId": "s_strength",
         "skillName": "Strength",
-        "positionId": "pos_st",
-        "positionName": "ST – Striker",
-        "rating": null
-      },
-      {
-        "skillId": "s_heading",
-        "skillName": "Heading",
-        "positionId": "pos_st",
-        "positionName": "ST – Striker",
-        "rating": 65
-      },
-      {
-        "skillId": "s_ball_control",
-        "skillName": "Ball Control",
         "positionId": "pos_st",
         "positionName": "ST – Striker",
         "rating": null

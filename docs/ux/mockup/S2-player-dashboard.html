@@ -45,27 +45,54 @@
 
       <div class="notice" id="noStatsNotice" hidden style="margin-top: 1rem;"></div>
 
-      <div class="section stats-section" data-testid="skill-ratings-section">
-        <div class="section-title">Skill Ratings</div>
+      <div class="section stats-section is-collapsed" data-testid="skill-ratings-section" data-section="skill-ratings">
+        <button type="button" class="section-title section-toggle" id="toggle-skill-ratings"
+          aria-expanded="false" aria-controls="body-skill-ratings"
+          data-testid="dashboard-section-toggle-skill-ratings">
+          Skill Ratings
+        </button>
+        <div class="section-body" id="body-skill-ratings">
         <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
           No skills are tracked for this player yet — pick a position in Edit Player (S5).
         </div>
-        <div class="table-wrap" id="skillRatingsTableWrap" hidden>
-          <table class="data-table" data-testid="skill-ratings-table" style="min-width: 0;">
-            <thead>
-              <tr>
-                <th>Skill</th>
-                <th>Position</th>
-                <th>Rating</th>
-              </tr>
-            </thead>
-            <tbody id="skillRatingsTableBody"></tbody>
-          </table>
+        <div id="skillRatingsAnyBlock" data-testid="skill-ratings-any-section" hidden style="margin-top: 0.75rem;">
+          <div class="section-title" style="font-size: 0.95rem;">Any Position</div>
+          <div class="table-wrap">
+            <table class="data-table" data-testid="skill-ratings-any-table" style="min-width: 0;">
+              <thead>
+                <tr>
+                  <th>Skill</th>
+                  <th>Rating</th>
+                </tr>
+              </thead>
+              <tbody id="skillRatingsAnyBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="skillRatingsRoleBlock" data-testid="skill-ratings-role-section" hidden style="margin-top: 1rem;">
+          <div class="section-title" id="skillRatingsRoleTitle" style="font-size: 0.95rem;">Position</div>
+          <div class="table-wrap">
+            <table class="data-table" data-testid="skill-ratings-role-table" style="min-width: 0;">
+              <thead>
+                <tr>
+                  <th>Skill</th>
+                  <th>Rating</th>
+                </tr>
+              </thead>
+              <tbody id="skillRatingsRoleBody"></tbody>
+            </table>
+          </div>
+        </div>
         </div>
       </div>
 
-      <div class="section stats-section">
-        <div class="section-title">Development Progress</div>
+      <div class="section stats-section is-collapsed" data-section="development-progress">
+        <button type="button" class="section-title section-toggle" id="toggle-development-progress"
+          aria-expanded="false" aria-controls="body-development-progress"
+          data-testid="dashboard-section-toggle-development-progress">
+          Development Progress
+        </button>
+        <div class="section-body" id="body-development-progress">
         <div class="metric-grid">
           <div class="metric">
             <div class="metric-label">Current Level</div>
@@ -90,10 +117,16 @@
           <div class="timeline-bar active"></div>
           <div class="timeline-bar active"></div>
         </div>
+        </div>
       </div>
 
-      <div class="section stats-section">
-        <div class="section-title">Match Time History</div>
+      <div class="section stats-section is-collapsed" data-section="match-time">
+        <button type="button" class="section-title section-toggle" id="toggle-match-time"
+          aria-expanded="false" aria-controls="body-match-time"
+          data-testid="dashboard-section-toggle-match-time">
+          Match Time History
+        </button>
+        <div class="section-body" id="body-match-time">
         <div class="metric-grid">
           <div class="metric">
             <div class="metric-label">Total Minutes</div>
@@ -118,10 +151,16 @@
           <div class="timeline-bar active"></div>
           <div class="timeline-bar"></div>
         </div>
+        </div>
       </div>
 
-      <div class="section stats-section">
-        <div class="section-title">Recent Performance</div>
+      <div class="section stats-section is-collapsed" data-section="recent-performance">
+        <button type="button" class="section-title section-toggle" id="toggle-recent-performance"
+          aria-expanded="false" aria-controls="body-recent-performance"
+          data-testid="dashboard-section-toggle-recent-performance">
+          Recent Performance
+        </button>
+        <div class="section-body" id="body-recent-performance">
         <div class="metric-grid">
           <div class="metric">
             <div class="metric-label">Avg Score</div>
@@ -139,16 +178,23 @@
             <div class="metric-status" id="metricLastMatchSub">vs Barcelona</div>
           </div>
         </div>
+        </div>
       </div>
 
-      <div class="section stats-section">
-        <div class="section-title">Video Assessments</div>
+      <div class="section stats-section is-collapsed" data-section="video-assessments">
+        <button type="button" class="section-title section-toggle" id="toggle-video-assessments"
+          aria-expanded="false" aria-controls="body-video-assessments"
+          data-testid="dashboard-section-toggle-video-assessments">
+          Video Assessments
+        </button>
+        <div class="section-body" id="body-video-assessments">
         <div id="dashboardClipSummary" style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
           4 clips submitted • 3 assessed • 1 pending
         </div>
         <div class="cta-buttons">
           <a class="btn btn-secondary" href="./S6-assessment-list.html">View Results</a>
           <a class="btn btn-primary" href="./S4-video-capture.html">Submit New Clip</a>
+        </div>
         </div>
       </div>
 
@@ -276,44 +322,147 @@
       (function renderSkillRatings() {
         const rows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
         const emptyEl = document.getElementById('skillRatingsEmpty');
-        const wrapEl = document.getElementById('skillRatingsTableWrap');
-        const bodyEl = document.getElementById('skillRatingsTableBody');
-        if (!emptyEl || !wrapEl || !bodyEl) {
+        const anyBlock = document.getElementById('skillRatingsAnyBlock');
+        const roleBlock = document.getElementById('skillRatingsRoleBlock');
+        const anyBody = document.getElementById('skillRatingsAnyBody');
+        const roleBody = document.getElementById('skillRatingsRoleBody');
+        const roleTitle = document.getElementById('skillRatingsRoleTitle');
+        if (!emptyEl || !anyBlock || !roleBlock || !anyBody || !roleBody) {
           return;
         }
-        bodyEl.innerHTML = '';
+
+        function isAnyRow(row) {
+          return String(row.positionName || '').toLowerCase() === 'any position';
+        }
+
+        function appendRatingRows(bodyEl, list) {
+          bodyEl.innerHTML = '';
+          list.forEach(function (row) {
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-testid', 'skill-rating-row-' + row.skillId);
+            const skillTd = document.createElement('td');
+            skillTd.textContent = row.skillName || row.skillId;
+            const ratingTd = document.createElement('td');
+            if (row.rating === null || row.rating === undefined) {
+              const muted = document.createElement('span');
+              muted.className = 'muted';
+              muted.style.color = 'var(--text-muted)';
+              muted.setAttribute('data-testid', 'skill-rating-not-rated');
+              muted.textContent = 'Not rated';
+              ratingTd.appendChild(muted);
+            } else {
+              ratingTd.setAttribute('data-testid', 'skill-rating-value-' + row.skillId);
+              ratingTd.textContent = String(row.rating) + '%';
+            }
+            tr.appendChild(skillTd);
+            tr.appendChild(ratingTd);
+            bodyEl.appendChild(tr);
+          });
+        }
+
         if (rows.length === 0) {
           emptyEl.hidden = false;
-          wrapEl.hidden = true;
+          anyBlock.hidden = true;
+          roleBlock.hidden = true;
           return;
         }
+
         emptyEl.hidden = true;
-        wrapEl.hidden = false;
-        rows.forEach(function (row) {
-          const tr = document.createElement('tr');
-          tr.setAttribute('data-testid', 'skill-rating-row-' + row.skillId);
-          const skillTd = document.createElement('td');
-          skillTd.textContent = row.skillName || row.skillId;
-          const positionTd = document.createElement('td');
-          positionTd.textContent = row.positionName || '';
-          const ratingTd = document.createElement('td');
-          if (row.rating === null || row.rating === undefined) {
-            const muted = document.createElement('span');
-            muted.className = 'muted';
-            muted.style.color = 'var(--text-muted)';
-            muted.setAttribute('data-testid', 'skill-rating-not-rated');
-            muted.textContent = 'Not rated';
-            ratingTd.appendChild(muted);
-          } else {
-            ratingTd.setAttribute('data-testid', 'skill-rating-value-' + row.skillId);
-            ratingTd.textContent = String(row.rating) + '%';
+        const anyRows = rows.filter(isAnyRow);
+        const roleRows = rows.filter(function (row) { return !isAnyRow(row); });
+
+        if (anyRows.length > 0) {
+          anyBlock.hidden = false;
+          appendRatingRows(anyBody, anyRows);
+        } else {
+          anyBlock.hidden = true;
+        }
+
+        if (roleRows.length > 0) {
+          roleBlock.hidden = false;
+          if (roleTitle) {
+            roleTitle.textContent = roleRows[0].positionName || 'Position';
           }
-          tr.appendChild(skillTd);
-          tr.appendChild(positionTd);
-          tr.appendChild(ratingTd);
-          bodyEl.appendChild(tr);
-        });
+          appendRatingRows(roleBody, roleRows);
+        } else {
+          roleBlock.hidden = true;
+        }
       })();
+
+      function initDashboardSectionToggles(playerId) {
+        const storageKey = 'vantageiq_s2_dashboard_sections';
+
+        function readAllSectionState() {
+          try {
+            const raw = window.localStorage.getItem(storageKey);
+            return raw ? JSON.parse(raw) : {};
+          } catch (error) {
+            return {};
+          }
+        }
+
+        function readPlayerSectionState() {
+          if (playerId === undefined || playerId === null) {
+            return {};
+          }
+          const all = readAllSectionState();
+          return all[String(playerId)] || {};
+        }
+
+        function saveSectionExpanded(sectionSlug, expanded) {
+          if (playerId === undefined || playerId === null || !sectionSlug) {
+            return;
+          }
+          try {
+            const all = readAllSectionState();
+            const playerKey = String(playerId);
+            const playerState = all[playerKey] || {};
+            playerState[sectionSlug] = expanded;
+            all[playerKey] = playerState;
+            window.localStorage.setItem(storageKey, JSON.stringify(all));
+          } catch (error) {
+            // Ignore quota or parse errors; collapse still works for this visit.
+          }
+        }
+
+        function applySectionCollapsed(section, collapsed) {
+          section.classList.toggle('is-collapsed', collapsed);
+          const toggle = section.querySelector('.section-toggle');
+          if (toggle) {
+            toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          }
+        }
+
+        const saved = readPlayerSectionState();
+        document.querySelectorAll('.stats-section').forEach(function (section) {
+          const sectionSlug = section.getAttribute('data-section');
+          if (!sectionSlug) {
+            return;
+          }
+          const expanded = saved[sectionSlug] === true;
+          applySectionCollapsed(section, !expanded);
+        });
+
+        document.querySelectorAll('.stats-section .section-toggle').forEach(function (toggle) {
+          if (toggle.dataset.toggleBound === 'true') {
+            return;
+          }
+          toggle.dataset.toggleBound = 'true';
+          toggle.addEventListener('click', function () {
+            const section = toggle.closest('.stats-section');
+            if (!section || section.hidden) {
+              return;
+            }
+            const sectionSlug = section.getAttribute('data-section');
+            const collapsed = section.classList.toggle('is-collapsed');
+            const expanded = !collapsed;
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            saveSectionExpanded(sectionSlug, expanded);
+          });
+        });
+      }
+
+      initDashboardSectionToggles(player.id);
 
       function bindMetricChange(elementId, change) {
         if (!change) {

@@ -772,10 +772,46 @@ async function listPositionSkills(positionId, client) {
   return result.rows.map(toPositionSkillPayload);
 }
 
-// Returns one row per skill assigned to the player's current position, LEFT
-// JOIN'd to player_skill_ratings. Empty when the player has no team, no
-// resolvable position name, or the position has no skills.
+// Returns Any Position skills for the player's sport, plus role-unique skills
+// when the assigned position is resolvable and is not Any Position. Overlaps
+// appear only under Any Position. Empty when the player has no team/sport.
 async function listSkillsForPlayer(playerId, executor = pool) {
+  const context = await executor.query(
+    `
+      SELECT
+        pl.position AS "positionName",
+        t.sport_id AS "sportId",
+        any_pos.id AS "anyPositionId",
+        any_pos.name AS "anyPositionName",
+        role_pos.id AS "rolePositionId",
+        role_pos.name AS "rolePositionName"
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      LEFT JOIN positions any_pos
+        ON any_pos.sport_id = t.sport_id AND LOWER(any_pos.name) = 'any position'
+      LEFT JOIN positions role_pos
+        ON role_pos.sport_id = t.sport_id
+        AND LOWER(role_pos.name) = LOWER(pl.position)
+        AND pl.position IS NOT NULL
+        AND TRIM(pl.position) <> ''
+        AND LOWER(pl.position) <> 'position not set'
+      WHERE pl.id = $1
+      LIMIT 1
+    `,
+    [playerId]
+  );
+  if (!context.rows[0] || !context.rows[0].anyPositionId) {
+    return [];
+  }
+
+  const row = context.rows[0];
+  const anyPositionId = row.anyPositionId;
+  const rolePositionId = row.rolePositionId
+    && String(row.rolePositionId) !== String(anyPositionId)
+    ? row.rolePositionId
+    : null;
+
   const result = await executor.query(
     `
       SELECT
@@ -783,25 +819,32 @@ async function listSkillsForPlayer(playerId, executor = pool) {
         s.name AS "skillName",
         p.id AS "positionId",
         p.name AS "positionName",
-        psr.rating AS "rating"
-      FROM players pl
-      JOIN player_team_assignments a ON a.player_id = pl.id
-      JOIN teams t ON t.id = a.team_id
-      JOIN positions p ON LOWER(p.name) = LOWER(pl.position) AND p.sport_id = t.sport_id
-      JOIN position_skills ps ON ps.position_id = p.id
+        psr.rating AS "rating",
+        CASE WHEN p.id = $2 THEN 0 ELSE 1 END AS "sectionOrder"
+      FROM position_skills ps
+      JOIN positions p ON p.id = ps.position_id
       JOIN skills s ON s.id = ps.skill_id
-      LEFT JOIN player_skill_ratings psr ON psr.player_id = pl.id AND psr.skill_id = ps.skill_id
-      WHERE pl.id = $1
-      ORDER BY s.name ASC
+      LEFT JOIN player_skill_ratings psr ON psr.player_id = $1 AND psr.skill_id = ps.skill_id
+      WHERE ps.position_id = $2
+         OR (
+           $3::text IS NOT NULL
+           AND ps.position_id = $3
+           AND NOT EXISTS (
+             SELECT 1 FROM position_skills any_ps
+             WHERE any_ps.position_id = $2 AND any_ps.skill_id = ps.skill_id
+           )
+         )
+      ORDER BY "sectionOrder" ASC, s.name ASC
     `,
-    [playerId]
+    [playerId, anyPositionId, rolePositionId]
   );
-  return result.rows.map((row) => ({
-    skillId: row.skillId,
-    skillName: row.skillName,
-    positionId: row.positionId,
-    positionName: row.positionName,
-    rating: row.rating === null || row.rating === undefined ? null : Number(row.rating)
+
+  return result.rows.map((entry) => ({
+    skillId: entry.skillId,
+    skillName: entry.skillName,
+    positionId: entry.positionId,
+    positionName: entry.positionName,
+    rating: entry.rating === null || entry.rating === undefined ? null : Number(entry.rating)
   }));
 }
 
@@ -824,22 +867,75 @@ async function resolvePositionIdForPlayer(executor, playerId, positionName) {
   return result.rows[0] ? result.rows[0].id : null;
 }
 
-// Replace-on-position-change: wipe existing ratings, then insert one NULL row
-// per skill in the new position's position_skills set. When newPositionId is
-// null (cleared position), only the DELETE runs.
+async function resolveAnyPositionIdForPlayer(executor, playerId) {
+  const result = await executor.query(
+    `
+      SELECT any_pos.id
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN positions any_pos
+        ON any_pos.sport_id = t.sport_id AND LOWER(any_pos.name) = 'any position'
+      WHERE pl.id = $1
+      LIMIT 1
+    `,
+    [playerId]
+  );
+  return result.rows[0] ? result.rows[0].id : null;
+}
+
+// Preserve-Any + swap-role: keep ratings for the sport's Any Position skills,
+// delete other ratings, then insert NULL rows for new role-unique skills.
 async function replaceSkillRatingsForPosition(client, playerId, newPositionId) {
-  await client.query('DELETE FROM player_skill_ratings WHERE player_id = $1', [playerId]);
-  if (!newPositionId) {
+  const anyPositionId = await resolveAnyPositionIdForPlayer(client, playerId);
+
+  if (!anyPositionId) {
+    await client.query('DELETE FROM player_skill_ratings WHERE player_id = $1', [playerId]);
+    if (!newPositionId) {
+      return;
+    }
+    await client.query(
+      `
+        INSERT INTO player_skill_ratings (player_id, skill_id, rating)
+        SELECT $1, ps.skill_id, NULL
+        FROM position_skills ps
+        WHERE ps.position_id = $2
+        ON CONFLICT (player_id, skill_id) DO NOTHING
+      `,
+      [playerId, newPositionId]
+    );
     return;
   }
+
+  await client.query(
+    `
+      DELETE FROM player_skill_ratings psr
+      WHERE psr.player_id = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM position_skills any_ps
+          WHERE any_ps.position_id = $2 AND any_ps.skill_id = psr.skill_id
+        )
+    `,
+    [playerId, anyPositionId]
+  );
+
+  if (!newPositionId || String(newPositionId) === String(anyPositionId)) {
+    return;
+  }
+
   await client.query(
     `
       INSERT INTO player_skill_ratings (player_id, skill_id, rating)
       SELECT $1, ps.skill_id, NULL
       FROM position_skills ps
-      WHERE ps.position_id = $2
+      WHERE ps.position_id = $3
+        AND NOT EXISTS (
+          SELECT 1 FROM position_skills any_ps
+          WHERE any_ps.position_id = $2 AND any_ps.skill_id = ps.skill_id
+        )
+      ON CONFLICT (player_id, skill_id) DO NOTHING
     `,
-    [playerId, newPositionId]
+    [playerId, anyPositionId, newPositionId]
   );
 }
 

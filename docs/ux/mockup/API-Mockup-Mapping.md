@@ -72,7 +72,7 @@ Player birth date + derived age (`Player.birthMonth`, `Player.birthYear`, `Playe
 - `CreatePlayerRequest` (POST `/v1/players`) and `UpdatePlayerProfileRequest` (PATCH `/v1/players/{playerId}`) both accept the same pair. Both `scripts/serve-mockup.js` (`parseBirthFields`) and the offline client mirror enforce the same rule; the offline dashboard reads the same `age` value the backend would surface.
 
 Dashboard "no stats yet" contract (player found, but `player_stats` has no real data):
-- `missingDataMessage` (surfaced at `data.performance.missingDataMessage`, mirrored onto `PlayerDashboardStats.missingDataMessage`) is the single authoritative signal that this player has no genuinely recorded stats yet. It drives **whole-section visibility** in S2, not just a note under "Recent Performance": when set, the mockup hides the "Development Progress", "Match Time History", "Recent Performance", and "Video Assessments" sections as one unit and shows a single notice next to the player identity card (name, team, position, trend badge remain visible).
+- `missingDataMessage` (surfaced at `data.performance.missingDataMessage`, mirrored onto `PlayerDashboardStats.missingDataMessage`) is the single authoritative signal that this player has no genuinely recorded stats yet. It drives **whole-section visibility** in S2, not just a note under "Recent Performance": when set, the mockup hides the "Skill Ratings", "Development Progress", "Match Time History", "Recent Performance", and "Video Assessments" sections as one unit and shows a single notice next to the player identity card (name, team, position, trend badge remain visible).
 - `syncDefaultDashboardStats` in `scripts/serve-mockup.js` (and the equivalent branch in `mockup-api-client.js`'s `buildDashboardSnapshot`) only ever applies curated demo data to the four named reference profiles (`lionel messi`, `cristiano ronaldo`, `neymar jr`, `kylian mbappe`). Every other player defaults to this genuine "no stats yet" state — including on server restart — rather than a fabricated archetype profile borrowed from one of the four named players.
 - This is distinct from the "player not found" case (bad/stale `playerName`, no roster match at all): that returns `404 not_found` and the mockup hides the entire page behind a generic notice, unchanged by this contract.
 - `apps/api/src/db/migrations/010_reset_fabricated_player_stats.sql` is a one-time remediation migration that resets any already-corrupted non-named `player_stats` rows back to this genuine "no stats yet" shape; it does not need to run again after the corresponding code fix lands.
@@ -286,29 +286,33 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 
 ## Player Skill Ratings (S2/S5)
 
-Source plan: `docs/plans/2026-07-08-015-feat-s2-s5-player-skill-ratings-plan.md`.
+Source plans:
+- `docs/plans/2026-07-08-015-feat-s2-s5-player-skill-ratings-plan.md`
+- `docs/plans/2026-07-08-016-feat-any-position-baseline-skill-ratings-plan.md`
 
 ### Schema
 
 - Migration `apps/api/src/db/migrations/018_player_skill_ratings.sql` adds `player_skill_ratings (player_id, skill_id, rating, created_at, updated_at)` with `PRIMARY KEY (player_id, skill_id)`, `rating SMALLINT NULL OR 0–100`, `ON DELETE CASCADE` from players, `ON DELETE RESTRICT` from skills. Mirrored in `tables.sql` / `deploy.sql`.
-- No seed rows: every player starts unrated. Skills in scope come from `position_skills` for the player's current position (resolved via team sport + case-insensitive position name).
+- No seed rows: every player starts unrated. Skills in scope are the sport's **Any Position** `position_skills`, plus role-unique skills when the player is assigned to a non–Any Position role (overlaps appear only under Any Position).
 
 ### API
 
-- `GET /v1/players/dashboard` and `GET /v1/players/{playerId}/profile` return additive `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]`.
+- `GET /v1/players/dashboard` and `GET /v1/players/{playerId}/profile` return additive `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]` (Any first, then role-unique).
 - `GET /v1/players/{playerId}/skill-ratings` returns the same array alone.
-- `PUT /v1/players/{playerId}/skill-ratings` accepts `{ ratings: [{ skillId, rating }] }` (partial replace). `rating: null` deletes the row; out-of-position skills return `400 validation_error` with the S8 guidance message.
-- `PATCH /v1/players/{playerId}` replaces all ratings when `position` changes: delete existing rows, insert null rows for the new position's `position_skills`.
+- `PUT /v1/players/{playerId}/skill-ratings` accepts `{ ratings: [{ skillId, rating }] }` (partial replace). `rating: null` deletes the row; skills outside the Any∪role-unique set return `400 validation_error` with the S8 guidance message.
+- `PATCH /v1/players/{playerId}` on position change **preserves** Any Position skill ratings, deletes other ratings, and inserts null rows for new role-unique skills.
 
 ### Client
 
 - `MockupApi.listPlayerSkillRatings(playerId)` / `MockupApi.updatePlayerSkillRatings(playerId, payload)` dual-mode (backend + offline `store.playerSkillRatings`).
 - Offline seed includes `playerSkillRatings: []`; `loadStore()` requires the array or reseeds.
+- Offline list/replace mirrors the Any∪role-unique and preserve-Any rules.
 
 ### UI
 
-- **S2** — `[data-testid="skill-ratings-section"]` (`.stats-section`) before Development Progress; table or empty helper; `Not rated` for null.
-- **S5** — same section before Development Progress; per-skill `buildSliderControl` (0–100 + Record toggle); save runs profile PATCH then skill-ratings PUT (skipped payload when position just changed).
+- **S2** — `[data-testid="skill-ratings-section"]` before Development Progress with `[data-testid="skill-ratings-any-section"]` first and optional `[data-testid="skill-ratings-role-section"]` second; empty helper only when no team/sport baseline exists.
+- **S2 collapsible sections** — each stats block title (`Skill Ratings`, `Development Progress`, `Match Time History`, `Recent Performance`, `Video Assessments`) is a `[data-testid="dashboard-section-toggle-*"]` button that toggles `is-collapsed` on the parent `.stats-section` (body hidden via `.section-body`). Default **collapsed** on first visit; expanded/collapsed state persists per player in `localStorage` key `vantageiq_s2_dashboard_sections` (`{ [playerId]: { [sectionSlug]: true|false } }`, `true` = expanded).
+- **S5** — same two subsections; per-skill `buildSliderControl` (0–100 + Record toggle); save runs profile PATCH then skill-ratings PUT (Any-only filter when position just changed so same-save baseline edits are kept).
 
 ### Test traceability
 

@@ -251,7 +251,9 @@ components:
         positionName:
           type: string
           description: >
-            Convenience denormalization of the player's current position name.
+            Catalog position that owns this skill in the returned list
+            (Any Position for baseline skills, or the player's role for
+            role-unique skills). Overlaps appear only under Any Position.
         rating:
           type: integer
           nullable: true
@@ -311,9 +313,10 @@ components:
               items:
                 $ref: '#/components/schemas/PlayerSkillRating'
               description: >
-                Skills assigned to the player's current position, each with a
-                nullable 0–100 rating. Empty when the player has no resolvable
-                position or the position has no skills.
+                Union of the sport's Any Position skills plus role-unique skills
+                for the player's assigned position (overlaps listed only under
+                Any Position). Empty when the player has no team/sport or the
+                sport has no Any Position catalog row.
             metrics:
               type: object
               required: [currentLevel, fitness, skillProgress]
@@ -395,9 +398,10 @@ components:
               items:
                 $ref: '#/components/schemas/PlayerSkillRating'
               description: >
-                Skills assigned to the player's current position, each with a
-                nullable 0–100 rating. Empty when the player has no resolvable
-                position or the position has no skills.
+                Union of the sport's Any Position skills plus role-unique skills
+                for the player's assigned position (overlaps listed only under
+                Any Position). Empty when the player has no team/sport or the
+                sport has no Any Position catalog row.
 
     UpdatePlayerProfileRequest:
       type: object

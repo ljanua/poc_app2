@@ -202,12 +202,13 @@ paths:
 
   /players/{playerId}/skill-ratings:
     put:
-      summary: Update player skill ratings for the current position
+      summary: Update player skill ratings for Any Position and role-unique skills
       description: >-
-        Coach-only. Partial replace of skill ratings for skills assigned to the
-        player's current position. Skills not listed in the request are left
-        untouched. Sending rating: null clears that skill's rating. Skills
-        outside the player's current position_skills set return 400
+        Coach-only. Partial replace of ratings for skills in the player's allowed
+        set: the sport's Any Position skills plus role-unique skills when assigned
+        to a non–Any Position role. Overlaps are owned by Any Position only.
+        Skills not listed in the request are left untouched. Sending rating: null
+        clears that skill's rating. Skills outside the allowed set return 400
         validation_error with message
         "Skill '<name>' is not tracked for the player's position '<position>'.
         Add it to the position in Manage Skills (S8) or change the player's

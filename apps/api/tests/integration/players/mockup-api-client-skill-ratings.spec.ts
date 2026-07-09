@@ -42,6 +42,12 @@ describe('mockup-api-client.js — player skill ratings', () => {
   it('offline helpers list and replace skill ratings for position', () => {
     expect(clientSource).toContain('function listSkillsForPlayerOffline');
     expect(clientSource).toContain('function replaceSkillRatingsForPositionOffline');
+    const listIdx = clientSource.indexOf('function listSkillsForPlayerOffline');
+    const listBody = clientSource.slice(listIdx, listIdx + 3500);
+    expect(listBody).toContain("=== 'any position'");
+    const replaceIdx = clientSource.indexOf('function replaceSkillRatingsForPositionOffline');
+    const replaceBody = clientSource.slice(replaceIdx, replaceIdx + 2500);
+    expect(replaceBody).toContain('anySkillIds');
   });
 
   it('updatePlayerProfile offline path replaces ratings on position change', () => {

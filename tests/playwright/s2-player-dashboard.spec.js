@@ -16,7 +16,10 @@ test.describe('S2 Player Development Dashboard', () => {
     });
 
     await page.goto('/S0-login.html');
-    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.evaluate(() => {
+      window.localStorage.removeItem('vantageiq_mockup_v2');
+      window.localStorage.removeItem('vantageiq_s2_dashboard_sections');
+    });
     // Always sign in as coach joao@vantageiq.club before every test in this suite.
     await page.fill('#email', 'joao@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
@@ -32,12 +35,70 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByText('Recent Performance')).toBeVisible();
     await expect(page.getByText('Video Assessments')).toBeVisible();
 
-    await expect(page.getByText('Current Level')).toBeVisible();
-    await expect(page.getByText('Total Minutes')).toBeVisible();
-    await expect(page.getByText('Avg Score')).toBeVisible();
+    // Sections default collapsed; bodies stay hidden until expanded.
+    await expect(page.locator('#body-development-progress')).toBeHidden();
+    await expect(page.locator('#body-match-time')).toBeHidden();
+    await expect(page.locator('#body-recent-performance')).toBeHidden();
+    await expect(page.getByText('Current Level')).toBeHidden();
+    await expect(page.getByText('Total Minutes')).toBeHidden();
+    await expect(page.getByText('Avg Score')).toBeHidden();
+  });
+
+  test('collapses and expands dashboard sections when clicking section titles', async ({ page }) => {
+    const devToggle = page.getByTestId('dashboard-section-toggle-development-progress');
+    const devBody = page.locator('#body-development-progress');
+
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#metricCurrentLevel')).toBeHidden();
+
+    await devToggle.click();
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(devBody).toBeVisible();
+    await expect(page.locator('#metricCurrentLevel')).toBeVisible();
+
+    await devToggle.click();
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(devBody).toBeHidden();
+    await expect(page.locator('#metricCurrentLevel')).toBeHidden();
+  });
+
+  test('collapses the entire Skill Ratings section including sub-tables', async ({ page }) => {
+    const skillToggle = page.getByTestId('dashboard-section-toggle-skill-ratings');
+    const skillBody = page.locator('#body-skill-ratings');
+
+    await expect(skillToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(skillBody).toBeHidden();
+
+    await skillToggle.click();
+    await expect(skillToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(skillBody).toBeVisible();
+
+    await skillToggle.click();
+    await expect(skillToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(skillBody).toBeHidden();
+  });
+
+  test('persists expanded section state per player in localStorage', async ({ page }) => {
+    const devToggle = page.getByTestId('dashboard-section-toggle-development-progress');
+
+    await devToggle.click();
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'true');
+
+    await page.reload();
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#metricCurrentLevel')).toBeVisible();
+
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Cristiano Ronaldo'));
+    const ronaldoDevToggle = page.getByTestId('dashboard-section-toggle-development-progress');
+    await expect(ronaldoDevToggle).toHaveAttribute('aria-expanded', 'false');
+
+    await page.goto('/S2-player-dashboard.html');
+    await expect(devToggle).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('shows real per-player metric change badges instead of static placeholders', async ({ page }) => {
+    await page.getByTestId('dashboard-section-toggle-development-progress').click();
+
     const currentLevelChange = page.locator('#metricCurrentLevelChange');
     const fitnessChange = page.locator('#metricFitnessChange');
     const skillChange = page.locator('#metricSkillChange');
@@ -58,10 +119,12 @@ test.describe('S2 Player Development Dashboard', () => {
   });
 
   test('provides actions to view results and submit clips', async ({ page }) => {
+    await page.getByTestId('dashboard-section-toggle-video-assessments').click();
     await page.getByRole('link', { name: 'View Results' }).click();
     await expect(page).toHaveURL(/S6-assessment-list\.html|S6-assessment-list$/);
 
     await page.goto('/S2-player-dashboard.html');
+    await page.getByTestId('dashboard-section-toggle-video-assessments').click();
     await page.getByRole('link', { name: /Submit New Clip|Submit a Clip/ }).first().click();
     await expect(page).toHaveURL(/S4-video-capture\.html|S4-video-capture$/);
   });

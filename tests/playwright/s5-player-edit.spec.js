@@ -83,11 +83,15 @@ test.describe('S5 Edit Player', () => {
     await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
     await expect(page.locator('#dashboardPlayerName')).toHaveText('Rookie Carter');
 
-    // The no-stats notice is gone and every stats section is visible now.
+    // The no-stats notice is gone and every stats section title is visible now.
     await expect(page.locator('#noStatsNotice')).toBeHidden();
     await expect(page.getByText('Development Progress')).toBeVisible();
     await expect(page.getByText('Match Time History')).toBeVisible();
     await expect(page.getByText('Recent Performance')).toBeVisible();
+
+    await page.getByTestId('dashboard-section-toggle-development-progress').click();
+    await page.getByTestId('dashboard-section-toggle-match-time').click();
+    await page.getByTestId('dashboard-section-toggle-recent-performance').click();
 
     await expect(page.locator('#metricCurrentLevel')).toHaveText('80%');
     await expect(page.locator('#metricMinutes')).toHaveText('120');

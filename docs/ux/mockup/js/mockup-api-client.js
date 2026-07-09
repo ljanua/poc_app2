@@ -588,8 +588,8 @@
     });
   }
 
-  // Offline mirror of listSkillsForPlayer: skills for the player's current
-  // position, LEFT JOIN'd to store.playerSkillRatings.
+  // Offline mirror of listSkillsForPlayer: Any Position skills for the sport,
+  // plus role-unique skills when the assigned position is not Any Position.
   function listSkillsForPlayerOffline(store, player) {
     if (!player) {
       return [];
@@ -599,20 +599,14 @@
       return [];
     }
     const sportId = team.sportId || 'sport_soccer';
-    const positionName = String(player.position || '').trim();
-    if (!positionName || positionName === 'Position not set') {
-      return [];
-    }
-    const position = (store.positions || []).find(function (entry) {
+    const anyPosition = (store.positions || []).find(function (entry) {
       return String(entry.sportId) === String(sportId)
-        && String(entry.name || '').toLowerCase() === positionName.toLowerCase();
+        && String(entry.name || '').toLowerCase() === 'any position';
     });
-    if (!position) {
+    if (!anyPosition) {
       return [];
     }
-    const assigned = (store.positionSkills || []).filter(function (entry) {
-      return String(entry.positionId) === String(position.id);
-    });
+
     const ratings = (store.playerSkillRatings || []).filter(function (entry) {
       return String(entry.playerId) === String(player.id);
     });
@@ -622,35 +616,95 @@
         ? null
         : Number(entry.rating);
     });
-    return assigned
-      .map(function (entry) {
-        const skill = (store.skills || []).find(function (s) { return String(s.id) === String(entry.skillId); });
-        return {
-          skillId: entry.skillId,
-          skillName: (skill && skill.name) || entry.skillName || entry.skillId,
-          positionId: position.id,
-          positionName: position.name,
-          rating: Object.prototype.hasOwnProperty.call(ratingBySkill, String(entry.skillId))
-            ? ratingBySkill[String(entry.skillId)]
-            : null
-        };
-      })
-      .sort(function (a, b) {
-        return String(a.skillName).localeCompare(String(b.skillName));
-      });
+
+    function rowsForPosition(position) {
+      return (store.positionSkills || [])
+        .filter(function (entry) { return String(entry.positionId) === String(position.id); })
+        .map(function (entry) {
+          const skill = (store.skills || []).find(function (s) { return String(s.id) === String(entry.skillId); });
+          return {
+            skillId: entry.skillId,
+            skillName: (skill && skill.name) || entry.skillName || entry.skillId,
+            positionId: position.id,
+            positionName: position.name,
+            rating: Object.prototype.hasOwnProperty.call(ratingBySkill, String(entry.skillId))
+              ? ratingBySkill[String(entry.skillId)]
+              : null
+          };
+        })
+        .sort(function (a, b) {
+          return String(a.skillName).localeCompare(String(b.skillName));
+        });
+    }
+
+    const anyRows = rowsForPosition(anyPosition);
+    const anySkillIds = {};
+    anyRows.forEach(function (row) { anySkillIds[String(row.skillId)] = true; });
+
+    const positionName = String(player.position || '').trim();
+    if (!positionName || positionName === 'Position not set') {
+      return anyRows;
+    }
+
+    const rolePosition = (store.positions || []).find(function (entry) {
+      return String(entry.sportId) === String(sportId)
+        && String(entry.name || '').toLowerCase() === positionName.toLowerCase();
+    });
+    if (!rolePosition || String(rolePosition.id) === String(anyPosition.id)) {
+      return anyRows;
+    }
+
+    const roleRows = rowsForPosition(rolePosition).filter(function (row) {
+      return !anySkillIds[String(row.skillId)];
+    });
+    return anyRows.concat(roleRows);
   }
 
   function replaceSkillRatingsForPositionOffline(store, playerId, positionId) {
-    store.playerSkillRatings = (store.playerSkillRatings || []).filter(function (entry) {
-      return String(entry.playerId) !== String(playerId);
+    store.playerSkillRatings = store.playerSkillRatings || [];
+    const player = (store.players || []).find(function (entry) {
+      return String(entry.id) === String(playerId);
     });
-    if (!positionId) {
+    const team = player ? findTeamByName(store, player.teamName) : null;
+    const sportId = team ? (team.sportId || 'sport_soccer') : 'sport_soccer';
+    const anyPosition = (store.positions || []).find(function (entry) {
+      return String(entry.sportId) === String(sportId)
+        && String(entry.name || '').toLowerCase() === 'any position';
+    });
+    const anySkillIds = {};
+    if (anyPosition) {
+      (store.positionSkills || []).forEach(function (entry) {
+        if (String(entry.positionId) === String(anyPosition.id)) {
+          anySkillIds[String(entry.skillId)] = true;
+        }
+      });
+    }
+
+    store.playerSkillRatings = store.playerSkillRatings.filter(function (entry) {
+      if (String(entry.playerId) !== String(playerId)) {
+        return true;
+      }
+      return Boolean(anySkillIds[String(entry.skillId)]);
+    });
+
+    if (!positionId || (anyPosition && String(positionId) === String(anyPosition.id))) {
       return;
     }
-    const assigned = (store.positionSkills || []).filter(function (entry) {
-      return String(entry.positionId) === String(positionId);
+
+    const existing = {};
+    store.playerSkillRatings.forEach(function (entry) {
+      if (String(entry.playerId) === String(playerId)) {
+        existing[String(entry.skillId)] = true;
+      }
     });
-    assigned.forEach(function (entry) {
+
+    (store.positionSkills || []).forEach(function (entry) {
+      if (String(entry.positionId) !== String(positionId)) {
+        return;
+      }
+      if (anySkillIds[String(entry.skillId)] || existing[String(entry.skillId)]) {
+        return;
+      }
       store.playerSkillRatings.push({
         playerId: playerId,
         skillId: entry.skillId,

@@ -12,13 +12,15 @@ describe('player skill ratings handlers in serve-mockup.js', () => {
     expect(source).toContain('async function upsertSkillRatings(');
   });
 
-  it('listSkillsForPlayer joins position_skills and player_skill_ratings', () => {
+  it('listSkillsForPlayer unions Any Position with role-unique skills', () => {
     const start = source.indexOf('async function listSkillsForPlayer(');
     expect(start).toBeGreaterThanOrEqual(0);
-    const body = source.slice(start, start + 1800);
+    const body = source.slice(start, start + 3500);
+    expect(body).toContain("LOWER(any_pos.name) = 'any position'");
     expect(body).toContain('position_skills');
     expect(body).toContain('player_skill_ratings');
-    expect(body).toContain('LOWER(p.name) = LOWER(pl.position)');
+    expect(body).toContain('NOT EXISTS');
+    expect(body).toContain('"sectionOrder"');
   });
 
   it('PATCH /players invokes replaceSkillRatingsForPosition on position change', () => {
@@ -49,12 +51,13 @@ describe('player skill ratings handlers in serve-mockup.js', () => {
     expect(source).toContain('skillRatings: payload.skillRatings');
   });
 
-  it('replaceSkillRatingsForPosition deletes then inserts NULL rows', () => {
+  it('replaceSkillRatingsForPosition preserves Any Position ratings', () => {
     const start = source.indexOf('async function replaceSkillRatingsForPosition(');
     expect(start).toBeGreaterThanOrEqual(0);
-    const body = source.slice(start, start + 900);
-    expect(body).toContain('DELETE FROM player_skill_ratings WHERE player_id = $1');
+    const body = source.slice(start, start + 2200);
+    expect(body).toContain('resolveAnyPositionIdForPlayer');
+    expect(body).toContain('NOT EXISTS');
     expect(body).toContain('INSERT INTO player_skill_ratings (player_id, skill_id, rating)');
-    expect(body).toContain('SELECT $1, ps.skill_id, NULL');
+    expect(body).not.toMatch(/DELETE FROM player_skill_ratings WHERE player_id = \$1\s*;?\s*\n\s*if \(!newPositionId\)/);
   });
 });
