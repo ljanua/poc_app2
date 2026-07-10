@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { URL } = require('node:url');
 const { Pool } = require('pg');
+const { startVideoProcessingQueue } = require('./video-processing/queue');
+const { createClipUpload, toClipResponse } = require('./video-processing/clip-upload');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 
@@ -1141,14 +1143,72 @@ async function ensureDatabase() {
       id TEXT PRIMARY KEY,
       player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       situation TEXT NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('pending', 'assessed')),
+      status TEXT NOT NULL CHECK (status IN ('submitted', 'in_progress', 'complete', 'failed')),
       score NUMERIC(4,2),
       summary TEXT,
       submitted_at_label TEXT,
       skill TEXT,
+      video_storage_path TEXT,
+      original_filename TEXT,
+      mime_type TEXT,
+      file_size_bytes BIGINT,
+      skill_focus JSONB NOT NULL DEFAULT '[]'::jsonb,
+      skill_ratings JSONB,
+      processing_started_at TIMESTAMPTZ,
+      processing_completed_at TIMESTAMPTZ,
+      error_message TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS video_storage_path TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS original_filename TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS mime_type TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS skill_focus JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS skill_ratings JSONB;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS error_message TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS comments TEXT;`);
+  // Upgrade clip status lifecycle for databases created before feature 018.
+  // CREATE TABLE IF NOT EXISTS does not replace an existing CHECK constraint.
+  // Drop the legacy constraint before rewriting status values.
+  await pool.query(`ALTER TABLE clips DROP CONSTRAINT IF EXISTS clips_status_check;`);
+  await pool.query(`UPDATE clips SET status = 'submitted' WHERE status = 'pending';`);
+  await pool.query(`UPDATE clips SET status = 'complete' WHERE status = 'assessed';`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE constraint_schema = 'public'
+          AND table_name = 'clips'
+          AND constraint_name = 'clips_status_check'
+      ) THEN
+        ALTER TABLE clips
+          ADD CONSTRAINT clips_status_check
+          CHECK (status IN ('submitted', 'in_progress', 'complete', 'failed'));
+      END IF;
+    END $$;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS processing_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      description TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    INSERT INTO processing_config (key, value, description)
+    VALUES
+      ('max_parallel_video_processes', '1', 'Maximum concurrent clip assessments'),
+      ('ollama_base_url', 'http://macmini.lan:11434', 'Ollama server base URL'),
+      ('ollama_video_model', 'gemma4:12b-mlx', 'Ollama model for clip assessment'),
+      ('ffmpeg_path', '', 'Full path to ffmpeg binary; empty uses PATH or FFMPEG_PATH env')
+    ON CONFLICT (key) DO NOTHING;
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);`);
@@ -1231,10 +1291,10 @@ async function ensureDatabase() {
     await pool.query(`
       INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill)
       VALUES
-        ('c_1', 'p_10', 'Penalty kick attempt, 3rd minute', 'assessed', 4.2, 'Confident execution under pressure.', '2 hours ago', 'Decision-making'),
-        ('c_2', 'p_11', 'Counter-attack, left wing run', 'assessed', 3.8, 'Pace was strong, timing can improve.', '5 hours ago', 'Pace & Agility'),
-        ('c_3', 'p_12', 'One-on-one with goalkeeper', 'assessed', 4.5, 'Excellent control and composure.', '1 day ago', 'Technical Skill'),
-        ('c_4', 'p_13', 'Sprint and finish, 45th minute', 'pending', NULL, '', 'Submitted 1 hour ago', 'Pace & Agility')
+        ('c_1', 'p_10', 'Penalty kick attempt, 3rd minute', 'complete', 4.2, 'Confident execution under pressure.', '2 hours ago', 'Decision-making'),
+        ('c_2', 'p_11', 'Counter-attack, left wing run', 'complete', 3.8, 'Pace was strong, timing can improve.', '5 hours ago', 'Pace & Agility'),
+        ('c_3', 'p_12', 'One-on-one with goalkeeper', 'complete', 4.5, 'Excellent control and composure.', '1 day ago', 'Technical Skill'),
+        ('c_4', 'p_13', 'Sprint and finish, 45th minute', 'submitted', NULL, '', 'Submitted 1 hour ago', 'Pace & Agility')
       ON CONFLICT (id) DO NOTHING;
     `);
   }
@@ -2672,8 +2732,12 @@ async function handlePlayersApi(req, res, requestUrl) {
         c.status,
         c.score,
         c.summary,
+        c.comments,
         c.submitted_at_label AS "submittedAt",
         c.skill,
+        c.skill_focus AS "skillFocus",
+        c.skill_ratings AS "skillRatings",
+        c.error_message AS "errorMessage",
         p.name AS "playerName",
         t.name AS "teamName"
       FROM clips c
@@ -2689,11 +2753,21 @@ async function handlePlayersApi(req, res, requestUrl) {
       values.push(status);
     }
     const clipRows = await pool.query(query, values);
-    sendJson(res, 200, { data: clipRows.rows });
+    sendJson(res, 200, { data: clipRows.rows.map((row) => toClipResponse(row)) });
     return;
   }
 
   if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/clips`) {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (contentType.includes('multipart/form-data')) {
+      const uploadResult = await createClipUpload(pool, req, {
+        normalizeLookup,
+        appError
+      });
+      sendJson(res, uploadResult.status, uploadResult.body);
+      return;
+    }
+
     const payload = await readJsonBody(req);
     const playerName = normalizeLookup(payload.playerName);
     const situation = normalizeLookup(payload.situation);
@@ -2712,9 +2786,9 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const clipId = `c_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(`
-      INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill)
-      VALUES ($1, $2, $3, 'pending', NULL, '', 'Submitted just now', $4)
-    `, [clipId, player.rows[0].id, situation, skill]);
+      INSERT INTO clips (id, player_id, situation, status, score, summary, submitted_at_label, skill, skill_focus)
+      VALUES ($1, $2, $3, 'submitted', NULL, '', 'Submitted just now', $4, $5::jsonb)
+    `, [clipId, player.rows[0].id, situation, skill, JSON.stringify([skill])]);
 
     const created = await pool.query(`
       SELECT
@@ -2724,8 +2798,12 @@ async function handlePlayersApi(req, res, requestUrl) {
         c.status,
         c.score,
         c.summary,
+        c.comments,
         c.submitted_at_label AS "submittedAt",
         c.skill,
+        c.skill_focus AS "skillFocus",
+        c.skill_ratings AS "skillRatings",
+        c.error_message AS "errorMessage",
         p.name AS "playerName",
         t.name AS "teamName"
       FROM clips c
@@ -2736,7 +2814,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       LIMIT 1
     `, [clipId]);
 
-    sendJson(res, 202, { data: created.rows[0] });
+    sendJson(res, 202, { data: toClipResponse(created.rows[0]) });
     return;
   }
 
@@ -3650,6 +3728,8 @@ ensureDatabase()
       console.log('Supported routes: /, /S0-login, /S1-player-list, /S2-player-dashboard, /S3-team-management, /S4-video-capture, /S6-assessment-list, /S7-admin-user-management, /api/v1/players');
       if (!databaseUrl) {
         console.log('Database mode disabled: set DATABASE_URL to enable persistent /api/v1 players writes.');
+      } else {
+        startVideoProcessingQueue(pool);
       }
     });
   })

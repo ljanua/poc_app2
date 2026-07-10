@@ -1,2 +1,4 @@
 node_modules/
 test-results/
+data/clip-videos/
+backend_logging.txt

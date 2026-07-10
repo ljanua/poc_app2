@@ -21,6 +21,23 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page.getByText('Neymar Jr')).toBeVisible();
   });
 
+  test('renders clip comments above the rating row on assessed cards', async ({ page }) => {
+    const firstAssessedCard = page.locator('.result-card').filter({ has: page.locator('.status-assessed') }).first();
+    await expect(firstAssessedCard.locator('.result-comment')).toBeVisible();
+    const commentIndex = await firstAssessedCard.locator('.result-comment').evaluate((node) => {
+      const card = node.closest('.result-card');
+      const children = Array.from(card.querySelectorAll('.result-comment, .result-rating'));
+      return children.indexOf(node);
+    });
+    const ratingIndex = await firstAssessedCard.locator('.result-rating').evaluate((node) => {
+      const card = node.closest('.result-card');
+      const children = Array.from(card.querySelectorAll('.result-comment, .result-rating'));
+      return children.indexOf(node);
+    });
+    expect(commentIndex).toBeGreaterThanOrEqual(0);
+    expect(ratingIndex).toBeGreaterThan(commentIndex);
+  });
+
   test('opens result detail route from View Results actions', async ({ page }) => {
     await page.getByRole('link', { name: 'View Results' }).first().click();
     await expect(page).toHaveURL(/S2-player-dashboard\.html|S2-player-dashboard$/);

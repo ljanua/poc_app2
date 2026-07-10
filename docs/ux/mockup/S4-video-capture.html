@@ -40,9 +40,8 @@
             <input type="file" id="fileInput" class="file-input" accept="video/mp4,video/quicktime" onchange="updatePreview()">
             <div class="video-preview" id="videoPreview">No video selected</div>
             <div class="validation-hint">MP4 or MOV • Max 50MB • Max 60 seconds</div>
+            <div class="error-msg" id="videoError">Video clip is required</div>
           </div>
-
-          <!-- Player Selector -->
           <div class="form-section">
             <label class="form-label" for="player">Player <span class="required">*</span></label>
             <select id="player" required>
@@ -142,6 +141,7 @@
       e.preventDefault();
       const player = document.getElementById('player').value;
       const situation = document.getElementById('situation').value;
+      const fileInput = document.getElementById('fileInput');
 
       let valid = true;
       if (!player) {
@@ -158,13 +158,24 @@
         document.getElementById('situationError').classList.remove('show');
       }
 
+      if (!fileInput.files || !fileInput.files.length) {
+        document.getElementById('videoError').classList.add('show');
+        valid = false;
+      } else {
+        document.getElementById('videoError').classList.remove('show');
+      }
+
       if (valid) {
         const selectedPlayer = document.getElementById('player').options[document.getElementById('player').selectedIndex].text;
-        const skill = document.querySelector('input[name="skill"]:checked');
+        const skillFocus = Array.from(document.querySelectorAll('input[name="skill"]:checked'))
+          .map(function (checkbox) { return checkbox.nextElementSibling.textContent; });
         const response = MockupApi.submitClip({
+          playerId: player,
           playerName: selectedPlayer,
-          situation,
-          skill: skill ? skill.nextElementSibling.textContent : 'General'
+          situation: situation,
+          skillFocus: skillFocus,
+          skill: skillFocus[0] || 'General',
+          videoFile: fileInput.files[0]
         });
 
         if (response.status >= 400) {

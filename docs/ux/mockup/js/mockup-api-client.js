@@ -104,10 +104,10 @@
       ],
       playerAvatars: {},
       clips: [
-        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'assessed', score: 4.2, summary: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
-        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'assessed', score: 3.8, summary: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
-        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'assessed', score: 4.5, summary: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill' },
-        { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'pending', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility' }
+        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 4.2, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
+        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 3.8, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
+        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 4.5, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill' },
+        { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility' }
       ],
       users: [
         { id: 1, name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
@@ -320,6 +320,43 @@
     return !shouldForceLocalMode() && window.__USE_BACKEND__ !== false;
   }
 
+  function isClipCompleteStatus(status) {
+    return status === 'complete' || status === 'assessed';
+  }
+
+  function isClipPendingStatus(status) {
+    return status === 'submitted' || status === 'in_progress' || status === 'pending';
+  }
+
+  function backendMultipartRequest(endpoint, formData) {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1' + endpoint, false);
+    xhr.setRequestHeader('Accept', 'application/json');
+    try {
+      xhr.send(formData);
+    } catch (error) {
+      return {
+        status: 0,
+        body: {
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        }
+      };
+    }
+
+    let parsed = {};
+    try {
+      parsed = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+    } catch (error) {
+      parsed = {};
+    }
+
+    return {
+      status: xhr.status,
+      body: parsed
+    };
+  }
+
   function backendRequest(method, endpoint, payload) {
     const xhr = new XMLHttpRequest();
     xhr.open(method, '/api/v1' + endpoint, false);
@@ -438,8 +475,8 @@
   // independently accurate in offline/local mode.
   function buildNoStatsDashboardSnapshot(store, selected) {
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
-    const assessed = clips.filter((clip) => clip.status === 'assessed');
-    const pending = clips.filter((clip) => clip.status === 'pending');
+    const assessed = clips.filter((clip) => isClipCompleteStatus(clip.status));
+    const pending = clips.filter((clip) => isClipPendingStatus(clip.status));
     const growthStatus = selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch';
     const missingDataMessage = 'Performance metrics are not available yet.';
 
@@ -731,8 +768,8 @@
     }
 
     const clips = store.clips.filter((clip) => clip.playerId === selected.id);
-    const assessed = clips.filter((clip) => clip.status === 'assessed');
-    const pending = clips.filter((clip) => clip.status === 'pending');
+    const assessed = clips.filter((clip) => isClipCompleteStatus(clip.status));
+    const pending = clips.filter((clip) => isClipPendingStatus(clip.status));
     const metricChanges = getMetricChangeIndicators(selected);
 
     return clone({
@@ -2870,10 +2907,28 @@
     },
 
     listClips(filters) {
-      const store = loadStore();
       const options = filters || {};
       const teamName = options.teamName || 'all';
       const status = options.status || 'all';
+
+      if (shouldUseBackendPlayersMode()) {
+        const params = new URLSearchParams();
+        if (teamName !== 'all') {
+          params.set('teamName', teamName);
+        }
+        if (status !== 'all') {
+          params.set('status', status);
+        }
+        const query = params.toString();
+        const response = backendRequest('GET', '/clips' + (query ? '?' + query : ''));
+        if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+          return clone(response.body.data);
+        }
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return [];
+      }
+
+      const store = loadStore();
 
       const rows = store.clips
         .map((clip) => {
@@ -2886,20 +2941,80 @@
             status: clip.status,
             score: clip.score,
             summary: clip.summary,
+            comments: clip.comments || null,
+            errorMessage: clip.errorMessage || null,
             submittedAt: clip.submittedAt,
             skill: clip.skill
           };
         })
         .filter((clip) => (teamName === 'all' ? true : clip.teamName === teamName))
-        .filter((clip) => (status === 'all' ? true : clip.status === status));
+        .filter((clip) => {
+          if (status === 'all') {
+            return true;
+          }
+          if (status === 'assessed' || status === 'complete') {
+            return isClipCompleteStatus(clip.status);
+          }
+          if (status === 'pending' || status === 'submitted') {
+            return isClipPendingStatus(clip.status);
+          }
+          return clip.status === status;
+        });
 
       return clone(rows);
     },
 
     submitClip(payload) {
+      const situation = normalizeLookup(payload.situation);
+      const skillFocus = Array.isArray(payload.skillFocus)
+        ? payload.skillFocus.map((entry) => normalizeLookup(entry)).filter(Boolean)
+        : [];
+      const primarySkill = skillFocus[0] || normalizeLookup(payload.skill || 'General') || 'General';
+
+      if (shouldUseBackendPlayersMode()) {
+        if (!payload.videoFile) {
+          return {
+            status: 400,
+            code: 'validation_error',
+            message: 'A video file is required before submitting for assessment.'
+          };
+        }
+
+        const formData = new FormData();
+        if (payload.playerId) {
+          formData.append('playerId', String(payload.playerId));
+        }
+        if (payload.playerName) {
+          formData.append('playerName', payload.playerName);
+        }
+        formData.append('situation', situation);
+        formData.append('skillFocus', JSON.stringify(skillFocus.length ? skillFocus : [primarySkill]));
+        formData.append('skill', primarySkill);
+        formData.append('video', payload.videoFile, payload.videoFile.name || 'clip.mp4');
+
+        const response = backendMultipartRequest('/clips', formData);
+        if (response.status >= 200 && response.status < 300) {
+          return {
+            status: response.status,
+            code: 'submitted',
+            message: 'Clip submitted for assessment. Processing will begin shortly.',
+            data: response.body && response.body.data ? response.body.data : null
+          };
+        }
+
+        const errorBody = response.body || {};
+        return {
+          status: response.status || 500,
+          code: errorBody.code || 'unknown',
+          message: errorBody.message || 'Clip submission failed. Please try again.'
+        };
+      }
+
       const store = loadStore();
-      const player = findPlayerByName(store, payload.playerName);
-      if (!player || !normalizeLookup(payload.situation)) {
+      const player = payload.playerId
+        ? store.players.find((entry) => String(entry.id) === String(payload.playerId))
+        : findPlayerByName(store, payload.playerName);
+      if (!player || !situation) {
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
       }
 
@@ -2907,16 +3022,17 @@
       store.clips.push({
         id: nextId,
         playerId: player.id,
-        situation: normalizeLookup(payload.situation),
-        status: 'pending',
+        situation: situation,
+        status: 'submitted',
         score: null,
         summary: '',
         submittedAt: 'Submitted just now',
-        skill: payload.skill || 'General'
+        skill: primarySkill,
+        skillFocus: skillFocus.length ? skillFocus : [primarySkill]
       });
 
       saveStore(store);
-      return { status: 202, code: 'queued', message: 'Clip submitted for assessment! You will see results in 4-6 hours.' };
+      return { status: 202, code: 'submitted', message: 'Clip submitted for assessment! Processing will begin shortly.' };
     },
 
     listUsers() {

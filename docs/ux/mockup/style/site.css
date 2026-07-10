@@ -835,6 +835,17 @@ textarea::placeholder { color: var(--text-dim); }
   color: var(--text);
 }
 
+.result-comment {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.result-comment--error {
+  color: #f87171;
+}
+
 .rating-star { color: var(--lime); font-size: 1rem; }
 
 .status-badge {

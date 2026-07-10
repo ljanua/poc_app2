@@ -74,11 +74,31 @@
       const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
       let selectedStatus = 'all';
 
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function buildCommentMarkup(clip, isComplete, isFailed) {
+        const text = clip.comments || (isFailed ? clip.errorMessage : '');
+        if (!text) {
+          return '';
+        }
+        const errorClass = isFailed ? ' result-comment--error' : '';
+        return '<div class="result-comment' + errorClass + '">' + escapeHtml(text) + '</div>';
+      }
+
       function render() {
         const teamName = teamFilter.value || 'all';
         const clips = MockupApi.listClips({ teamName: teamName, status: selectedStatus });
         const allClips = MockupApi.listClips({ teamName: 'all', status: 'all' });
-        const assessedCount = allClips.filter(function (clip) { return clip.status === 'assessed'; }).length;
+        const assessedCount = allClips.filter(function (clip) {
+          return clip.status === 'complete' || clip.status === 'assessed';
+        }).length;
         headerMeta.textContent = allClips.length + ' submitted • ' + assessedCount + ' assessed';
 
         resultsGrid.innerHTML = '';
@@ -88,13 +108,22 @@
         }
 
         clips.forEach(function (clip) {
-          const statusClass = clip.status === 'assessed' ? 'status-assessed' : clip.status === 'pending' ? 'status-pending' : 'status-failed';
-          const action = clip.status === 'pending'
+          const isComplete = clip.status === 'complete' || clip.status === 'assessed';
+          const isPending = clip.status === 'submitted' || clip.status === 'in_progress' || clip.status === 'pending';
+          const isFailed = clip.status === 'failed';
+          const statusClass = isComplete ? 'status-assessed' : isPending ? 'status-pending' : 'status-failed';
+          const statusLabel = clip.status === 'in_progress' ? 'in progress' : clip.status;
+          const action = isPending
             ? '<button class="view-btn" disabled>Pending</button>'
-            : '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">View Results</a>';
-          const scoreMarkup = clip.status === 'assessed'
-            ? '<div class="result-rating" style="margin-top: 0.6rem;"><span class="rating-star">★</span><span>' + clip.score + ' / 5.0</span></div>'
-            : '<div style="margin-top: 0.6rem; color: var(--text-muted); font-size: 0.85rem;">Assessment in progress…</div>';
+            : isFailed
+              ? '<button class="view-btn" disabled>Failed</button>'
+              : '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">View Results</a>';
+          const scoreMarkup = isComplete
+            ? '<div class="result-rating"><span class="rating-star">★</span><span>' + clip.score + ' / 5.0</span></div>'
+            : isFailed
+              ? ''
+              : '<div style="margin-top: 0.6rem; color: var(--text-muted); font-size: 0.85rem;">' + (clip.status === 'in_progress' ? 'Assessment in progress…' : 'Awaiting assessment…') + '</div>';
+          const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
 
           const card = document.createElement('div');
           card.className = 'result-card';
@@ -103,10 +132,11 @@
             '<div class="result-content">' +
             '<div>' +
             '<div class="result-header">' +
-            '<div><div class="result-player">' + clip.playerName + '</div><div class="result-situation">' + clip.situation + '</div></div>' +
-            '<span class="status-badge ' + statusClass + '">' + clip.status + '</span>' +
+            '<div><div class="result-player">' + escapeHtml(clip.playerName) + '</div><div class="result-situation">' + escapeHtml(clip.situation) + '</div></div>' +
+            '<span class="status-badge ' + statusClass + '">' + statusLabel + '</span>' +
             '</div>' +
-            '<div class="result-meta"><span>' + clip.submittedAt + '</span><span>' + clip.skill + '</span><span>' + clip.teamName + '</span></div>' +
+            '<div class="result-meta"><span>' + escapeHtml(clip.submittedAt) + '</span><span>' + escapeHtml(clip.skill) + '</span><span>' + escapeHtml(clip.teamName) + '</span></div>' +
+            commentMarkup +
             scoreMarkup +
             '</div>' +
             action +
