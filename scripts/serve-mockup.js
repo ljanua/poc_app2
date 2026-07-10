@@ -5,6 +5,7 @@ const { URL } = require('node:url');
 const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
 const { createClipUpload, toClipResponse } = require('./video-processing/clip-upload');
+const { logEvent, getLogPath } = require('./logging/structured-logger');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 
@@ -41,6 +42,30 @@ function send(res, status, body, contentType) {
 
 function sendJson(res, status, payload) {
   send(res, status, JSON.stringify(payload), 'application/json; charset=utf-8');
+}
+
+function logStructured(functionality, userId, details) {
+  logEvent({
+    functionality,
+    userId: userId != null && userId !== '' ? userId : undefined,
+    details: details || {}
+  });
+}
+
+async function resolveUserIdByEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized || !pool) {
+    return null;
+  }
+  try {
+    const result = await pool.query(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [normalized]
+    );
+    return result.rows[0] ? result.rows[0].id : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeLookup(value) {
@@ -1660,6 +1685,16 @@ function parseUpdateProfilePayload(payload) {
 async function handlePlayersApi(req, res, requestUrl) {
   console.log('API request', req.method, requestUrl.pathname);
 
+  const mutatingMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+  if (mutatingMethods.has(req.method) && requestUrl.pathname !== `${apiPrefix}/auth/login`) {
+    const queryActorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim();
+    const queryUserId = queryActorEmail ? await resolveUserIdByEmail(queryActorEmail) : null;
+    logStructured(`api.${req.method.toLowerCase()}${requestUrl.pathname}`, queryUserId, {
+      method: req.method,
+      path: requestUrl.pathname
+    });
+  }
+
   if (!pool) {
     sendJson(res, 503, appError(503, 'service_unavailable', 'DATABASE_URL is not configured for backend persistence.'));
     return;
@@ -1863,6 +1898,9 @@ async function handlePlayersApi(req, res, requestUrl) {
     if (!assertSystemAdminActor(actor)) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
+    }
+    if (actor && actor.id) {
+      logStructured('api.post.clubs.actor', actor.id, { path: requestUrl.pathname });
     }
 
     const name = normalizeLookup(payload.name);
@@ -2236,6 +2274,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
+    logStructured('api.post.teams.actor', actorUser.id, { path: requestUrl.pathname, role: actorUser.role });
 
     if (!teamName || teamName.length < 2 || !ageGroup) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
@@ -2711,12 +2750,17 @@ async function handlePlayersApi(req, res, requestUrl) {
     const row = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
 
     if (!row.rows[0] || row.rows[0].status !== 'active' || row.rows[0].passwordHash !== password) {
+      logStructured('auth.login.failure', row.rows[0] ? row.rows[0].id : null, {
+        email: email || null,
+        reason: 'invalid_credentials_or_inactive'
+      });
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
 
     await pool.query(`UPDATE users SET last_login_label = $1, updated_at = NOW() WHERE id = $2`, ['Just now', row.rows[0].id]);
     const user = toUserPayload({ ...row.rows[0], lastLogin: 'Just now' });
+    logStructured('auth.login.success', user.id, { email: user.email, role: user.role });
     sendJson(res, 200, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
     return;
   }
@@ -2724,6 +2768,26 @@ async function handlePlayersApi(req, res, requestUrl) {
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/clips`) {
     const teamName = normalizeLookup(requestUrl.searchParams.get('teamName') || 'all');
     const status = normalizeLookup(requestUrl.searchParams.get('status') || 'all');
+    const playerId = String(requestUrl.searchParams.get('playerId') || '').trim();
+    const playerName = normalizeLookup(requestUrl.searchParams.get('playerName') || '');
+    const where = [];
+    const values = [];
+    if (teamName !== 'all') {
+      values.push(teamName);
+      where.push(`LOWER(t.name) = LOWER($${values.length})`);
+    }
+    if (status !== 'all') {
+      values.push(status);
+      where.push(`LOWER(c.status) = LOWER($${values.length})`);
+    }
+    if (playerId) {
+      values.push(playerId);
+      where.push(`c.player_id = $${values.length}`);
+    } else if (playerName) {
+      values.push(playerName);
+      where.push(`LOWER(p.name) = LOWER($${values.length})`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const query = `
       SELECT
         c.id,
@@ -2744,14 +2808,9 @@ async function handlePlayersApi(req, res, requestUrl) {
       JOIN players p ON p.id = c.player_id
       LEFT JOIN player_team_assignments a ON a.player_id = p.id
       LEFT JOIN teams t ON t.id = a.team_id
-      ${teamName !== 'all' ? `WHERE LOWER(t.name) = LOWER($1)` : ''}
-      ${status !== 'all' ? `${teamName !== 'all' ? 'AND' : 'WHERE'} LOWER(c.status) = LOWER($${teamName !== 'all' ? 2 : 1})` : ''}
+      ${whereSql}
       ORDER BY c.created_at DESC
     `;
-    const values = teamName !== 'all' ? [teamName] : [];
-    if (status !== 'all') {
-      values.push(status);
-    }
     const clipRows = await pool.query(query, values);
     sendJson(res, 200, { data: clipRows.rows.map((row) => toClipResponse(row)) });
     return;
@@ -3726,6 +3785,8 @@ ensureDatabase()
     server.listen(port, host, () => {
       console.log(`Mockup server running at http://${host}:${port}`);
       console.log('Supported routes: /, /S0-login, /S1-player-list, /S2-player-dashboard, /S3-team-management, /S4-video-capture, /S6-assessment-list, /S7-admin-user-management, /api/v1/players');
+      console.log(`Structured log file: ${getLogPath()}`);
+      logStructured('server.started', null, { host, port });
       if (!databaseUrl) {
         console.log('Database mode disabled: set DATABASE_URL to enable persistent /api/v1 players writes.');
       } else {

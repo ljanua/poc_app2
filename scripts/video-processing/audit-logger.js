@@ -1,17 +1,9 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-
-const DEFAULT_LOG_FILENAME = 'backend_logging.txt';
-
-function getLogPath() {
-  const configured = process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH;
-  if (configured && String(configured).trim()) {
-    return path.resolve(String(configured).trim());
-  }
-  return path.join(process.cwd(), DEFAULT_LOG_FILENAME);
-}
+const {
+  getLogPath,
+  logEvent
+} = require('../logging/structured-logger');
 
 function sanitizeDetails(details) {
   if (!details || typeof details !== 'object') {
@@ -24,22 +16,22 @@ function sanitizeDetails(details) {
   return copy;
 }
 
+/**
+ * Feature 019 compatibility wrapper around the shared structured logger.
+ * Maps event → functionality; passes through details.userId when present.
+ */
 function logAuditEvent(event, details) {
   const eventName = String(event || 'unknown.event').trim();
   const payload = sanitizeDetails(details);
-  const line = `${new Date().toISOString()} ${eventName} ${JSON.stringify(payload)}\n`;
-
-  try {
-    const logPath = getLogPath();
-    const dir = path.dirname(logPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.appendFileSync(logPath, line, 'utf8');
-  } catch (error) {
-    console.error('audit-logger failed to write:', error);
-    console.error('audit event:', eventName, payload);
+  const userId = payload.userId;
+  if (userId !== undefined) {
+    delete payload.userId;
   }
+  logEvent({
+    functionality: eventName,
+    userId,
+    details: payload
+  });
 }
 
 module.exports = {

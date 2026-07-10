@@ -5,29 +5,37 @@ import path from 'node:path';
 
 describe('video-processing audit-logger', () => {
   let tempLogPath: string;
-  let previousPath: string | undefined;
+  let previousStructured: string | undefined;
+  let previousLegacy: string | undefined;
 
   beforeEach(() => {
     tempLogPath = path.join(os.tmpdir(), `audit-log-${Date.now()}-${Math.random()}.txt`);
-    previousPath = process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH;
-    process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = tempLogPath;
+    previousStructured = process.env.STRUCTURED_LOG_PATH;
+    previousLegacy = process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH;
+    process.env.STRUCTURED_LOG_PATH = tempLogPath;
+    delete process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH;
     if (fs.existsSync(tempLogPath)) {
       fs.unlinkSync(tempLogPath);
     }
   });
 
   afterEach(() => {
-    if (previousPath === undefined) {
+    if (previousStructured === undefined) {
+      delete process.env.STRUCTURED_LOG_PATH;
+    } else {
+      process.env.STRUCTURED_LOG_PATH = previousStructured;
+    }
+    if (previousLegacy === undefined) {
       delete process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH;
     } else {
-      process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = previousPath;
+      process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = previousLegacy;
     }
     if (fs.existsSync(tempLogPath)) {
       fs.unlinkSync(tempLogPath);
     }
   });
 
-  it('appends timestamped event lines', async () => {
+  it('appends timestamped event lines via shared logger', async () => {
     const { logAuditEvent, getLogPath } = await import('../../../../../scripts/video-processing/audit-logger.js');
 
     expect(getLogPath()).toBe(tempLogPath);
@@ -42,10 +50,18 @@ describe('video-processing audit-logger', () => {
     expect(lines[1]).toMatch(/^\d{4}-\d{2}-\d{2}T.+Z clip\.complete \{"clipId":"c_1","score":0\.75\}$/);
   });
 
+  it('passes through userId when provided in details', async () => {
+    const { logAuditEvent } = await import('../../../../../scripts/video-processing/audit-logger.js');
+    logAuditEvent('clip.submitted', { clipId: 'c_2', userId: '42' });
+    const line = fs.readFileSync(tempLogPath, 'utf8').trim();
+    expect(line).toContain('clip.submitted');
+    expect(line).toContain('"userId":"42"');
+  });
+
   it('does not throw when log path is invalid', async () => {
     const blocker = path.join(os.tmpdir(), `audit-blocker-${Date.now()}`);
     fs.writeFileSync(blocker, 'x');
-    process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = path.join(blocker, 'nested', 'audit.log');
+    process.env.STRUCTURED_LOG_PATH = path.join(blocker, 'nested', 'audit.log');
     const { logAuditEvent } = await import('../../../../../scripts/video-processing/audit-logger.js');
 
     expect(() => {
