@@ -16,10 +16,14 @@
     </header>
 
     <div class="content">
-      <div class="toolbar">
+      <div class="toolbar assessment-toolbar">
         <select class="pill-select" id="teamFilter" aria-label="Filter clips by team">
           <option value="all">All Teams</option>
         </select>
+        <label class="preselected-player" id="preselectedPlayerLabel" hidden>
+          <input type="checkbox" id="preselectedPlayerFilter" data-testid="preselected-player-filter">
+          <span id="preselectedPlayerText">Pre-Selected Player</span>
+        </label>
       </div>
 
       <div class="filters">
@@ -68,11 +72,29 @@
       const currentUser = MockupApi.getCurrentUser();
       document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
       MockupApi.applyRoleGatedNav(currentUser);
+
+      const params = new URLSearchParams(window.location.search);
+      const contextPlayerId = String(params.get('playerId') || '').trim();
+      const contextPlayerName = String(params.get('playerName') || '').trim();
+      const contextTeamName = String(params.get('teamName') || '').trim();
+      const hasPlayerContext = Boolean(contextPlayerId || contextPlayerName);
+
       const teamFilter = document.getElementById('teamFilter');
       const resultsGrid = document.getElementById('resultsGrid');
       const headerMeta = document.getElementById('assessmentHeaderMeta');
       const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+      const preselectedLabel = document.getElementById('preselectedPlayerLabel');
+      const preselectedCheckbox = document.getElementById('preselectedPlayerFilter');
+      const preselectedText = document.getElementById('preselectedPlayerText');
       let selectedStatus = 'all';
+
+      if (hasPlayerContext) {
+        preselectedLabel.hidden = false;
+        preselectedCheckbox.checked = true;
+        preselectedText.textContent = contextPlayerName
+          ? 'Pre-Selected Player: ' + contextPlayerName
+          : 'Pre-Selected Player';
+      }
 
       function escapeHtml(value) {
         return String(value || '')
@@ -92,14 +114,62 @@
         return '<div class="result-comment' + errorClass + '">' + escapeHtml(text) + '</div>';
       }
 
+      /** Format clip.score as percent. Primary: 0–1 fraction. Legacy: values > 1 treated as 1–5. */
+      function formatClipScore(score) {
+        if (score == null || score === '' || Number.isNaN(Number(score))) {
+          return { label: 'N/A', percent: null, bright: false };
+        }
+        const n = Number(score);
+        const percent = n > 1 ? Math.round((n / 5) * 100) : Math.round(n * 100);
+        const clamped = Math.max(0, Math.min(100, percent));
+        return { label: clamped + '%', percent: clamped, bright: clamped > 80 };
+      }
+
+      function buildScoreMarkup(clip, isComplete, isFailed) {
+        if (isComplete) {
+          const formatted = formatClipScore(clip.score);
+          const starClass = formatted.bright ? 'rating-star' : 'rating-star rating-star--muted';
+          return (
+            '<div class="result-rating" data-testid="result-rating">' +
+            '<span class="' + starClass + '" data-testid="rating-star"' +
+            (formatted.bright ? ' data-bright="true"' : ' data-bright="false"') +
+            '>★</span>' +
+            '<span data-testid="rating-label">' + escapeHtml(formatted.label) + '</span>' +
+            '</div>'
+          );
+        }
+        if (isFailed) {
+          return '';
+        }
+        return (
+          '<div style="margin-top: 0.6rem; color: var(--text-muted); font-size: 0.85rem;">' +
+          (clip.status === 'in_progress' ? 'Assessment in progress…' : 'Awaiting assessment…') +
+          '</div>'
+        );
+      }
+
+      function buildClipFilters(statusOverride) {
+        const filters = {
+          teamName: teamFilter.value || 'all',
+          status: statusOverride || selectedStatus
+        };
+        if (hasPlayerContext && preselectedCheckbox.checked) {
+          if (contextPlayerId) {
+            filters.playerId = contextPlayerId;
+          } else if (contextPlayerName) {
+            filters.playerName = contextPlayerName;
+          }
+        }
+        return filters;
+      }
+
       function render() {
-        const teamName = teamFilter.value || 'all';
-        const clips = MockupApi.listClips({ teamName: teamName, status: selectedStatus });
-        const allClips = MockupApi.listClips({ teamName: 'all', status: 'all' });
-        const assessedCount = allClips.filter(function (clip) {
+        const clips = MockupApi.listClips(buildClipFilters(selectedStatus));
+        const countClips = MockupApi.listClips(buildClipFilters('all'));
+        const assessedCount = countClips.filter(function (clip) {
           return clip.status === 'complete' || clip.status === 'assessed';
         }).length;
-        headerMeta.textContent = allClips.length + ' submitted • ' + assessedCount + ' assessed';
+        headerMeta.textContent = countClips.length + ' submitted • ' + assessedCount + ' assessed';
 
         resultsGrid.innerHTML = '';
         if (!clips.length) {
@@ -118,11 +188,7 @@
             : isFailed
               ? '<button class="view-btn" disabled>Failed</button>'
               : '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">View Results</a>';
-          const scoreMarkup = isComplete
-            ? '<div class="result-rating"><span class="rating-star">★</span><span>' + clip.score + ' / 5.0</span></div>'
-            : isFailed
-              ? ''
-              : '<div style="margin-top: 0.6rem; color: var(--text-muted); font-size: 0.85rem;">' + (clip.status === 'in_progress' ? 'Assessment in progress…' : 'Awaiting assessment…') + '</div>';
+          const scoreMarkup = buildScoreMarkup(clip, isComplete, isFailed);
           const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
 
           const card = document.createElement('div');
@@ -146,14 +212,29 @@
         });
       }
 
-      MockupApi.listTeams().forEach(function (team) {
+      const teamQuery = currentUser && currentUser.email
+        ? (currentUser.role === 'Coach'
+          ? 'actorEmail=' + encodeURIComponent(currentUser.email) + '&status=active'
+          : 'status=active')
+        : 'status=active';
+      MockupApi.listTeams(teamQuery).forEach(function (team) {
         const option = document.createElement('option');
         option.value = team.name;
         option.textContent = team.name;
         teamFilter.appendChild(option);
       });
 
+      if (contextTeamName) {
+        const hasTeam = Array.from(teamFilter.options).some(function (option) {
+          return option.value === contextTeamName;
+        });
+        if (hasTeam) {
+          teamFilter.value = contextTeamName;
+        }
+      }
+
       teamFilter.addEventListener('change', render);
+      preselectedCheckbox.addEventListener('change', render);
       filterButtons.forEach(function (button) {
         button.addEventListener('click', function () {
           filterButtons.forEach(function (entry) { entry.classList.remove('active'); });

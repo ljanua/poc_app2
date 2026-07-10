@@ -847,6 +847,7 @@ textarea::placeholder { color: var(--text-dim); }
 }
 
 .rating-star { color: var(--lime); font-size: 1rem; }
+.rating-star--muted { color: var(--text-dim); }
 
 .status-badge {
   display: inline-flex;
@@ -931,6 +932,26 @@ textarea::placeholder { color: var(--text-dim); }
 }
 
 .toolbar .search-bar { min-width: 220px; }
+
+.assessment-toolbar .preselected-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.assessment-toolbar .preselected-player[hidden] {
+  display: none !important;
+}
+
+.assessment-toolbar .preselected-player input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--lime);
+}
 
 .filter-row {
   display: flex;

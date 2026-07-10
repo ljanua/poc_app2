@@ -104,9 +104,9 @@
       ],
       playerAvatars: {},
       clips: [
-        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 4.2, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
-        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 3.8, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
-        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 4.5, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill' },
+        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 0.84, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
+        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 0.76, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
+        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 0.90, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill' },
         { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility' }
       ],
       users: [
@@ -986,7 +986,34 @@
         return [];
       }
 
-      return clone(loadStore().teams);
+      const store = loadStore();
+      let teams = store.teams.slice();
+      const params = new URLSearchParams(String(queryString || '').replace(/^\?/, ''));
+      const actorEmail = String(params.get('actorEmail') || '').trim().toLowerCase();
+      const clubId = String(params.get('clubId') || '').trim();
+      const statusFilter = String(params.get('status') || 'active').trim().toLowerCase();
+
+      if (statusFilter === 'active' || statusFilter === 'inactive') {
+        teams = teams.filter((team) => (team.status || 'active') === statusFilter);
+      }
+      if (clubId) {
+        teams = teams.filter((team) => String(team.clubId) === clubId);
+      }
+      if (actorEmail) {
+        const actor = store.users.find((user) => String(user.email || '').toLowerCase() === actorEmail);
+        if (actor && actor.role === 'Coach' && actor.status === 'active') {
+          const allowedClubIds = new Set(
+            store.coachClubs
+              .filter((entry) => String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email))
+              .map((entry) => entry.clubId)
+          );
+          teams = teams.filter((team) => allowedClubIds.has(team.clubId));
+        } else if (!actor || actor.role !== 'SystemAdmin') {
+          teams = [];
+        }
+      }
+
+      return clone(teams);
     },
 
     listActiveCoaches() {
@@ -2910,6 +2937,8 @@
       const options = filters || {};
       const teamName = options.teamName || 'all';
       const status = options.status || 'all';
+      const playerId = options.playerId != null && options.playerId !== '' ? String(options.playerId) : '';
+      const playerName = normalizeLookup(options.playerName || '');
 
       if (shouldUseBackendPlayersMode()) {
         const params = new URLSearchParams();
@@ -2918,6 +2947,11 @@
         }
         if (status !== 'all') {
           params.set('status', status);
+        }
+        if (playerId) {
+          params.set('playerId', playerId);
+        } else if (playerName) {
+          params.set('playerName', playerName);
         }
         const query = params.toString();
         const response = backendRequest('GET', '/clips' + (query ? '?' + query : ''));
@@ -2935,6 +2969,7 @@
           const player = store.players.find((entry) => entry.id === clip.playerId);
           return {
             id: clip.id,
+            playerId: clip.playerId,
             playerName: player ? player.name : 'Unknown Player',
             teamName: player ? player.teamName : 'Unknown Team',
             situation: clip.situation,
@@ -2948,6 +2983,15 @@
           };
         })
         .filter((clip) => (teamName === 'all' ? true : clip.teamName === teamName))
+        .filter((clip) => {
+          if (playerId) {
+            return String(clip.playerId) === playerId;
+          }
+          if (playerName) {
+            return String(clip.playerName || '').toLowerCase() === playerName.toLowerCase();
+          }
+          return true;
+        })
         .filter((clip) => {
           if (status === 'all') {
             return true;
