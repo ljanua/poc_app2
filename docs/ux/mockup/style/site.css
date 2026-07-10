@@ -849,6 +849,34 @@ textarea::placeholder { color: var(--text-dim); }
 .rating-star { color: var(--lime); font-size: 1rem; }
 .rating-star--muted { color: var(--text-dim); }
 
+.result-skills {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.result-skill-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.result-skill-name {
+  min-width: 0;
+}
+
+.result-skill-value {
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--text);
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;

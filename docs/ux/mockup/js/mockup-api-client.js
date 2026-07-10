@@ -104,10 +104,10 @@
       ],
       playerAvatars: {},
       clips: [
-        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 0.84, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making' },
-        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 0.76, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility' },
-        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 0.90, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill' },
-        { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility' }
+        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 0.84, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making', skillFocus: ['Decision-making', 'Composure'], skillRatings: { 'Decision-making': 0.84 } },
+        { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 0.76, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility', skillFocus: ['Pace & Agility', 'Timing'], skillRatings: { 'Pace & Agility': 0.76, Timing: 0.70 } },
+        { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 0.90, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill', skillFocus: ['Technical Skill'], skillRatings: { 'Technical Skill': 0.90 } },
+        { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility', skillFocus: ['Pace & Agility'], skillRatings: null }
       ],
       users: [
         { id: 1, name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
@@ -2979,7 +2979,9 @@
             comments: clip.comments || null,
             errorMessage: clip.errorMessage || null,
             submittedAt: clip.submittedAt,
-            skill: clip.skill
+            skill: clip.skill,
+            skillFocus: Array.isArray(clip.skillFocus) ? clone(clip.skillFocus) : (clip.skill ? [clip.skill] : []),
+            skillRatings: clip.skillRatings && typeof clip.skillRatings === 'object' ? clone(clip.skillRatings) : null
           };
         })
         .filter((clip) => (teamName === 'all' ? true : clip.teamName === teamName))

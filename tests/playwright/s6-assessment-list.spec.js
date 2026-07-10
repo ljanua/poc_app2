@@ -66,9 +66,25 @@ test.describe('S6 Assessment Results list', () => {
     await expect(neymarCard.getByTestId('rating-star')).toHaveAttribute('data-bright', 'true');
   });
 
-  test('opens result detail route from View Results actions', async ({ page }) => {
-    await page.getByRole('link', { name: 'View Results' }).first().click();
+  test('opens player dashboard from Back actions', async ({ page }) => {
+    await page.getByRole('link', { name: 'Back' }).first().click();
     await expect(page).toHaveURL(/S2-player-dashboard\.html|S2-player-dashboard$/);
+  });
+
+  test('shows per-skill percent and N/A on assessed cards', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    const messiCard = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(messiCard.getByTestId('result-skills')).toBeVisible();
+    await expect(messiCard.getByTestId('result-skill-row')).toHaveCount(2);
+    await expect(messiCard.getByTestId('result-skill-value').filter({ hasText: '84%' })).toHaveCount(1);
+    await expect(messiCard.getByTestId('result-skill-value').filter({ hasText: 'N/A' })).toHaveCount(1);
+    await expect(messiCard.getByTestId('rating-label')).toHaveText('84%');
+    await expect(page.getByRole('link', { name: 'View Results' })).toHaveCount(0);
   });
 
   test('does not force Pre-Selected Player without query params', async ({ page }) => {

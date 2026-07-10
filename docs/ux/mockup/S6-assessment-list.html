@@ -148,6 +148,46 @@
         );
       }
 
+      function assessmentSkills(clip) {
+        const focus = Array.isArray(clip.skillFocus) ? clip.skillFocus : [];
+        const rated = clip.skillRatings && typeof clip.skillRatings === 'object' && !Array.isArray(clip.skillRatings)
+          ? Object.keys(clip.skillRatings)
+          : [];
+        const seen = {};
+        const ordered = [];
+        focus.concat(rated).forEach(function (name) {
+          const key = String(name || '').trim();
+          if (!key || seen[key]) {
+            return;
+          }
+          seen[key] = true;
+          ordered.push(key);
+        });
+        return ordered;
+      }
+
+      function buildSkillListMarkup(clip, isComplete) {
+        if (!isComplete) {
+          return '';
+        }
+        const skills = assessmentSkills(clip);
+        if (!skills.length) {
+          return '';
+        }
+        const ratings = clip.skillRatings && typeof clip.skillRatings === 'object' ? clip.skillRatings : {};
+        const rows = skills.map(function (skillName) {
+          const value = Object.prototype.hasOwnProperty.call(ratings, skillName) ? ratings[skillName] : null;
+          const formatted = formatClipScore(value);
+          return (
+            '<li class="result-skill-row" data-testid="result-skill-row">' +
+            '<span class="result-skill-name">' + escapeHtml(skillName) + '</span>' +
+            '<span class="result-skill-value" data-testid="result-skill-value">' + escapeHtml(formatted.label) + '</span>' +
+            '</li>'
+          );
+        }).join('');
+        return '<ul class="result-skills" data-testid="result-skills">' + rows + '</ul>';
+      }
+
       function buildClipFilters(statusOverride) {
         const filters = {
           teamName: teamFilter.value || 'all',
@@ -187,8 +227,9 @@
             ? '<button class="view-btn" disabled>Pending</button>'
             : isFailed
               ? '<button class="view-btn" disabled>Failed</button>'
-              : '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">View Results</a>';
+              : '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">Back</a>';
           const scoreMarkup = buildScoreMarkup(clip, isComplete, isFailed);
+          const skillListMarkup = buildSkillListMarkup(clip, isComplete);
           const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
 
           const card = document.createElement('div');
@@ -204,6 +245,7 @@
             '<div class="result-meta"><span>' + escapeHtml(clip.submittedAt) + '</span><span>' + escapeHtml(clip.skill) + '</span><span>' + escapeHtml(clip.teamName) + '</span></div>' +
             commentMarkup +
             scoreMarkup +
+            skillListMarkup +
             '</div>' +
             action +
             '</div>';
