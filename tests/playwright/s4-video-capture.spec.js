@@ -67,7 +67,92 @@ test.describe('S4 Video Capture and Submission', () => {
 
   test('leaves player unselected when playerId is missing or unknown', async ({ page }) => {
     await expect(page.locator('#player')).toHaveValue('');
+    await expect(page.locator('input[name="skill"]')).toHaveCount(0);
+    await expect(page.getByTestId('skill-focus-hint')).toBeVisible();
     await page.goto('/S4-video-capture.html?playerId=does-not-exist');
     await expect(page.locator('#player')).toHaveValue('');
+    await expect(page.locator('input[name="skill"]')).toHaveCount(0);
+  });
+
+  test('skill focus lists Any Position skills for the selected player', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+    await page.goto('/S4-video-capture.html?playerId=10');
+    await expect(page.locator('#player')).toHaveValue('10');
+    await expect(page.getByTestId('skill-focus-hint')).toBeHidden();
+    await expect(page.getByLabel('Ball Control')).toBeVisible();
+    await expect(page.getByLabel('Passing')).toBeVisible();
+    await expect(page.getByLabel('Game Awareness')).toBeVisible();
+    await expect(page.getByLabel('Fitness')).toBeVisible();
+    await expect(page.getByLabel('Speed')).toBeVisible();
+    // Legacy hard-coded short codes are gone.
+    await expect(page.locator('input[name="skill"][value="decision"]')).toHaveCount(0);
+  });
+
+  test('skill focus includes role-unique skills for a goalkeeper', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('vantageiq_mockup_v2');
+      const store = raw ? JSON.parse(raw) : null;
+      if (!store) return;
+      const messi = store.players.find((p) => p.id === 10 || p.id === '10');
+      if (messi) {
+        messi.position = 'GK – Goalkeeper';
+      }
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.goto('/S4-video-capture.html?playerId=10');
+    await expect(page.getByLabel('Ball Control')).toBeVisible();
+    await expect(page.getByLabel('Shot stopping')).toBeVisible();
+    await expect(page.getByLabel('Reflexes')).toBeVisible();
+  });
+
+  test('changing player refreshes skill focus options', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('vantageiq_mockup_v2');
+      const store = raw ? JSON.parse(raw) : null;
+      if (!store) return;
+      const messi = store.players.find((p) => p.id === 10 || p.id === '10');
+      const neymar = store.players.find((p) => String(p.name).toLowerCase() === 'neymar jr');
+      if (messi) messi.position = 'GK – Goalkeeper';
+      if (neymar) {
+        neymar.teamName = 'U19 Prime';
+        neymar.position = 'Any Position';
+      }
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.goto('/S4-video-capture.html');
+    await page.selectOption('#player', { label: 'Lionel Messi' });
+    await expect(page.getByLabel('Shot stopping')).toBeVisible();
+    await page.selectOption('#player', { label: 'Neymar Jr' });
+    await expect(page.getByLabel('Ball Control')).toBeVisible();
+    await expect(page.getByLabel('Shot stopping')).toHaveCount(0);
   });
 });

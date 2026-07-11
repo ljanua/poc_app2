@@ -61,24 +61,8 @@
           <!-- Skill Focus (Optional) -->
           <div class="form-section">
             <label class="form-label">Skill Focus (Optional)</label>
-            <div class="checkbox-group">
-              <label class="checkbox-label">
-                <input type="checkbox" name="skill" value="decision">
-                <span>Decision-making</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" name="skill" value="technical">
-                <span>Technical Skill</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" name="skill" value="positioning">
-                <span>Positioning</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" name="skill" value="pace">
-                <span>Pace &amp; Agility</span>
-              </label>
-            </div>
+            <div class="checkbox-group" id="skillFocusGroup" data-testid="skill-focus-group"></div>
+            <p class="validation-hint" id="skillFocusHint" data-testid="skill-focus-hint">Select a player to see skills for their position.</p>
           </div>
 
           <!-- Action Buttons -->
@@ -265,6 +249,61 @@
       }
     }
 
+    function renderSkillFocus(playerId) {
+      const group = document.getElementById('skillFocusGroup');
+      const hint = document.getElementById('skillFocusHint');
+      if (!group) {
+        return;
+      }
+      group.innerHTML = '';
+      if (!playerId) {
+        if (hint) {
+          hint.hidden = false;
+          hint.textContent = 'Select a player to see skills for their position.';
+        }
+        return;
+      }
+
+      const response = MockupApi.listPlayerSkillRatings(playerId);
+      const rows = (response && response.status === 200)
+        ? (response.skillRatings || (response.data && response.data.skillRatings) || [])
+        : [];
+
+      if (!rows.length) {
+        if (hint) {
+          hint.hidden = false;
+          hint.textContent = 'No skills are tracked for this player yet — pick a position in Edit Player (S5).';
+        }
+        return;
+      }
+
+      if (hint) {
+        hint.hidden = true;
+      }
+
+      rows.forEach(function (row) {
+        const skillName = row.skillName || row.skillId;
+        if (!skillName) {
+          return;
+        }
+        const label = document.createElement('label');
+        label.className = 'checkbox-label';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.name = 'skill';
+        input.value = String(skillName);
+        if (row.skillId) {
+          input.setAttribute('data-skill-id', String(row.skillId));
+        }
+        input.setAttribute('data-testid', 'skill-focus-' + String(row.skillId || skillName));
+        const span = document.createElement('span');
+        span.textContent = skillName;
+        label.appendChild(input);
+        label.appendChild(span);
+        group.appendChild(label);
+      });
+    }
+
     (function () {
       const currentUser = MockupApi.getCurrentUser();
       document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
@@ -295,6 +334,7 @@
         });
         populatePlayerSelect(playerSelect, players);
         applyPlayerIdFromQuery(playerSelect);
+        renderSkillFocus(playerSelect.value || '');
       }
 
       const availableTeams = getAvailableTeamsForActor(currentUser);
@@ -303,6 +343,10 @@
       teamSelect.addEventListener('change', function () {
         state.selectedTeam = teamSelect.value;
         refreshPlayers();
+      });
+
+      playerSelect.addEventListener('change', function () {
+        renderSkillFocus(playerSelect.value || '');
       });
 
       refreshPlayers();
