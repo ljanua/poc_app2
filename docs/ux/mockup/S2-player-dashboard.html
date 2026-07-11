@@ -335,16 +335,24 @@
         ? MockupApi.listClips({ playerId: player.id })
         : [];
       const missingStats = Boolean(dashboard.performance.missingDataMessage);
+      const skillRatingRows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
+      const hasRatedSkills = skillRatingRows.some(function (row) {
+        return row.rating !== null && row.rating !== undefined;
+      });
 
       // A player with no real recorded stats yet must never show fabricated
-      // growth numbers. Hide Skill Ratings / Development / Match Time /
-      // Recent Performance, but keep Video Assessments when live clips exist.
+      // growth numbers. Hide Development / Match Time / Recent Performance,
+      // but keep Video Assessments when live clips exist and Skill Ratings
+      // when at least one skill has a recorded rating (e.g. from video sync).
       if (missingStats) {
         noStatsNotice.textContent = dashboard.performance.missingDataMessage;
         noStatsNotice.hidden = false;
         statsSections.forEach(function (element) {
-          if (element.getAttribute('data-section') === 'video-assessments') {
+          const section = element.getAttribute('data-section');
+          if (section === 'video-assessments') {
             element.hidden = liveClips.length === 0;
+          } else if (section === 'skill-ratings') {
+            element.hidden = !hasRatedSkills;
           } else {
             element.hidden = true;
           }
@@ -426,9 +434,9 @@
         });
       }
 
-      if (!missingStats) {
+      if (!missingStats || hasRatedSkills) {
       (function renderSkillRatings() {
-        const rows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
+        const rows = skillRatingRows;
         const emptyEl = document.getElementById('skillRatingsEmpty');
         const anyBlock = document.getElementById('skillRatingsAnyBlock');
         const roleBlock = document.getElementById('skillRatingsRoleBlock');

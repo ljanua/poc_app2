@@ -176,6 +176,7 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByText('Development Progress')).toBeHidden();
     await expect(page.getByText('Match Time History')).toBeHidden();
     await expect(page.getByText('Recent Performance')).toBeHidden();
+    await expect(page.getByText('Skill Ratings')).toBeHidden();
     await expect(page.getByText('Video Assessments')).toBeHidden();
 
     // Never shows another player's borrowed numbers or narrative text.
@@ -252,6 +253,37 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByText('First training clip under pressure')).toBeVisible();
     await expect(page.getByTestId('view-results-link')).toBeVisible();
     await expect(page.getByTestId('submit-new-clip-link')).toBeVisible();
+  });
+
+  test('shows Skill Ratings when a no-stats player has recorded ratings', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 997,
+        name: 'Rated Rookie',
+        normalizedName: 'rated rookie',
+        teamName: 'U19 Prime',
+        position: 'Position not set',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      store.playerSkillRatings = store.playerSkillRatings || [];
+      store.playerSkillRatings.push({
+        playerId: 997,
+        skillId: 's_ball_control',
+        rating: 84
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Rated Rookie'));
+
+    await expect(page.locator('#noStatsNotice')).toBeVisible();
+    await expect(page.getByText('Development Progress')).toBeHidden();
+    await expect(page.getByText('Skill Ratings')).toBeVisible();
+
+    await page.getByTestId('dashboard-section-toggle-skill-ratings').click();
+    await expect(page.getByTestId('skill-rating-value-s_ball_control')).toHaveText('84%');
   });
 
   test('lists each clip with status for a player who has stats', async ({ page }) => {
