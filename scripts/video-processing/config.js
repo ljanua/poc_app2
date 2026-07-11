@@ -3,6 +3,36 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const DEFAULT_VIDEO_ROOT = 'C:\\vantageiq_videos';
+
+function getVideoRoot() {
+  const configured = process.env.VANTAGEIQ_VIDEO_ROOT;
+  if (configured && String(configured).trim()) {
+    return path.resolve(String(configured).trim());
+  }
+  return path.resolve(DEFAULT_VIDEO_ROOT);
+}
+
+function originalsDir() {
+  return path.join(getVideoRoot(), 'originals');
+}
+
+function segmentsDirForClip(clipId) {
+  return path.join(getVideoRoot(), 'segments', String(clipId));
+}
+
+function ensureOriginalsDir() {
+  const dir = originalsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function ensureSegmentsDirForClip(clipId) {
+  const dir = segmentsDirForClip(clipId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 async function getProcessingConfig(pool, key, fallback) {
   const result = await pool.query(
     'SELECT value FROM processing_config WHERE key = $1 LIMIT 1',
@@ -81,6 +111,12 @@ async function getFfmpegPath(pool) {
 }
 
 module.exports = {
+  DEFAULT_VIDEO_ROOT,
+  getVideoRoot,
+  originalsDir,
+  segmentsDirForClip,
+  ensureOriginalsDir,
+  ensureSegmentsDirForClip,
   getProcessingConfig,
   getMaxParallelProcesses,
   getOllamaBaseUrl,

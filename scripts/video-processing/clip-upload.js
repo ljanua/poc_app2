@@ -6,18 +6,36 @@ const { readMultipartForm, parseSkillFocusField } = require('./read-multipart');
 const { triggerVideoProcessing } = require('./queue');
 const { logAuditEvent } = require('./audit-logger');
 const { reconcilePlayerClipStats } = require('./reconcile-player-clip-stats');
-
-const VIDEO_STORAGE_ROOT = path.join(process.cwd(), 'data', 'clip-videos');
-
-function ensureVideoStorageRoot() {
-  fs.mkdirSync(VIDEO_STORAGE_ROOT, { recursive: true });
-}
+const { ensureOriginalsDir, originalsDir } = require('./config');
 
 function sanitizeFilename(filename) {
   return String(filename || 'clip.mp4').replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-function toClipResponse(row) {
+async function listSegmentsForClips(pool, clipIds) {
+  if (!pool || !clipIds || !clipIds.length) {
+    return new Map();
+  }
+  const result = await pool.query(
+    `
+      SELECT clip_id AS "clipId", segment_index AS "index", path
+      FROM clip_segments
+      WHERE clip_id = ANY($1::text[])
+      ORDER BY clip_id ASC, segment_index ASC
+    `,
+    [clipIds]
+  );
+  const byClip = new Map();
+  result.rows.forEach((row) => {
+    const list = byClip.get(row.clipId) || [];
+    list.push({ index: row.index, path: row.path });
+    byClip.set(row.clipId, list);
+  });
+  return byClip;
+}
+
+function toClipResponse(row, segments) {
+  const pathValue = row.path || row.videoStoragePath || null;
   return {
     id: row.id,
     playerId: row.playerId,
@@ -32,7 +50,9 @@ function toClipResponse(row) {
     skill: row.skill,
     skillFocus: row.skillFocus || [],
     skillRatings: row.skillRatings || null,
-    errorMessage: row.errorMessage || null
+    errorMessage: row.errorMessage || null,
+    path: pathValue,
+    segments: Array.isArray(segments) ? segments : []
   };
 }
 
@@ -52,6 +72,8 @@ async function selectClipById(pool, clipId) {
         c.skill_focus AS "skillFocus",
         c.skill_ratings AS "skillRatings",
         c.error_message AS "errorMessage",
+        c.video_storage_path AS "videoStoragePath",
+        c.video_storage_path AS "path",
         p.name AS "playerName",
         t.name AS "teamName"
       FROM clips c
@@ -67,7 +89,7 @@ async function selectClipById(pool, clipId) {
 }
 
 async function createClipUpload(pool, req, helpers) {
-  ensureVideoStorageRoot();
+  ensureOriginalsDir();
   const { fields, files } = await readMultipartForm(req);
   const playerId = String(fields.playerId || '').trim();
   const playerName = helpers.normalizeLookup(fields.playerName);
@@ -98,9 +120,10 @@ async function createClipUpload(pool, req, helpers) {
 
   const clipId = `c_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
   const safeName = sanitizeFilename(videoFile.filename);
-  const storagePath = path.join(VIDEO_STORAGE_ROOT, `${clipId}_${safeName}`);
+  const storagePath = path.join(originalsDir(), `${clipId}_${safeName}`);
   fs.writeFileSync(storagePath, videoFile.buffer);
 
+  const focusPayload = skillFocus.length ? skillFocus : [primarySkill];
   await pool.query(
     `
       INSERT INTO clips (
@@ -118,11 +141,12 @@ async function createClipUpload(pool, req, helpers) {
       safeName,
       videoFile.mimeType || 'application/octet-stream',
       videoFile.buffer.length,
-      JSON.stringify(skillFocus.length ? skillFocus : [primarySkill])
+      JSON.stringify(focusPayload)
     ]
   );
 
   const created = await selectClipById(pool, clipId);
+  const segmentsByClip = await listSegmentsForClips(pool, [clipId]);
   await reconcilePlayerClipStats(pool, resolvedPlayerId);
   logAuditEvent('clip.submitted', {
     clipId,
@@ -130,15 +154,20 @@ async function createClipUpload(pool, req, helpers) {
     filename: safeName,
     mimeType: videoFile.mimeType || 'application/octet-stream',
     fileSizeBytes: videoFile.buffer.length,
-    skillFocusCount: skillFocus.length ? skillFocus.length : 1
+    skillFocusCount: focusPayload.length,
+    path: storagePath
   });
   triggerVideoProcessing(pool);
-  return { status: 202, body: { data: toClipResponse(created) } };
+  return {
+    status: 202,
+    body: { data: toClipResponse(created, segmentsByClip.get(clipId) || []) }
+  };
 }
 
 module.exports = {
-  VIDEO_STORAGE_ROOT,
   createClipUpload,
   selectClipById,
-  toClipResponse
+  toClipResponse,
+  listSegmentsForClips,
+  originalsDir
 };

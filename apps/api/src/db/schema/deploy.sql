@@ -111,6 +111,17 @@ CREATE TABLE IF NOT EXISTS clips (
 CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);
 CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
 
+CREATE TABLE IF NOT EXISTS clip_segments (
+  id TEXT PRIMARY KEY,
+  clip_id TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+  segment_index INT NOT NULL,
+  path TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (clip_id, segment_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_clip_segments_clip_id ON clip_segments(clip_id);
+
 CREATE TABLE IF NOT EXISTS player_stats (
   player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
   growth_status TEXT,

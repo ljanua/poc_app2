@@ -1,6 +1,7 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs');
 const {
   createTempDir,
   removeDirRecursive,
@@ -10,7 +11,7 @@ const {
   ensureFfmpegAvailable,
   setFfmpegPath
 } = require('./ffmpeg-utils');
-const { getFfmpegPath } = require('./config');
+const { getFfmpegPath, ensureSegmentsDirForClip } = require('./config');
 const { reviewSegment } = require('./ollama-client');
 const {
   shouldStopAssessing,
@@ -94,6 +95,29 @@ async function markClipComplete(pool, clipId, { skillRatings, score, summary, co
   );
 }
 
+async function clearClipSegments(pool, clipId) {
+  await pool.query(`DELETE FROM clip_segments WHERE clip_id = $1`, [clipId]);
+  const durableDir = ensureSegmentsDirForClip(clipId);
+  if (fs.existsSync(durableDir)) {
+    fs.readdirSync(durableDir).forEach((name) => {
+      fs.unlinkSync(path.join(durableDir, name));
+    });
+  }
+}
+
+async function saveClipSegment(pool, clipId, segmentIndex, segmentPath) {
+  const id = `${clipId}_seg_${segmentIndex}`;
+  await pool.query(
+    `
+      INSERT INTO clip_segments (id, clip_id, segment_index, path)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (clip_id, segment_index)
+      DO UPDATE SET path = EXCLUDED.path
+    `,
+    [id, clipId, segmentIndex, segmentPath]
+  );
+}
+
 async function processClip(pool, clipId) {
   const clip = await loadClipContext(pool, clipId);
   if (!clip) {
@@ -120,7 +144,8 @@ async function processClip(pool, clipId) {
     position: clip.position,
     ageOfPlayer: computeAge(clip.birthMonth, clip.birthYear),
     situation: clip.situation,
-    skillFocusCount: skillFocusList.length
+    skillFocusCount: skillFocusList.length,
+    path: clip.videoStoragePath
   });
   const assessmentContext = {
     sportType: clip.sportType,
@@ -130,22 +155,22 @@ async function processClip(pool, clipId) {
   };
 
   const tempRoot = createTempDir('vantageiq-clip-');
-  const segmentsDir = path.join(tempRoot, 'segments');
   const framesDir = path.join(tempRoot, 'frames');
-  const fs = require('node:fs');
-  fs.mkdirSync(segmentsDir, { recursive: true });
   fs.mkdirSync(framesDir, { recursive: true });
 
+  const durableSegmentsDir = ensureSegmentsDirForClip(clipId);
   let ratingsBySkill = {};
   let lastComments = '';
 
   try {
+    await clearClipSegments(pool, clipId);
     setFfmpegPath(await getFfmpegPath(pool));
     await ensureFfmpegAvailable();
-    const segmentPaths = await segmentVideo(clip.videoStoragePath, segmentsDir);
+    const segmentPaths = await segmentVideo(clip.videoStoragePath, durableSegmentsDir);
 
     for (let index = 0; index < segmentPaths.length; index += 1) {
       const segmentPath = segmentPaths[index];
+      await saveClipSegment(pool, clipId, index, segmentPath);
       const framePaths = await extractSegmentFrames(segmentPath, framesDir);
       const frameImages = readFramesAsBase64(framePaths);
       const segmentResult = await reviewSegment(pool, assessmentContext, frameImages);
@@ -159,7 +184,8 @@ async function processClip(pool, clipId) {
         clipId,
         segmentIndex: index,
         ratedSkillCount: Object.keys(ratingsBySkill).length,
-        earlyStop
+        earlyStop,
+        path: segmentPath
       });
 
       if (earlyStop) {
@@ -194,5 +220,7 @@ async function processClip(pool, clipId) {
 module.exports = {
   loadClipContext,
   processClip,
-  markClipFailed
+  markClipFailed,
+  saveClipSegment,
+  clearClipSegments
 };

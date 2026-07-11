@@ -4,7 +4,7 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
-const { createClipUpload, toClipResponse } = require('./video-processing/clip-upload');
+const { createClipUpload, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
@@ -1196,6 +1196,17 @@ async function ensureDatabase() {
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS error_message TEXT;`);
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS comments TEXT;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS clip_segments (
+      id TEXT PRIMARY KEY,
+      clip_id TEXT NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+      segment_index INT NOT NULL,
+      path TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (clip_id, segment_index)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_clip_segments_clip_id ON clip_segments(clip_id);`);
   // Upgrade clip status lifecycle for databases created before feature 018.
   // CREATE TABLE IF NOT EXISTS does not replace an existing CHECK constraint.
   // Drop the legacy constraint before rewriting status values.
@@ -2802,6 +2813,8 @@ async function handlePlayersApi(req, res, requestUrl) {
         c.skill_focus AS "skillFocus",
         c.skill_ratings AS "skillRatings",
         c.error_message AS "errorMessage",
+        c.video_storage_path AS "videoStoragePath",
+        c.video_storage_path AS "path",
         p.name AS "playerName",
         t.name AS "teamName"
       FROM clips c
@@ -2812,7 +2825,13 @@ async function handlePlayersApi(req, res, requestUrl) {
       ORDER BY c.created_at DESC
     `;
     const clipRows = await pool.query(query, values);
-    sendJson(res, 200, { data: clipRows.rows.map((row) => toClipResponse(row)) });
+    const segmentsByClip = await listSegmentsForClips(
+      pool,
+      clipRows.rows.map((row) => row.id)
+    );
+    sendJson(res, 200, {
+      data: clipRows.rows.map((row) => toClipResponse(row, segmentsByClip.get(row.id) || []))
+    });
     return;
   }
 
@@ -2863,6 +2882,8 @@ async function handlePlayersApi(req, res, requestUrl) {
         c.skill_focus AS "skillFocus",
         c.skill_ratings AS "skillRatings",
         c.error_message AS "errorMessage",
+        c.video_storage_path AS "videoStoragePath",
+        c.video_storage_path AS "path",
         p.name AS "playerName",
         t.name AS "teamName"
       FROM clips c
@@ -2873,7 +2894,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       LIMIT 1
     `, [clipId]);
 
-    sendJson(res, 202, { data: toClipResponse(created.rows[0]) });
+    sendJson(res, 202, { data: toClipResponse(created.rows[0], []) });
     return;
   }
 
