@@ -784,6 +784,7 @@ textarea::placeholder { color: var(--text-dim); }
   position: absolute;
   width: 44px;
   height: 44px;
+  border: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -792,9 +793,15 @@ textarea::placeholder { color: var(--text-dim); }
   background: var(--grad-lime);
   box-shadow: 0 6px 20px rgba(165, 230, 0, 0.4);
   transition: transform var(--t-base);
+  cursor: pointer;
+  padding: 0;
 }
 
 .result-card:hover .play-icon { transform: scale(1.12); }
+
+.clip-player-panel {
+  width: min(880px, 100%);
+}
 
 .result-content {
   flex: 1;

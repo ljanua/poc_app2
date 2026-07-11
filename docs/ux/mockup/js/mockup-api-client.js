@@ -3007,7 +3007,9 @@
             submittedAt: clip.submittedAt,
             skill: clip.skill,
             skillFocus: Array.isArray(clip.skillFocus) ? clone(clip.skillFocus) : (clip.skill ? [clip.skill] : []),
-            skillRatings: clip.skillRatings && typeof clip.skillRatings === 'object' ? clone(clip.skillRatings) : null
+            skillRatings: clip.skillRatings && typeof clip.skillRatings === 'object' ? clone(clip.skillRatings) : null,
+            path: clip.path || null,
+            segments: Array.isArray(clip.segments) ? clone(clip.segments) : []
           };
         })
         .filter((clip) => (teamName === 'all' ? true : clip.teamName === teamName))
@@ -3034,6 +3036,36 @@
         });
 
       return clone(rows);
+    },
+
+    /**
+     * Build the HTTP media URL for a clip. source is "first" (first segment,
+     * server may fall back to original) or "original".
+     */
+    clipMediaUrl(clipId, source) {
+      const id = encodeURIComponent(String(clipId || '').trim());
+      const sourceKey = String(source || 'first').trim().toLowerCase() === 'original'
+        ? 'original'
+        : 'first';
+      return '/api/v1/clips/' + id + '/media?source=' + encodeURIComponent(sourceKey);
+    },
+
+    /**
+     * Choose media source for a clip payload: first segment when any exist,
+     * otherwise original when path is present, otherwise null (unavailable).
+     */
+    resolveClipMediaSource(clip) {
+      if (!clip || clip.id == null) {
+        return null;
+      }
+      const segments = Array.isArray(clip.segments) ? clip.segments : [];
+      if (segments.length > 0) {
+        return { clipId: clip.id, source: 'first' };
+      }
+      if (clip.path) {
+        return { clipId: clip.id, source: 'original' };
+      }
+      return null;
     },
 
     submitClip(payload) {

@@ -5,6 +5,7 @@ const { URL } = require('node:url');
 const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
 const { createClipUpload, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
+const { resolveClipMediaPath, streamVideoFile } = require('./video-processing/clip-media');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
@@ -2896,6 +2897,23 @@ async function handlePlayersApi(req, res, requestUrl) {
     sendJson(res, 200, {
       data: clipRows.rows.map((row) => toClipResponse(row, segmentsByClip.get(row.id) || []))
     });
+    return;
+  }
+
+  const clipMediaMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/clips/([^/]+)/media$`));
+  if (req.method === 'GET' && clipMediaMatch) {
+    const clipId = decodeURIComponent(clipMediaMatch[1] || '');
+    const source = String(requestUrl.searchParams.get('source') || 'first').trim().toLowerCase();
+    const resolved = await resolveClipMediaPath(pool, clipId, source);
+    if (resolved.status !== 200 || !resolved.filePath) {
+      sendJson(res, resolved.status || 404, appError(
+        resolved.status || 404,
+        resolved.code || 'not_found',
+        resolved.message || 'No video file is available for this clip.'
+      ));
+      return;
+    }
+    streamVideoFile(req, res, resolved.filePath);
     return;
   }
 

@@ -114,4 +114,143 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page.locator('.result-player', { hasText: 'Cristiano Ronaldo' })).toHaveCount(1);
     await expect(page.locator('.result-player', { hasText: 'Neymar Jr' })).toHaveCount(1);
   });
+
+  test('play opens modal with first-segment media URL', async ({ page }) => {
+    await page.route('**/api/v1/clips/*/media**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        body: Buffer.from('fake-mp4')
+      });
+    });
+
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_seg_1',
+        playerId: 10,
+        situation: 'Segment play situation',
+        status: 'complete',
+        score: 0.9,
+        summary: 'ok',
+        comments: 'ok',
+        submittedAt: 'just now',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: { Passing: 0.9 },
+        path: 'C:\\vantageiq_videos\\originals\\clip_seg_1.mp4',
+        segments: [{ index: 0, path: 'C:\\vantageiq_videos\\segments\\clip_seg_1\\segment_000.mp4' }]
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await page.getByTestId('clip-play-button').click();
+    const modal = page.getByTestId('clip-player-modal');
+    await expect(modal).toHaveClass(/open/);
+    const video = page.getByTestId('clip-player-video');
+    await expect(video).toHaveAttribute('src', /\/api\/v1\/clips\/clip_seg_1\/media\?source=first/);
+
+    await page.getByTestId('clip-player-close').click();
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(video).toHaveJSProperty('src', '');
+  });
+
+  test('play falls back to original media URL when there are no segments', async ({ page }) => {
+    await page.route('**/api/v1/clips/*/media**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'video/mp4',
+        body: Buffer.from('fake-mp4')
+      });
+    });
+
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_orig_1',
+        playerId: 10,
+        situation: 'Original-only play situation',
+        status: 'submitted',
+        score: null,
+        summary: '',
+        comments: null,
+        submittedAt: 'just now',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: null,
+        path: 'C:\\vantageiq_videos\\originals\\clip_orig_1.mp4',
+        segments: []
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await page.getByTestId('clip-play-button').click();
+    await expect(page.getByTestId('clip-player-modal')).toHaveClass(/open/);
+    await expect(page.getByTestId('clip-player-video')).toHaveAttribute(
+      'src',
+      /\/api\/v1\/clips\/clip_orig_1\/media\?source=original/
+    );
+  });
+
+  test('play shows unavailable when clip has no path or segments', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_none_1',
+        playerId: 10,
+        situation: 'No media situation',
+        status: 'failed',
+        score: null,
+        summary: '',
+        comments: null,
+        errorMessage: 'failed',
+        submittedAt: 'just now',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: null
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await page.getByTestId('clip-play-button').click();
+    await expect(page.getByTestId('clip-player-modal')).toHaveClass(/open/);
+    await expect(page.getByTestId('clip-player-unavailable')).toBeVisible();
+    await expect(page.getByTestId('clip-player-unavailable')).toContainText('unavailable');
+  });
 });

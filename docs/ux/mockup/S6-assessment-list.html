@@ -66,6 +66,17 @@
     </nav>
   </div>
 
+  <div class="modal" id="clipPlayerModal" data-testid="clip-player-modal" aria-hidden="true">
+    <div class="modal-panel clip-player-panel" role="dialog" aria-modal="true" aria-labelledby="clipPlayerTitle">
+      <div class="modal-header">
+        <h2 id="clipPlayerTitle">Clip playback</h2>
+        <button type="button" class="exit-btn" id="clipPlayerClose" data-testid="clip-player-close" aria-label="Close player">✕</button>
+      </div>
+      <p id="clipPlayerUnavailable" class="notice" data-testid="clip-player-unavailable" hidden>Video is unavailable for this clip.</p>
+      <video id="clipPlayerVideo" data-testid="clip-player-video" controls playsinline style="width: 100%; max-height: 70vh; border-radius: var(--r-md); background: #000;"></video>
+    </div>
+  </div>
+
   <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
@@ -86,7 +97,94 @@
       const preselectedLabel = document.getElementById('preselectedPlayerLabel');
       const preselectedCheckbox = document.getElementById('preselectedPlayerFilter');
       const preselectedText = document.getElementById('preselectedPlayerText');
+      const clipPlayerModal = document.getElementById('clipPlayerModal');
+      const clipPlayerVideo = document.getElementById('clipPlayerVideo');
+      const clipPlayerUnavailable = document.getElementById('clipPlayerUnavailable');
+      const clipPlayerClose = document.getElementById('clipPlayerClose');
+      const clipPlayerTitle = document.getElementById('clipPlayerTitle');
       let selectedStatus = 'all';
+      const clipsById = {};
+
+      function openClipPlayerModal() {
+        if (!clipPlayerModal) {
+          return;
+        }
+        clipPlayerModal.classList.add('open');
+        clipPlayerModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeClipPlayerModal() {
+        if (!clipPlayerModal) {
+          return;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.pause();
+          clipPlayerVideo.removeAttribute('src');
+          clipPlayerVideo.load();
+        }
+        if (clipPlayerUnavailable) {
+          clipPlayerUnavailable.hidden = true;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.hidden = false;
+        }
+        clipPlayerModal.classList.remove('open');
+        clipPlayerModal.setAttribute('aria-hidden', 'true');
+      }
+
+      function showClipUnavailable(message) {
+        if (clipPlayerUnavailable) {
+          clipPlayerUnavailable.textContent = message || 'Video is unavailable for this clip.';
+          clipPlayerUnavailable.hidden = false;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.hidden = true;
+          clipPlayerVideo.pause();
+          clipPlayerVideo.removeAttribute('src');
+          clipPlayerVideo.load();
+        }
+        openClipPlayerModal();
+      }
+
+      function playClip(clip) {
+        if (!clip) {
+          showClipUnavailable('Video is unavailable for this clip.');
+          return;
+        }
+        if (clipPlayerTitle) {
+          clipPlayerTitle.textContent = clip.playerName
+            ? ('Clip — ' + clip.playerName)
+            : 'Clip playback';
+        }
+        const resolved = MockupApi.resolveClipMediaSource(clip);
+        if (!resolved) {
+          showClipUnavailable('Video is unavailable for this clip.');
+          return;
+        }
+        const mediaUrl = MockupApi.clipMediaUrl(resolved.clipId, resolved.source);
+        if (clipPlayerUnavailable) {
+          clipPlayerUnavailable.hidden = true;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.hidden = false;
+          clipPlayerVideo.onerror = function () {
+            if (clipPlayerUnavailable) {
+              clipPlayerUnavailable.textContent = 'Video is unavailable for this clip.';
+              clipPlayerUnavailable.hidden = false;
+            }
+          };
+          clipPlayerVideo.src = mediaUrl;
+          openClipPlayerModal();
+          const playPromise = clipPlayerVideo.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(function () {
+              // Autoplay may still be blocked; controls remain available.
+            });
+          }
+        } else {
+          openClipPlayerModal();
+        }
+      }
 
       if (hasPlayerContext) {
         preselectedLabel.hidden = false;
@@ -212,12 +310,14 @@
         headerMeta.textContent = countClips.length + ' submitted • ' + assessedCount + ' assessed';
 
         resultsGrid.innerHTML = '';
+        Object.keys(clipsById).forEach(function (key) { delete clipsById[key]; });
         if (!clips.length) {
           resultsGrid.innerHTML = '<div class="notice">No clips match the selected filters.</div>';
           return;
         }
 
         clips.forEach(function (clip) {
+          clipsById[String(clip.id)] = clip;
           const isComplete = clip.status === 'complete' || clip.status === 'assessed';
           const isPending = clip.status === 'submitted' || clip.status === 'in_progress' || clip.status === 'pending';
           const isFailed = clip.status === 'failed';
@@ -235,7 +335,12 @@
           const card = document.createElement('div');
           card.className = 'result-card';
           card.innerHTML =
-            '<div class="result-thumbnail">📹<div class="play-icon">▶</div></div>' +
+            '<div class="result-thumbnail">' +
+            '<span aria-hidden="true">📹</span>' +
+            '<button type="button" class="play-icon" data-testid="clip-play-button" data-clip-id="' +
+            escapeHtml(clip.id) +
+            '" aria-label="Play clip">▶</button>' +
+            '</div>' +
             '<div class="result-content">' +
             '<div>' +
             '<div class="result-header">' +
@@ -284,6 +389,33 @@
           selectedStatus = button.getAttribute('data-status') || 'all';
           render();
         });
+      });
+
+      resultsGrid.addEventListener('click', function (event) {
+        const playButton = event.target.closest('[data-testid="clip-play-button"]');
+        if (!playButton) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const clipId = playButton.getAttribute('data-clip-id');
+        playClip(clipsById[String(clipId)]);
+      });
+
+      if (clipPlayerClose) {
+        clipPlayerClose.addEventListener('click', closeClipPlayerModal);
+      }
+      if (clipPlayerModal) {
+        clipPlayerModal.addEventListener('click', function (event) {
+          if (event.target === clipPlayerModal) {
+            closeClipPlayerModal();
+          }
+        });
+      }
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && clipPlayerModal && clipPlayerModal.classList.contains('open')) {
+          closeClipPlayerModal();
+        }
       });
 
       render();
