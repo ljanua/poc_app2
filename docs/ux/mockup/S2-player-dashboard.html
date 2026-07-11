@@ -192,15 +192,15 @@
           4 clips submitted • 3 assessed • 1 pending
         </div>
         <div class="cta-buttons">
-          <a class="btn btn-secondary" href="./S6-assessment-list.html">View Results</a>
-          <a class="btn btn-primary" href="./S4-video-capture.html">Submit New Clip</a>
+          <a class="btn btn-secondary" id="viewResultsLink" data-testid="view-results-link" href="./S6-assessment-list.html">View Results</a>
+          <a class="btn btn-primary" id="submitNewClipLink" data-testid="submit-new-clip-link" href="./S4-video-capture.html">Submit New Clip</a>
         </div>
         </div>
       </div>
 
       <div class="cta-buttons">
         <button class="btn btn-secondary">Compare Player</button>
-        <a class="btn btn-primary" href="./S4-video-capture.html">Submit a Clip</a>
+        <a class="btn btn-primary" id="submitClipLink" data-testid="submit-clip-link" href="./S4-video-capture.html">Submit a Clip</a>
       </div>
     </div>
 
@@ -296,6 +296,34 @@
       if (editPlayerLink && player.id !== undefined && player.id !== null) {
         editPlayerLink.href = './S5-player-edit.html?playerId=' + encodeURIComponent(player.id);
         editPlayerLink.hidden = false;
+      }
+
+      const viewResultsLink = document.getElementById('viewResultsLink');
+      if (viewResultsLink) {
+        const viewParams = new URLSearchParams();
+        if (player.id !== undefined && player.id !== null) {
+          viewParams.set('playerId', String(player.id));
+        }
+        if (player.name) {
+          viewParams.set('playerName', String(player.name));
+        }
+        if (player.teamName) {
+          viewParams.set('teamName', String(player.teamName));
+        }
+        const query = viewParams.toString();
+        viewResultsLink.href = './S6-assessment-list.html' + (query ? '?' + query : '');
+      }
+
+      const submitClipHref = (player.id !== undefined && player.id !== null)
+        ? './S4-video-capture.html?playerId=' + encodeURIComponent(player.id)
+        : './S4-video-capture.html';
+      const submitNewClipLink = document.getElementById('submitNewClipLink');
+      if (submitNewClipLink) {
+        submitNewClipLink.href = submitClipHref;
+      }
+      const submitClipLink = document.getElementById('submitClipLink');
+      if (submitClipLink) {
+        submitClipLink.href = submitClipHref;
       }
 
       // Avatar: show uploaded image or ⚽ fallback; hover shows camera overlay.

@@ -251,6 +251,20 @@
       });
     }
 
+    function applyPlayerIdFromQuery(playerSelect) {
+      const params = new URLSearchParams(window.location.search);
+      const playerId = params.get('playerId');
+      if (!playerId) {
+        return;
+      }
+      const match = Array.from(playerSelect.options).find(function (option) {
+        return option.value === String(playerId);
+      });
+      if (match) {
+        playerSelect.value = match.value;
+      }
+    }
+
     (function () {
       const currentUser = MockupApi.getCurrentUser();
       document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
@@ -280,6 +294,7 @@
           onlyMine: state.onlyMine
         });
         populatePlayerSelect(playerSelect, players);
+        applyPlayerIdFromQuery(playerSelect);
       }
 
       const availableTeams = getAvailableTeamsForActor(currentUser);

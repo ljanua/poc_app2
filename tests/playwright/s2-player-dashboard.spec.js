@@ -120,13 +120,33 @@ test.describe('S2 Player Development Dashboard', () => {
 
   test('provides actions to view results and submit clips', async ({ page }) => {
     await page.getByTestId('dashboard-section-toggle-video-assessments').click();
-    await page.getByRole('link', { name: 'View Results' }).click();
+    const viewResults = page.getByTestId('view-results-link');
+    await expect(viewResults).toHaveAttribute('href', /S6-assessment-list\.html\?.*playerName=Lionel(\+|%20)Messi/);
+    await expect(viewResults).toHaveAttribute('href', /teamName=/);
+    await viewResults.click();
     await expect(page).toHaveURL(/S6-assessment-list\.html|S6-assessment-list$/);
+    await expect(page).toHaveURL(/playerName=Lionel(\+|%20)Messi/);
+    await expect(page.getByTestId('preselected-player-filter')).toBeChecked();
 
     await page.goto('/S2-player-dashboard.html');
-    await page.getByTestId('dashboard-section-toggle-video-assessments').click();
-    await page.getByRole('link', { name: /Submit New Clip|Submit a Clip/ }).first().click();
+    // Both clip CTAs carry playerId (new-clip link may be inside a collapsed section).
+    const submitHrefs = await page.evaluate(() => ({
+      newClip: document.getElementById('submitNewClipLink')
+        ? document.getElementById('submitNewClipLink').getAttribute('href')
+        : null,
+      clip: document.getElementById('submitClipLink')
+        ? document.getElementById('submitClipLink').getAttribute('href')
+        : null
+    }));
+    expect(submitHrefs.newClip).toMatch(/S4-video-capture\.html\?playerId=/);
+    expect(submitHrefs.clip).toMatch(/S4-video-capture\.html\?playerId=/);
+
+    const playerId = new URL(submitHrefs.clip, 'http://localhost').searchParams.get('playerId');
+    expect(playerId).toBeTruthy();
+    await page.getByTestId('submit-clip-link').click();
     await expect(page).toHaveURL(/S4-video-capture\.html|S4-video-capture$/);
+    await expect(page).toHaveURL(new RegExp('playerId=' + playerId));
+    await expect(page.locator('#player')).toHaveValue(String(playerId));
   });
 
   test('shows the player card only, and never fabricated stats, for a player with no recorded stats', async ({ page }) => {
@@ -164,6 +184,10 @@ test.describe('S2 Player Development Dashboard', () => {
 
     // The final CTA row stays available even with no stats yet.
     await expect(page.getByRole('link', { name: 'Submit a Clip' })).toBeVisible();
+    await expect(page.getByTestId('submit-clip-link')).toHaveAttribute(
+      'href',
+      /S4-video-capture\.html\?playerId=999/
+    );
 
     // Editing is still reachable for a no-stats player -- it is how the coach
     // records their first real stats.
