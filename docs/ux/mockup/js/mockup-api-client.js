@@ -22,10 +22,26 @@
       .join(' ');
   }
 
-  // Validates the optional birth month/year pair on the offline/local fallback
-  // path. Mirrors scripts/serve-mockup.js parseBirthFields so the S2 dashboard
-  // shows the same age in both modes. Strict-pair rule: both set, or both
-  // absent; a partial pair is rejected.
+  // Derives birth year from a team age-group label. Mirrors serve-mockup.js.
+  function birthYearFromAgeGroup(ageGroup, now) {
+    const digits = String(ageGroup == null ? '' : ageGroup).replace(/\D/g, '');
+    if (!digits) {
+      return null;
+    }
+    const ageNumber = Number.parseInt(digits, 10);
+    if (!Number.isInteger(ageNumber) || ageNumber <= 0) {
+      return null;
+    }
+    const currentYear = (now instanceof Date ? now : new Date()).getFullYear();
+    const year = currentYear - ageNumber;
+    if (year < 1960 || year > currentYear) {
+      return null;
+    }
+    return year;
+  }
+
+  // Validates optional birth month/year on the offline/local fallback path.
+  // Mirrors scripts/serve-mockup.js: year-only OK; month-only rejected.
   function parseBirthFields(payload, now) {
     if (payload == null || typeof payload !== 'object') {
       return { birthMonth: null, birthYear: null };
@@ -38,15 +54,11 @@
     if (monthBlank && yearBlank) {
       return { birthMonth: null, birthYear: null };
     }
-    if (monthBlank || yearBlank) {
-      return { error: 'Birth month and year must be set together, or both left blank.' };
+    if (!monthBlank && yearBlank) {
+      return { error: 'Birth month cannot be set without a birth year.' };
     }
 
-    const month = Number(monthRaw);
     const year = Number(yearRaw);
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
-    }
     if (!Number.isInteger(year)) {
       return { error: 'Birth year must be a whole number.' };
     }
@@ -54,24 +66,34 @@
     if (year < 1960 || year > currentYear) {
       return { error: 'Birth year must be between 1960 and ' + currentYear + '.' };
     }
+    if (monthBlank) {
+      return { birthMonth: null, birthYear: year };
+    }
+    const month = Number(monthRaw);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
+    }
     return { birthMonth: month, birthYear: year };
   }
 
-  // Derives age from a birth month/year pair. Pure function; mirrors the
-  // server-side helper so the offline S2 dashboard shows the same age as
-  // backend mode. Returns null when either input is missing.
+  // Derives age from birth month/year. Year-only assumes Jan 1. Mirrors server.
   function computeAge(birthMonth, birthYear, now) {
-    if (birthMonth == null || birthYear == null) {
+    if (birthYear == null) {
       return null;
     }
     const reference = now instanceof Date ? now : new Date();
-    const month = Number(birthMonth);
     const year = Number(birthYear);
-    if (!Number.isInteger(month) || month < 1 || month > 12) {
-      return null;
-    }
     if (!Number.isInteger(year)) {
       return null;
+    }
+    let month;
+    if (birthMonth == null || birthMonth === '') {
+      month = 1;
+    } else {
+      month = Number(birthMonth);
+      if (!Number.isInteger(month) || month < 1 || month > 12) {
+        return null;
+      }
     }
     const referenceMonth = reference.getMonth() + 1;
     let age = reference.getFullYear() - year;
@@ -97,10 +119,10 @@
         { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' }
       ],
       players: [
-        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null, birthMonth: 6, birthYear: 1987 },
-        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null, birthMonth: 2, birthYear: 1985 },
-        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null, birthMonth: 2, birthYear: 1992 },
-        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null, birthMonth: 12, birthYear: 1998 }
+        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 19 },
+        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 },
+        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 17 },
+        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 }
       ],
       playerAvatars: {},
       clips: [
@@ -972,6 +994,10 @@
       const seed = createSeed();
       saveStore(seed);
       return clone(seed);
+    },
+
+    birthYearFromAgeGroup(ageGroup, now) {
+      return birthYearFromAgeGroup(ageGroup, now);
     },
 
     listTeams(queryString) {

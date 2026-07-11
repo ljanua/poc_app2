@@ -48,11 +48,8 @@ describe('players birth month / year migration', () => {
   it('keeps both columns nullable (the pair is optional on every player)', () => {
     const migration = fs.readFileSync(migrationPath, 'utf8');
 
-    // The CHECK constraints explicitly allow NULL -- partial birth data is
-    // accepted at the DB layer but rejected at the API layer via parseBirthFields.
     expect(migration).toContain('birth_month IS NULL');
     expect(migration).toContain('birth_year IS NULL');
-    // No NOT NULL keywords introduced for either column.
     expect(migration).not.toMatch(/birth_month\s+SMALLINT\s+NOT\s+NULL/);
     expect(migration).not.toMatch(/birth_year\s+SMALLINT\s+NOT\s+NULL/);
   });
@@ -60,8 +57,37 @@ describe('players birth month / year migration', () => {
   it('does not backfill any player rows -- birth data is opt-in via the API', () => {
     const migration = fs.readFileSync(migrationPath, 'utf8');
 
-    // No UPDATE/INSERT statements; this is a pure additive migration.
     expect(migration).not.toContain('UPDATE players');
     expect(migration).not.toContain('INSERT INTO players');
+  });
+});
+
+describe('players birth_year backfill from age_group migration', () => {
+  const migrationPath = path.join(
+    process.cwd(),
+    'apps',
+    'api',
+    'src',
+    'db',
+    'migrations',
+    '022_backfill_player_birth_year_from_age_group.sql'
+  );
+
+  it('overwrites birth_year from team age_group digits', () => {
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+    expect(migration).toContain('UPDATE players');
+    expect(migration).toContain('regexp_replace(t.age_group');
+    expect(migration).toContain('EXTRACT(YEAR FROM NOW())');
+    expect(migration).toContain('player_team_assignments');
+  });
+
+  it('does not modify birth_month', () => {
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+    expect(migration).not.toMatch(/SET[\s\S]*birth_month\s*=/);
+  });
+
+  it('skips age groups with no digits', () => {
+    const migration = fs.readFileSync(migrationPath, 'utf8');
+    expect(migration).toMatch(/regexp_replace\(t\.age_group[\s\S]*?<> ''/);
   });
 });

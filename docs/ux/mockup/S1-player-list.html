@@ -60,7 +60,7 @@
             </select>
             <label class="form-label" for="addPlayerBirthYear" style="margin-top:0.6rem;display:block;">Birth year</label>
             <input id="addPlayerBirthYear" type="number" min="1960" max="2026" step="1" placeholder="Year" data-testid="add-player-birth-year">
-            <span class="validation-hint">Leave both blank if unknown. Setting only one returns a validation error.</span>
+            <span class="validation-hint">Birth year defaults from the team Age Group. Month is optional; age assumes Jan 1 when month is blank. Month without year is not allowed.</span>
           </div>
           <div class="inline-actions">
             <button id="addPlayerSubmit" class="btn btn-primary" type="button">Add to Team</button>
@@ -411,6 +411,21 @@
         renderCreatePreview();
       }
 
+      function applyDefaultBirthYearFromTeam() {
+        if (!addPlayerBirthYear) return;
+        if (state.selectedTeam === 'all') {
+          addPlayerBirthYear.value = '';
+          return;
+        }
+        const teamEntry = (MockupApi.listTeams() || []).find(function (team) {
+          return team.name === state.selectedTeam;
+        });
+        const year = teamEntry && typeof MockupApi.birthYearFromAgeGroup === 'function'
+          ? MockupApi.birthYearFromAgeGroup(teamEntry.ageGroup)
+          : null;
+        addPlayerBirthYear.value = year == null ? '' : String(year);
+      }
+
       function renderAddPlayerPositions() {
         if (!addPlayerPosition) return;
         if (state.selectedTeam === 'all') {
@@ -461,8 +476,8 @@
           teamName: state.selectedTeam,
           lookup: addPlayerInput.value,
           position: addPlayerPosition ? addPlayerPosition.value : '',
-          // Birth fields are optional; parseBirthFields enforces the strict-pair
-          // rule. Empty strings collapse to null so the helper sees "both blank".
+          // Birth fields are optional; year-only is allowed. Empty strings
+          // collapse to null so parseBirthFields sees blank correctly.
           birthMonth: addPlayerBirthMonth ? addPlayerBirthMonth.value : '',
           birthYear: addPlayerBirthYear ? addPlayerBirthYear.value : '',
           confirmCreate: Boolean(confirmCreate)
@@ -498,6 +513,7 @@
           resetTransientPanels();
           renderSuggestions();
           renderAddPlayerPositions();
+          applyDefaultBirthYearFromTeam();
           addPlayerInput.focus();
         }
       }
@@ -512,6 +528,7 @@
         renderPlayers();
         renderSuggestions();
         renderAddPlayerPositions();
+        applyDefaultBirthYearFromTeam();
       });
 
       onlyMineToggle.addEventListener('change', function () {
@@ -570,6 +587,7 @@
       renderPlayers();
       renderSuggestions();
       renderAddPlayerPositions();
+      applyDefaultBirthYearFromTeam();
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
       if (exitButton) {

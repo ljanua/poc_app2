@@ -225,6 +225,20 @@ test.describe('S1 Player List avatar renders against live backend', () => {
     await expect(targetCard.locator('.player-image')).toHaveClass(/has-avatar/);
   });
 
+  test('inline add-player panel prefills birth year from team age group', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S1-player-list.html');
+    await page.selectOption('#teamFilter', 'U19 Prime');
+    await page.locator('#toggleAddPlayer').click();
+    await expect(page.locator('#addPlayerPanel')).toBeVisible();
+    const expectedYear = String(new Date().getFullYear() - 19);
+    await expect(page.locator('#addPlayerBirthYear')).toHaveValue(expectedYear);
+    await expect(page.locator('#addPlayerBirthMonth')).toHaveValue('');
+  });
+
   test('inline add-player panel accepts birth month and year and persists them', async ({ page }) => {
     // Force offline mode for this test so the create lands in the local
     // store (and we can assert directly against localStorage). The other
@@ -262,11 +276,7 @@ test.describe('S1 Player List avatar renders against live backend', () => {
     expect(stored.birthYear).toBe(2005);
   });
 
-  test('inline add-player panel rejects a partial birth pair (only month) and shows a validation error', async ({ page }) => {
-    // Force offline mode for this test so the strict-pair rejection we
-    // exercise lives entirely in the offline validator and we can assert
-    // against localStorage directly. The other tests in this describe block
-    // intentionally exercise the live backend.
+  test('inline add-player panel rejects month-only birth and shows a validation error', async ({ page }) => {
     await page.addInitScript(() => {
       window.__USE_MOCK_LOCAL__ = true;
       window.__USE_BACKEND__ = false;
@@ -278,11 +288,11 @@ test.describe('S1 Player List avatar renders against live backend', () => {
     await page.selectOption('#addPlayerPosition', { index: 1 });
     await page.fill('#addPlayerInput', 'Partial Birth Carter');
     await page.selectOption('#addPlayerBirthMonth', '3');
-    // Year left blank intentionally.
+    // Clear the age-group default year so only month is set.
+    await page.fill('#addPlayerBirthYear', '');
     await page.locator('#createConfirm').check();
     await page.locator('#addPlayerSubmit').click();
-    // The hint text surfaces the strict-pair error and no player is created.
-    await expect(page.locator('#addPlayerHint')).toContainText(/set together|blank/i);
+    await expect(page.locator('#addPlayerHint')).toContainText(/without a birth year|cannot be set/i);
     const stored = await page.evaluate(() => {
       const raw = window.localStorage.getItem('vantageiq_mockup_v2');
       if (!raw) return undefined;

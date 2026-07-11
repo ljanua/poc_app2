@@ -23,12 +23,13 @@ const { logAuditEvent } = require('./audit-logger');
 const { reconcilePlayerClipStats } = require('./reconcile-player-clip-stats');
 
 function computeAge(birthMonth, birthYear) {
-  if (!birthMonth || !birthYear) {
+  if (!birthYear) {
     return 'unknown';
   }
   const now = new Date();
+  const month = birthMonth ? Number(birthMonth) : 1;
   let age = now.getFullYear() - Number(birthYear);
-  if (now.getMonth() + 1 < Number(birthMonth)) {
+  if (now.getMonth() + 1 < month) {
     age -= 1;
   }
   return age;

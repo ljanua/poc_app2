@@ -90,12 +90,11 @@ describe('OpenAPI players contract', () => {
     expect(updateBlock).not.toMatch(/required: \[[^\]]*birthYear/);
   });
 
-  it('documents that the server rejects partial birth-date pairs', () => {
-    // Either request schema's description text must warn about the strict pair rule.
+  it('documents that month-only birth dates are rejected while year-only is allowed', () => {
     const block = playersSchema.split('CreatePlayerRequest:')[1] || '';
-    expect(block).toMatch(/Birth month and year must be set together|Must be paired|partial pairs|Send together|set together/i);
+    expect(block).toMatch(/year-only|Month-only|without birthYear/i);
     const updateBlock = playersSchema.split('UpdatePlayerProfileRequest:')[1] || '';
-    expect(updateBlock).toMatch(/Birth month and year must be set together|Must be paired|partial pairs|Send together|set together/i);
+    expect(updateBlock).toMatch(/year-only|Month-only|without birthYear/i);
   });
 });
 

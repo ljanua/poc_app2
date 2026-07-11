@@ -23,26 +23,24 @@ components:
           minimum: 1
           maximum: 12
           description: >-
-            Month of the player's birth (1=January, 12=December). Always
-            paired with birthYear when set; the API rejects partial pairs.
+            Month of the player's birth (1=January, 12=December). Optional when
+            birthYear is set. Month-only (without birthYear) is rejected.
         birthYear:
           type: integer
           nullable: true
           minimum: 1960
           maximum: 2100
           description: >-
-            Year of the player's birth. Always paired with birthMonth when
-            set; the API rejects partial pairs. Upper bound is the current
-            calendar year.
+            Year of the player's birth. May be set without birthMonth (year-only).
+            Upper bound is the current calendar year.
         age:
           type: integer
           nullable: true
           readOnly: true
           description: >-
-            Auto-calculated from birthMonth and birthYear at read time.
-            Null when either birth field is missing. The value reflects the
-            player's age as of the current date, not the value at the time
-            the row was last written.
+            Auto-calculated from birthYear at read time. When birthMonth is
+            null, age assumes January 1 of birthYear. Null when birthYear is
+            missing. Reflects age as of the current date.
         updated:
           type: string
         avatarUrl:
@@ -103,16 +101,16 @@ components:
           minimum: 1
           maximum: 12
           description: >-
-            Month of birth. Must be paired with birthYear (both set, or both
-            omitted/null). The server returns 400 if only one is provided.
+            Month of birth. Optional when birthYear is provided. Month-only
+            (without birthYear) returns 400 validation_error.
         birthYear:
           type: integer
           nullable: true
           minimum: 1960
           maximum: 2100
           description: >-
-            Year of birth. Must be paired with birthMonth (both set, or both
-            omitted/null). The server returns 400 if only one is provided.
+            Year of birth. May be sent without birthMonth (year-only is allowed).
+            Omit or null both fields to leave birth date unset.
         confirmCreate:
           type: boolean
 
@@ -429,18 +427,16 @@ components:
           minimum: 1
           maximum: 12
           description: >-
-            Month of birth. Send together with birthYear (or omit/null both)
-            to record or clear the player's birth date. Sending only one of
-            the two fields returns 400 validation_error.
+            Month of birth. Optional when birthYear is provided. Sending month
+            without birthYear returns 400 validation_error.
         birthYear:
           type: integer
           nullable: true
           minimum: 1960
           maximum: 2100
           description: >-
-            Year of birth. Send together with birthMonth (or omit/null both)
-            to record or clear the player's birth date. Sending only one of
-            the two fields returns 400 validation_error.
+            Year of birth. May be sent without birthMonth (year-only is allowed).
+            Omit or null both fields to clear the birth date.
         trend:
           type: string
           enum: [improving, plateau, declining]

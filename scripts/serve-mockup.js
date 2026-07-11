@@ -102,21 +102,46 @@ function toPlayerPayload(row) {
   };
 }
 
-// Derives a player's age from their birth month/year pair. Pure function so the
-// mockup client and the server stay in sync. Returns null when either input is
-// missing -- the S2 dashboard omits the "Age" segment in that case.
+// Derives birth year from a team age-group label (e.g. U17, 18+) by stripping
+// non-digits and subtracting from the current calendar year. Returns null when
+// no digits remain or the result is outside 1960–currentYear.
+function birthYearFromAgeGroup(ageGroup, now) {
+  const digits = String(ageGroup == null ? '' : ageGroup).replace(/\D/g, '');
+  if (!digits) {
+    return null;
+  }
+  const ageNumber = Number.parseInt(digits, 10);
+  if (!Number.isInteger(ageNumber) || ageNumber <= 0) {
+    return null;
+  }
+  const currentYear = (now instanceof Date ? now : new Date()).getFullYear();
+  const year = currentYear - ageNumber;
+  if (year < 1960 || year > currentYear) {
+    return null;
+  }
+  return year;
+}
+
+// Derives a player's age from birth month/year. Pure function so the mockup
+// client and the server stay in sync. Year-only (month null) assumes Jan 1.
+// Returns null when year is missing -- the S2 dashboard omits "Age" then.
 function computeAge(birthMonth, birthYear, now) {
-  if (birthMonth == null || birthYear == null) {
+  if (birthYear == null) {
     return null;
   }
   const reference = now instanceof Date ? now : new Date();
-  const month = Number(birthMonth);
   const year = Number(birthYear);
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    return null;
-  }
   if (!Number.isInteger(year)) {
     return null;
+  }
+  let month;
+  if (birthMonth == null || birthMonth === '') {
+    month = 1;
+  } else {
+    month = Number(birthMonth);
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return null;
+    }
   }
   // JavaScript Date months are 0-indexed; normalize before comparing.
   const referenceMonth = reference.getMonth() + 1;
@@ -1152,6 +1177,21 @@ async function ensureDatabase() {
   // database that pre-dates this column. Idempotent because of IF NOT EXISTS.
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS player_avatar_url TEXT;`);
 
+  // Migration 017: birth month/year columns (idempotent).
+  await pool.query(`
+    ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS birth_month SMALLINT
+        CHECK (birth_month IS NULL OR birth_month BETWEEN 1 AND 12)
+  `);
+  await pool.query(`
+    ALTER TABLE players
+      ADD COLUMN IF NOT EXISTS birth_year SMALLINT
+        CHECK (
+          birth_year IS NULL
+          OR (birth_year BETWEEN 1960 AND EXTRACT(YEAR FROM NOW())::SMALLINT)
+        )
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS player_team_assignments (
       player_id TEXT PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
@@ -1163,6 +1203,25 @@ async function ensureDatabase() {
 
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_players_normalized_name ON players(normalized_name);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_team_assignments_team_id ON player_team_assignments(team_id);`);
+
+  // Feature 026: overwrite birth_year from assigned team age_group digits.
+  await pool.query(`
+    UPDATE players p
+    SET birth_year = GREATEST(
+          1960,
+          LEAST(
+            EXTRACT(YEAR FROM NOW())::SMALLINT,
+            (EXTRACT(YEAR FROM NOW())::INT - regexp_replace(t.age_group, '[^0-9]', '', 'g')::INT)
+          )
+        )::SMALLINT,
+        updated_at = NOW()
+    FROM player_team_assignments a
+    JOIN teams t ON t.id = a.team_id
+    WHERE a.player_id = p.id
+      AND regexp_replace(t.age_group, '[^0-9]', '', 'g') <> ''
+      AND regexp_replace(t.age_group, '[^0-9]', '', 'g') ~ '^[0-9]+$'
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clips (
       id TEXT PRIMARY KEY,
@@ -1558,13 +1617,13 @@ function parseMetricChange(value) {
   return { label, trend };
 }
 
-// Validates and normalizes the optional birthMonth/birthYear pair from a
-// player create/update payload. The pair is the unit of meaning -- both must
-// be set together, or both absent. Returns:
-//   - { birthMonth: null, birthYear: null } when neither key is supplied or both
-//     are explicitly blank/null.
-//   - { birthMonth: 1-12, birthYear: 1960-currentYear } when both are valid.
-//   - { error: '...' } on any other shape.
+// Validates and normalizes optional birthMonth/birthYear from a player
+// create/update payload. Year-only is allowed; month-only is rejected.
+// Returns:
+//   - { birthMonth: null, birthYear: null } when both blank.
+//   - { birthMonth: null, birthYear } when year-only is valid.
+//   - { birthMonth: 1-12, birthYear } when both are valid.
+//   - { error: '...' } on month-only or invalid values.
 function parseBirthFields(payload, now) {
   if (payload == null || typeof payload !== 'object') {
     return { birthMonth: null, birthYear: null };
@@ -1578,21 +1637,26 @@ function parseBirthFields(payload, now) {
   if (monthBlank && yearBlank) {
     return { birthMonth: null, birthYear: null };
   }
-  if (monthBlank || yearBlank) {
-    return { error: 'Birth month and year must be set together, or both left blank.' };
+  if (!monthBlank && yearBlank) {
+    return { error: 'Birth month cannot be set without a birth year.' };
   }
 
-  const month = Number(monthRaw);
   const year = Number(yearRaw);
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
-  }
   if (!Number.isInteger(year)) {
     return { error: 'Birth year must be a whole number.' };
   }
   const currentYear = (now instanceof Date ? now : new Date()).getFullYear();
   if (year < 1960 || year > currentYear) {
     return { error: 'Birth year must be between 1960 and ' + currentYear + '.' };
+  }
+
+  if (monthBlank) {
+    return { birthMonth: null, birthYear: year };
+  }
+
+  const month = Number(monthRaw);
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return { error: 'Birth month must be a whole number from 1 (January) to 12 (December).' };
   }
 
   return { birthMonth: month, birthYear: year };

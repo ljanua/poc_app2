@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// parseBirthFields lives in scripts/serve-mockup.js (the primary persistence
-// path). Source-level assertions pin the helper's behavior so a future edit
-// (dropping the strict-pair rule, widening the year bound, etc.) is caught
-// without needing a live DB. End-to-end coverage is exercised by the Playwright
-// suite and the manual integration walkthrough.
+// parseBirthFields / computeAge / birthYearFromAgeGroup live in
+// scripts/serve-mockup.js. Source-level assertions pin behavior without a live DB.
 describe('parseBirthFields helper', () => {
   const source = fs.readFileSync(
     path.join(process.cwd(), 'scripts', 'serve-mockup.js'),
@@ -15,8 +12,6 @@ describe('parseBirthFields helper', () => {
 
   const fnStart = source.indexOf('function parseBirthFields(');
   expect(fnStart, 'parseBirthFields should be defined').toBeGreaterThanOrEqual(0);
-  // The helper ends at the first top-level close brace after its start. Slice
-  // generously to cover the function body without spilling into the next one.
   const fnEnd = source.indexOf('\n// Validates and normalizes a PATCH', fnStart);
   const body = source.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 2500);
 
@@ -25,9 +20,10 @@ describe('parseBirthFields helper', () => {
     expect(body).toContain('birthMonth: null, birthYear: null');
   });
 
-  it('rejects partial pairs (only month, or only year) with a clear error', () => {
-    expect(body).toMatch(/monthBlank\s*\|\|\s*yearBlank/);
-    expect(body).toContain('Birth month and year must be set together, or both left blank.');
+  it('allows year-only and rejects month-only', () => {
+    expect(body).toContain('Birth month cannot be set without a birth year.');
+    expect(body).toMatch(/monthBlank[\s\S]*?return \{ birthMonth: null, birthYear: year \}/);
+    expect(body).not.toContain('Birth month and year must be set together, or both left blank.');
   });
 
   it('rejects month out of range (not an integer, or < 1, or > 12)', () => {
@@ -41,9 +37,29 @@ describe('parseBirthFields helper', () => {
   });
 
   it('uses the current calendar year to bound birthYear', () => {
-    // The helper reads the year from `now` (default = new Date()), so the
-    // upper bound always tracks today's date.
     expect(body).toContain('currentYear = (now instanceof Date ? now : new Date()).getFullYear()');
+  });
+});
+
+describe('birthYearFromAgeGroup helper', () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), 'scripts', 'serve-mockup.js'),
+    'utf8'
+  );
+
+  const fnStart = source.indexOf('function birthYearFromAgeGroup(');
+  expect(fnStart, 'birthYearFromAgeGroup should be defined').toBeGreaterThanOrEqual(0);
+  const fnEnd = source.indexOf('\n// Derives a player', fnStart);
+  const body = source.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 1500);
+
+  it('strips non-digits and subtracts from the current year', () => {
+    expect(body).toMatch(/replace\(\\?\/\\D\/g|replace\(\/\\D\/g/);
+    expect(body).toContain('currentYear - ageNumber');
+  });
+
+  it('returns null when no digits remain or year is out of bounds', () => {
+    expect(body).toContain('return null');
+    expect(body).toMatch(/year < 1960 \|\| year > currentYear/);
   });
 });
 
@@ -58,17 +74,20 @@ describe('computeAge helper', () => {
   const fnEnd = source.indexOf('\n// Resolves the active Coach actor', fnStart);
   const body = source.slice(fnStart, fnEnd > fnStart ? fnEnd : fnStart + 2500);
 
-  it('returns null when either input is null', () => {
-    expect(body).toMatch(/birthMonth == null \|\| birthYear == null[\s\S]*?return null/);
+  it('returns null when birth year is missing', () => {
+    expect(body).toMatch(/if \(birthYear == null\)[\s\S]*?return null/);
   });
 
-  it('rejects non-integer months and out-of-range months defensively', () => {
+  it('assumes January (month 1) when month is null for year-only age', () => {
+    expect(body).toMatch(/birthMonth == null[\s\S]*?month = 1/);
+  });
+
+  it('rejects non-integer months and out-of-range months defensively when month is set', () => {
     expect(body).toMatch(/month\s+<\s+1\s*\|\|\s*month\s+>\s+12/);
   });
 
   it('subtracts one year when the birthday month has not arrived yet this year', () => {
     expect(body).toContain('referenceMonth');
-    // referenceMonth < month means the current month is before the birth month.
     expect(body).toMatch(/referenceMonth\s*<\s*month/);
     expect(body).toMatch(/age\s*-=\s*1/);
   });
@@ -78,20 +97,17 @@ describe('computeAge helper', () => {
   });
 
   it('mirrors the same formula via computeAge so server + offline client agree', () => {
-    // The mockup-api-client.js copy must exist too -- cross-file invariant.
     const clientSource = fs.readFileSync(
       path.join(process.cwd(), 'docs', 'ux', 'mockup', 'js', 'mockup-api-client.js'),
       'utf8'
     );
     expect(clientSource).toContain('function computeAge');
+    expect(clientSource).toMatch(/birthMonth == null[\s\S]*?month = 1/);
+    expect(clientSource).toContain('function birthYearFromAgeGroup');
   });
 });
 
 describe('offline parseUpdateProfilePayload birth-error short-circuit', () => {
-  // The offline update flow (mockup-api-client.js parseUpdateProfilePayload)
-  // must propagate parseBirthFields errors so partial pairs are rejected in
-  // both backend and offline modes. Regression for a bug where the function
-  // returned identity with undefined birth fields instead of an error.
   const source = fs.readFileSync(
     path.join(process.cwd(), 'docs', 'ux', 'mockup', 'js', 'mockup-api-client.js'),
     'utf8'
