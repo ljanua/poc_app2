@@ -21,6 +21,7 @@ const {
 } = require('./analyzer');
 const { logAuditEvent } = require('./audit-logger');
 const { reconcilePlayerClipStats } = require('./reconcile-player-clip-stats');
+const { syncPlayerSkillRatingsFromClip } = require('./sync-player-skill-ratings-from-clip');
 
 function computeAge(birthMonth, birthYear) {
   if (!birthYear) {
@@ -207,6 +208,19 @@ async function processClip(pool, clipId) {
       score,
       ratedSkillCount: Object.keys(ratingsBySkill).length
     });
+    try {
+      await syncPlayerSkillRatingsFromClip(pool, {
+        playerId: clip.playerId,
+        skillRatings: ratingsBySkill
+      });
+    } catch (syncError) {
+      console.error(`Clip ${clipId} skill rating sync failed:`, syncError);
+      logAuditEvent('player.skill_ratings.sync.error', {
+        clipId,
+        playerId: clip.playerId,
+        error: syncError.message || String(syncError)
+      });
+    }
   } catch (error) {
     console.error(`Clip ${clipId} processing failed:`, error);
     const errorMessage = error.message || String(error);

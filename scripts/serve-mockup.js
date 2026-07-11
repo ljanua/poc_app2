@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
 const { createClipUpload, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
 const { resolveClipMediaPath, streamVideoFile } = require('./video-processing/clip-media');
+const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
@@ -1397,6 +1398,13 @@ async function ensureDatabase() {
 
   await resetFabricatedPlayerStats(pool);
   await syncDefaultDashboardStats(pool);
+
+  // Feature 031: sync profile skill ratings from complete/assessed clip JSON (ASC → latest wins).
+  try {
+    await backfillPlayerSkillRatingsFromClips(pool);
+  } catch (error) {
+    console.error('player skill ratings backfill failed:', error);
+  }
 }
 
 async function listPlayers(teamName, query, actor) {
