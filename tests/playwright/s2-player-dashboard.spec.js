@@ -196,6 +196,72 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=999/);
   });
 
+  test('shows Video Assessments with per-clip status when a no-stats player has clips', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 998,
+        name: 'Clip Rookie',
+        normalizedName: 'clip rookie',
+        teamName: 'U19 Prime',
+        position: 'Position not set',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      store.clips = store.clips || [];
+      store.clips.push({
+        id: 9001,
+        playerId: 998,
+        situation: 'First training clip under pressure',
+        status: 'submitted',
+        score: null,
+        summary: '',
+        submittedAt: 'Submitted just now',
+        skill: 'Ball Control',
+        skillFocus: ['Ball Control'],
+        skillRatings: null
+      });
+      store.clips.push({
+        id: 9002,
+        playerId: 998,
+        situation: 'Failed processing sample',
+        status: 'failed',
+        score: null,
+        summary: '',
+        errorMessage: 'Processing failed',
+        submittedAt: 'Submitted earlier',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: null
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Clip Rookie'));
+
+    await expect(page.locator('#noStatsNotice')).toBeVisible();
+    await expect(page.getByText('Development Progress')).toBeHidden();
+    await expect(page.getByText('Skill Ratings')).toBeHidden();
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    await page.getByTestId('dashboard-section-toggle-video-assessments').click();
+    await expect(page.getByTestId('dashboard-clip-list')).toBeVisible();
+    await expect(page.getByTestId('dashboard-clip-row')).toHaveCount(2);
+    await expect(page.getByTestId('dashboard-clip-status').filter({ hasText: 'submitted' })).toBeVisible();
+    await expect(page.getByTestId('dashboard-clip-status').filter({ hasText: 'failed' })).toBeVisible();
+    await expect(page.getByText('First training clip under pressure')).toBeVisible();
+    await expect(page.getByTestId('view-results-link')).toBeVisible();
+    await expect(page.getByTestId('submit-new-clip-link')).toBeVisible();
+  });
+
+  test('lists each clip with status for a player who has stats', async ({ page }) => {
+    // Default Lionel Messi has a seeded complete clip in the offline store.
+    await page.getByTestId('dashboard-section-toggle-video-assessments').click();
+    await expect(page.getByTestId('dashboard-clip-row')).toHaveCount(1);
+    await expect(page.getByTestId('dashboard-clip-status').first()).toHaveText('complete');
+    await expect(page.getByText('Penalty kick attempt, 3rd minute')).toBeVisible();
+  });
+
   test('exposes an Edit Player link that targets the viewed player', async ({ page }) => {
     const editLink = page.locator('#editPlayerLink');
     await expect(editLink).toBeVisible();
@@ -248,15 +314,13 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.locator('#playerAvatarEmoji')).toBeHidden();
   });
 
-  test('shows the seeded player age on the S2 meta line (Lionel Messi born 1987-06)', async ({ page }) => {
-    // Default player on the seeded offline store. Messi's birth month/year
-    // produce a numeric Age derived from the current year.
+  test('shows the seeded player age on the S2 meta line (Lionel Messi)', async ({ page }) => {
+    // Default Messi seed uses birthYear = currentYear − 19 (U19 age-group default).
     const meta = await page.locator('#dashboardPlayerMeta').textContent();
     expect(meta).toMatch(/Age \d+/);
-    // The age is at least 30 (Messi was born 1987).
     const match = meta.match(/Age (\d+)/);
     expect(match).not.toBeNull();
-    expect(Number(match[1])).toBeGreaterThanOrEqual(30);
+    expect(Number(match[1])).toBe(19);
   });
 
   test('omits the age segment when the player has no birth date', async ({ page }) => {

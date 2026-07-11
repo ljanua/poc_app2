@@ -188,9 +188,8 @@
           Video Assessments
         </button>
         <div class="section-body" id="body-video-assessments">
-        <div id="dashboardClipSummary" style="color: var(--text-muted); margin-bottom: 1rem; font-size: 0.9rem;">
-          4 clips submitted • 3 assessed • 1 pending
-        </div>
+        <div id="dashboardClipSummary" data-testid="dashboard-clip-summary" style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.9rem;"></div>
+        <div id="dashboardClipList" class="dashboard-clip-list" data-testid="dashboard-clip-list"></div>
         <div class="cta-buttons">
           <a class="btn btn-secondary" id="viewResultsLink" data-testid="view-results-link" href="./S6-assessment-list.html">View Results</a>
           <a class="btn btn-primary" id="submitNewClipLink" data-testid="submit-new-clip-link" href="./S4-video-capture.html">Submit New Clip</a>
@@ -330,23 +329,104 @@
       MockupApi.applyAvatar('playerAvatarImg', player.avatarUrl || null);
       MockupApi.initAvatarHover('playerAvatarContainer');
 
+      // Live clips drive Video Assessments visibility when growth stats are
+      // missing — do not trust cached dashboard.clipStats for that gate.
+      const liveClips = (player.id !== undefined && player.id !== null)
+        ? MockupApi.listClips({ playerId: player.id })
+        : [];
+      const missingStats = Boolean(dashboard.performance.missingDataMessage);
+
       // A player with no real recorded stats yet must never show fabricated
-      // or borrowed numbers. Show the identity card plus a single clear
-      // notice, and hide every stats-derived section as one unit.
-      if (dashboard.performance.missingDataMessage) {
+      // growth numbers. Hide Skill Ratings / Development / Match Time /
+      // Recent Performance, but keep Video Assessments when live clips exist.
+      if (missingStats) {
         noStatsNotice.textContent = dashboard.performance.missingDataMessage;
         noStatsNotice.hidden = false;
         statsSections.forEach(function (element) {
-          element.hidden = true;
+          if (element.getAttribute('data-section') === 'video-assessments') {
+            element.hidden = liveClips.length === 0;
+          } else {
+            element.hidden = true;
+          }
         });
-        return;
+      } else {
+        noStatsNotice.hidden = true;
+        statsSections.forEach(function (element) {
+          element.hidden = false;
+        });
       }
 
-      noStatsNotice.hidden = true;
-      statsSections.forEach(function (element) {
-        element.hidden = false;
-      });
+      function clipStatusClass(status) {
+        const value = String(status || '');
+        if (value === 'complete' || value === 'assessed') {
+          return 'status-assessed';
+        }
+        if (value === 'submitted' || value === 'in_progress' || value === 'pending') {
+          return 'status-pending';
+        }
+        if (value === 'failed') {
+          return 'status-failed';
+        }
+        return 'status-pending';
+      }
 
+      function clipStatusLabel(status) {
+        return status === 'in_progress' ? 'in progress' : String(status || 'submitted');
+      }
+
+      function renderVideoAssessments(clips) {
+        const summaryEl = document.getElementById('dashboardClipSummary');
+        const listEl = document.getElementById('dashboardClipList');
+        if (!listEl) {
+          return;
+        }
+
+        const rows = Array.isArray(clips) ? clips : [];
+        if (summaryEl) {
+          if (!rows.length) {
+            summaryEl.textContent = 'No clips submitted yet.';
+          } else {
+            const assessed = rows.filter(function (clip) {
+              return clip.status === 'complete' || clip.status === 'assessed';
+            }).length;
+            summaryEl.textContent = rows.length + ' submitted • ' + assessed + ' assessed';
+          }
+        }
+
+        listEl.innerHTML = '';
+        rows.forEach(function (clip) {
+          const row = document.createElement('div');
+          row.className = 'dashboard-clip-row';
+          row.setAttribute('data-testid', 'dashboard-clip-row');
+          if (clip.id != null) {
+            row.setAttribute('data-clip-id', String(clip.id));
+          }
+
+          const main = document.createElement('div');
+          main.className = 'dashboard-clip-main';
+          const situation = document.createElement('div');
+          situation.className = 'dashboard-clip-situation';
+          situation.textContent = clip.situation || clip.skill || 'Clip';
+          const meta = document.createElement('div');
+          meta.className = 'dashboard-clip-meta';
+          meta.textContent = [clip.submittedAt, clip.skill].filter(Boolean).join(' • ');
+          main.appendChild(situation);
+          if (meta.textContent) {
+            main.appendChild(meta);
+          }
+
+          const badge = document.createElement('span');
+          badge.className = 'status-badge ' + clipStatusClass(clip.status);
+          badge.setAttribute('data-testid', 'dashboard-clip-status');
+          badge.textContent = clipStatusLabel(clip.status);
+
+          row.appendChild(main);
+          row.appendChild(badge);
+          listEl.appendChild(row);
+        });
+      }
+
+      if (!missingStats) {
       (function renderSkillRatings() {
         const rows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
         const emptyEl = document.getElementById('skillRatingsEmpty');
@@ -416,6 +496,7 @@
           roleBlock.hidden = true;
         }
       })();
+      }
 
       function initDashboardSectionToggles(playerId) {
         const storageKey = 'vantageiq_s2_dashboard_sections';
@@ -492,36 +573,41 @@
 
       initDashboardSectionToggles(player.id);
 
-      function bindMetricChange(elementId, change) {
-        if (!change) {
-          return;
+      if (!missingStats) {
+        function bindMetricChange(elementId, change) {
+          if (!change) {
+            return;
+          }
+          const arrow = change.trend === 'improving' ? '↑' : change.trend === 'declining' ? '↓' : '→';
+          const badgeClass = change.trend === 'improving' ? 'badge-improving' : change.trend === 'declining' ? 'badge-declining' : 'badge-plateau';
+          const element = document.getElementById(elementId);
+          element.className = 'badge ' + badgeClass;
+          element.textContent = arrow + ' ' + change.label;
         }
-        const arrow = change.trend === 'improving' ? '↑' : change.trend === 'declining' ? '↓' : '→';
-        const badgeClass = change.trend === 'improving' ? 'badge-improving' : change.trend === 'declining' ? 'badge-declining' : 'badge-plateau';
-        const element = document.getElementById(elementId);
-        element.className = 'badge ' + badgeClass;
-        element.textContent = arrow + ' ' + change.label;
+
+        document.getElementById('metricCurrentLevel').textContent = dashboard.metrics.currentLevel;
+        document.getElementById('metricFitness').textContent = dashboard.metrics.fitness;
+        document.getElementById('metricSkill').textContent = dashboard.metrics.skillProgress;
+        bindMetricChange('metricCurrentLevelChange', dashboard.metrics.currentLevelChange);
+        bindMetricChange('metricFitnessChange', dashboard.metrics.fitnessChange);
+        bindMetricChange('metricSkillChange', dashboard.metrics.skillProgressChange);
+        document.getElementById('metricMinutes').textContent = String(dashboard.matchTime.totalMinutes);
+        document.getElementById('metricAppearances').textContent = String(dashboard.matchTime.appearances);
+        document.getElementById('metricRecentAvg').textContent = dashboard.matchTime.recentAvg;
+        document.getElementById('metricAvgScore').textContent = dashboard.performance.averageScore;
+        document.getElementById('metricTrendArrow').textContent = trendArrow;
+
+        const trendTextNode = document.getElementById('metricTrendText');
+        trendTextNode.className = 'badge ' + trendClass;
+        trendTextNode.textContent = trendText;
+
+        document.getElementById('metricLastMatch').textContent = dashboard.performance.lastMatchScore === 'N/A' ? '-' : dashboard.performance.lastMatchScore;
+        document.getElementById('metricLastMatchSub').textContent = dashboard.performance.lastMatchSummary || 'From latest assessed clips';
       }
 
-      document.getElementById('metricCurrentLevel').textContent = dashboard.metrics.currentLevel;
-      document.getElementById('metricFitness').textContent = dashboard.metrics.fitness;
-      document.getElementById('metricSkill').textContent = dashboard.metrics.skillProgress;
-      bindMetricChange('metricCurrentLevelChange', dashboard.metrics.currentLevelChange);
-      bindMetricChange('metricFitnessChange', dashboard.metrics.fitnessChange);
-      bindMetricChange('metricSkillChange', dashboard.metrics.skillProgressChange);
-      document.getElementById('metricMinutes').textContent = String(dashboard.matchTime.totalMinutes);
-      document.getElementById('metricAppearances').textContent = String(dashboard.matchTime.appearances);
-      document.getElementById('metricRecentAvg').textContent = dashboard.matchTime.recentAvg;
-      document.getElementById('metricAvgScore').textContent = dashboard.performance.averageScore;
-      document.getElementById('metricTrendArrow').textContent = trendArrow;
-
-      const trendTextNode = document.getElementById('metricTrendText');
-      trendTextNode.className = 'badge ' + trendClass;
-      trendTextNode.textContent = trendText;
-
-      document.getElementById('metricLastMatch').textContent = dashboard.performance.lastMatchScore === 'N/A' ? '-' : dashboard.performance.lastMatchScore;
-      document.getElementById('metricLastMatchSub').textContent = dashboard.performance.lastMatchSummary || 'From latest assessed clips';
-      document.getElementById('dashboardClipSummary').textContent = dashboard.clipStats.submitted + ' clips submitted • ' + dashboard.clipStats.assessed + ' assessed • ' + dashboard.clipStats.pending + ' pending';
+      if (!missingStats || liveClips.length > 0) {
+        renderVideoAssessments(liveClips);
+      }
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
       if (exitButton) {

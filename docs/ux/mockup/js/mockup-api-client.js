@@ -795,7 +795,7 @@
     const metricChanges = getMetricChangeIndicators(selected);
 
     return clone({
-      player: enrichPlayerWithAge(selected),
+      player: enrichPlayerWithAge(selectedWithAvatar),
       stats: {
         growthStatus: selected.trend === 'improving' ? 'on_track' : selected.trend === 'declining' ? 'at_risk' : 'watch',
         currentLevel: selected.trend === 'improving' ? '92%' : selected.trend === 'declining' ? '81%' : '87%',

@@ -895,6 +895,36 @@ textarea::placeholder { color: var(--text-dim); }
 .status-pending { color: var(--warn); background: var(--warn-bg); border-color: rgba(251, 191, 36, 0.3); }
 .status-failed { color: var(--down); background: var(--down-bg); border-color: rgba(251, 113, 133, 0.3); }
 
+.dashboard-clip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard-clip-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboard-clip-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.dashboard-clip-situation {
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.dashboard-clip-meta {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 /* ============================================================
    Bottom navigation (mobile app bar)
    ============================================================ */
