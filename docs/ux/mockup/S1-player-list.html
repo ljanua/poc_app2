@@ -192,9 +192,66 @@
       }
 
       function trendLabel(trend) {
-        if (trend === 'improving') return { text: 'Improving', className: 'trend-improving', icon: '↑' };
-        if (trend === 'declining') return { text: 'Declining', className: 'trend-declining', icon: '↓' };
-        return { text: 'Plateau', className: 'trend-plateau', icon: '→' };
+        if (trend === 'improving') {
+          return { text: 'Improving', className: 'trend-improving', icon: '→', rotation: 'up' };
+        }
+        if (trend === 'declining') {
+          return { text: 'Declining', className: 'trend-declining', icon: '→', rotation: 'down' };
+        }
+        return { text: 'Plateau', className: 'trend-plateau', icon: '→', rotation: 'flat' };
+      }
+
+      function buildS2Href(player) {
+        return './S2-player-dashboard.html?player=' + encodeURIComponent(player.name || '');
+      }
+
+      function formatAnySkillRating(rating) {
+        if (rating === null || rating === undefined || rating === '') {
+          return '—';
+        }
+        const num = Number(rating);
+        if (!Number.isFinite(num)) {
+          return '—';
+        }
+        return String(Math.round(num)) + '%';
+      }
+
+      function buildAnySkillsMarkup(player) {
+        const rows = Array.isArray(player.anySkillRatings) ? player.anySkillRatings : [];
+        if (!rows.length) {
+          return '';
+        }
+        const columns = 'repeat(' + rows.length + ', minmax(0, 1fr))';
+        const abbrItems = rows.map(function (row) {
+          const abbr = row.abbreviation || MockupApi.suggestSkillAbbreviation(row.skillName) || '—';
+          return (
+            '<li title="' + escapeHtml(row.skillName || abbr) + '" data-testid="player-card-skill-abbr">' +
+            escapeHtml(abbr) +
+            '</li>'
+          );
+        }).join('');
+        const ratingItems = rows.map(function (row) {
+          return (
+            '<li data-testid="player-card-skill-rating">' +
+            escapeHtml(formatAnySkillRating(row.rating)) +
+            '</li>'
+          );
+        }).join('');
+        return (
+          '<div class="player-card-skills" data-testid="player-card-skills">' +
+          '<ul class="player-card-skill-abbrs" style="grid-template-columns:' + columns + '">' + abbrItems + '</ul>' +
+          '<ul class="player-card-skill-ratings" style="grid-template-columns:' + columns + '">' + ratingItems + '</ul>' +
+          '</div>'
+        );
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function normalize(value) {
@@ -330,7 +387,7 @@
         visiblePlayers.forEach(function (player) {
           const trend = trendLabel(player.trend);
           const avatarHtml = player.avatarUrl
-            ? '<img src="' + player.avatarUrl + '" alt="' + player.name + '" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">'
+            ? '<img src="' + player.avatarUrl + '" alt="' + escapeHtml(player.name) + '" style="width:100%;height:100%;object-fit:cover;border-radius:inherit;">'
             : '<span style="font-size:1.4rem;line-height:58px;">⚽</span>';
           const imgWrap = document.createElement('div');
           imgWrap.className = 'player-image' + (player.avatarUrl ? ' has-avatar' : '');
@@ -339,25 +396,33 @@
           const card = document.createElement('div');
           card.className = 'player-card';
           card.dataset.playerId = String(player.id);
+          card.setAttribute('role', 'link');
+          card.setAttribute('tabindex', '0');
+          card.setAttribute('aria-label', 'View dashboard for ' + (player.name || 'player'));
+          card.dataset.s2Href = buildS2Href(player);
           const hasClips = playerIdsWithClips.has(String(player.id));
           const videoLinkHtml = hasClips
             ? '<a class="player-card-video-link" data-testid="player-card-video-link" href="' +
               buildS6Href(player) +
-              '" aria-label="View video assessments for ' + player.name + '">📹</a>'
+              '" aria-label="View video assessments for ' + escapeHtml(player.name) + '">📹</a>'
             : '';
           card.innerHTML =
+            '<div class="player-card-actions" data-testid="player-card-actions">' +
+            '<span class="player-card-trend ' + trend.className + '" data-testid="player-card-trend" aria-label="' +
+            escapeHtml(trend.text) + '" title="' + escapeHtml(trend.text) + '">' +
+            '<span class="trend-arrow" aria-hidden="true">' + trend.icon + '</span>' +
+            '</span>' +
+            videoLinkHtml +
+            '</div>' +
             '__AVATAR_WRAPPER__' +
             '<div class="player-info">' +
-            '<div class="player-name">' + player.name + '</div>' +
-            '<div class="player-position">' + player.position + '</div>' +
+            '<div class="player-name">' + escapeHtml(player.name) + '</div>' +
+            '<div class="player-position">' + escapeHtml(player.position) + '</div>' +
             '<div class="player-meta">' +
-            '<span class="team-chip">' + player.teamName + '</span>' +
-            player.updated +
-            '<span class="trend-badge ' + trend.className + '">' + trend.icon + ' ' + trend.text + '</span>' +
+            '<span class="team-chip">' + escapeHtml(player.teamName) + '</span>' +
             '</div>' +
             '</div>' +
-            '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(player.name) + '">View</a>' +
-            videoLinkHtml;
+            buildAnySkillsMarkup(player);
           card.innerHTML = card.innerHTML.replace('__AVATAR_WRAPPER__', imgWrap.outerHTML);
           playerGrid.appendChild(card);
         });
@@ -559,6 +624,44 @@
       playerSearch.addEventListener('input', function () {
         state.searchQuery = playerSearch.value;
         renderPlayers();
+      });
+
+      function navigateCardToDashboard(card) {
+        if (!card) return;
+        const href = card.dataset.s2Href;
+        if (href) {
+          window.location.href = href;
+        }
+      }
+
+      playerGrid.addEventListener('click', function (event) {
+        if (event.target.closest('[data-testid="player-card-video-link"]')) {
+          event.stopPropagation();
+          return;
+        }
+        const card = event.target.closest('.player-card');
+        if (!card || !playerGrid.contains(card)) {
+          return;
+        }
+        navigateCardToDashboard(card);
+      });
+
+      playerGrid.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        if (event.target.closest('[data-testid="player-card-video-link"]')) {
+          return;
+        }
+        const card = event.target.closest('.player-card');
+        if (!card || !playerGrid.contains(card)) {
+          return;
+        }
+        if (event.target !== card) {
+          return;
+        }
+        event.preventDefault();
+        navigateCardToDashboard(card);
       });
 
       teamFilter.addEventListener('change', function () {

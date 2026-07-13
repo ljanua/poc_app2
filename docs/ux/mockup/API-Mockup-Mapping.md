@@ -31,7 +31,7 @@ Source plans:
 | S3-team-management.html | Create Team (Coach actor) | Create team (coach auto-assigned) | POST /v1/teams | 201 Created with lead coach set to actor | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Create Team (SystemAdmin actor) | Create team (selected active coach) | POST /v1/teams | 201 Created with selected coach as lead coach | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Change Coach (SystemAdmin only) | Reassign team coach | PATCH /v1/teams/{teamId}/coach | 200 OK with updated team coach | 400 validation_error, 403 forbidden, 404 not_found |
-| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query=&actorEmail=&onlyMine= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded). When `actorEmail` resolves to an active Coach and `onlyMine=true`, the list is scoped to players on teams belonging to that coach's clubs (joined via `coach_clubs`); SystemAdmin actors always see the full roster regardless of `onlyMine` | 400 validation_error |
+| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query=&actorEmail=&onlyMine= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded; Feature 038 also includes `anySkillRatings` — Any Position skills with `abbreviation` + `rating` for the card strip). When `actorEmail` resolves to an active Coach and `onlyMine=true`, the list is scoped to players on teams belonging to that coach's clubs (joined via `coach_clubs`); SystemAdmin actors always see the full roster regardless of `onlyMine` | 400 validation_error |
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
@@ -100,7 +100,31 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - **S6 score display** — clip `score` is a 0–1 fraction from video processing. S6 shows it as a **0%–100%** label; the star is bright only when percent **> 80** (otherwise muted/gray). Missing scores show **N/A**.
 - **S6 card skills + Back** — complete cards list assessment skills from `skillFocus` ∪ `skillRatings` keys, each as percent or **N/A**. The card action that returns to S2 is labeled **Back** (S2’s deep-link into S6 remains **View Results**).
 - **S2 → S6 View Results** — the Video Assessments **View Results** control deep-links to `S6-assessment-list.html?playerId=&playerName=&teamName=` for the dashboard player. Guest S2 also appends `share=<token>`; guest S6 loads via share-scoped clip/media APIs and locks Pre-Selected/team. S6 shows a toggleable **Pre-Selected Player** checkbox (`[data-testid="preselected-player-filter"]`) that defaults **ON** when those params are present (OFF / hidden when opening S6 without player context; always on+locked for guests). Team defaults to the player's `teamName` when it appears in the allowed team list. Coaches load teams via `GET /v1/teams?actorEmail=` (club-scoped); **All Teams** means all teams in the coach's club(s). SystemAdmin keeps a broader team list. `GET /v1/clips` accepts optional `playerId` / `playerName` in addition to `teamName` and `status`.
-- **S1 → S6 video icon** — each S1 `.player-card` shows a lower-right `[data-testid="player-card-video-link"]` **only when** live `MockupApi.listClips` (optionally team-scoped) includes ≥1 clip for that `playerId` (any status; not `clipStats`). Click uses the same S6 query params as S2 View Results.
+- **S1 → S6 video icon** — each S1 `.player-card` shows `[data-testid="player-card-video-link"]` in the **top-right action cluster** (with the trend arrow; video farthest right) **only when** live `MockupApi.listClips` (optionally team-scoped) includes ≥1 clip for that `playerId` (any status; not `clipStats`). Click uses the same S6 query params as S2 View Results and must not open S2.
+
+## S1 player card redesign (Feature 038)
+
+Source plan: `docs/plans/2026-07-13-007-feat-s1-player-card-redesign-plan.md`.
+
+### UI
+
+- Entire `.player-card` opens S2 (`?player=` name); **View** button removed; “Updated …” meta removed.
+- Top-right: trend arrow-only (green ↗ / yellow ↘ / gray →) + optional video link farthest right.
+- Bottom two lines: Any Position skill abbreviations + percent ratings (`—` when unrated).
+
+### API
+
+- `GET /v1/players` includes `anySkillRatings: [{ skillId, skillName, abbreviation, rating }]` for the player’s sport Any Position skills.
+
+### Test traceability
+
+- `tests/playwright/s1-player-list.spec.js`
+- `apps/api/tests/integration/players/players-list-scoping.spec.ts` (listPlayers body still scopes; enrichment helper present in serve-mockup)
+
+---
+
+## Prior S1 notes (unchanged)
+
 - **S6 play / media** — `GET /v1/clips` includes original `path` and `segments: [{ index, path }]`. S6 card play (`[data-testid="clip-play-button"]`) opens a modal player and sets `<video src>` to `GET /api/v1/clips/{clipId}/media?source=first|original` (first segment when any exist; otherwise original). The media route resolves the file from the DB only, rejects paths outside `VANTAGEIQ_VIDEO_ROOT` / `c:/vantageiq_videos`, and streams `video/mp4` (Range supported). If neither source is available, the modal shows an unavailable notice.
 - **S6 thumbnails** — on successful process-clip, a JPEG poster is written to `{videoRoot}/thumbnails/{clipId}.jpg` from the first segment (else original). S6 cards load `GET /api/v1/clips/{clipId}/thumbnail` into `[data-testid="clip-thumbnail"]` inside `.result-thumbnail`; `onerror` removes the img so the emoji/gradient placeholder remains. Offline seed keeps the placeholder (no binary images).
 - Name changes reuse create-time normalization/validation and return `409 conflict` when the normalized name collides with another player. The PATCH response returns the updated player name, which S5 uses to redirect back to `S2-player-dashboard.html?player=<name>`.

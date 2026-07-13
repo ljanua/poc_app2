@@ -56,4 +56,13 @@ describe('GET /v1/players coach scoping', () => {
     // If that guard is missing, the predicate would always be applied and admins would be locked out of the global roster.
     expect(fnBody).toMatch(/if \(actor && actor\.role === 'Coach' && actor\.status === 'active'\)/);
   });
+
+  it('enriches list players with anySkillRatings (Feature 038)', () => {
+    expect(source).toContain('async function listAnySkillRatingsByPlayerIds(');
+    expect(source).toContain('anySkillRatings');
+    const fnStart = source.indexOf('async function listPlayers(');
+    const nextFn = source.indexOf('\nasync function ', fnStart + 1);
+    const fnBody = source.slice(fnStart, nextFn > fnStart ? nextFn : fnStart + 5000);
+    expect(fnBody).toContain('listAnySkillRatingsByPlayerIds');
+  });
 });

@@ -107,8 +107,58 @@ function toPlayerPayload(row) {
     birthMonth,
     birthYear,
     age: computeAge(birthMonth, birthYear),
-    updated: 'Updated just now'
+    updated: 'Updated just now',
+    anySkillRatings: Array.isArray(row.anySkillRatings) ? row.anySkillRatings : undefined
   };
+}
+
+// Feature 038: batch Any-position skill ratings (+ abbreviations) for roster cards.
+async function listAnySkillRatingsByPlayerIds(playerIds) {
+  const ids = (playerIds || []).map((id) => String(id)).filter(Boolean);
+  const byPlayer = new Map();
+  ids.forEach((id) => { byPlayer.set(id, []); });
+  if (!ids.length) {
+    return byPlayer;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        pl.id AS "playerId",
+        s.id AS "skillId",
+        s.name AS "skillName",
+        COALESCE(
+          NULLIF(BTRIM(s.abbreviation), ''),
+          UPPER(LEFT(REGEXP_REPLACE(s.name, '[^A-Za-z0-9]', '', 'g'), 3))
+        ) AS "abbreviation",
+        psr.rating AS "rating"
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN positions any_pos
+        ON any_pos.sport_id = t.sport_id AND LOWER(any_pos.name) = 'any position'
+      JOIN position_skills ps ON ps.position_id = any_pos.id
+      JOIN skills s ON s.id = ps.skill_id
+      LEFT JOIN player_skill_ratings psr
+        ON psr.player_id = pl.id AND psr.skill_id = s.id
+      WHERE pl.id = ANY($1::text[])
+      ORDER BY pl.id ASC, s.name ASC
+    `,
+    [ids]
+  );
+
+  result.rows.forEach((row) => {
+    const key = String(row.playerId);
+    const list = byPlayer.get(key) || [];
+    list.push({
+      skillId: row.skillId,
+      skillName: row.skillName,
+      abbreviation: String(row.abbreviation || '').toUpperCase().slice(0, 3),
+      rating: row.rating === null || row.rating === undefined ? null : Number(row.rating)
+    });
+    byPlayer.set(key, list);
+  });
+  return byPlayer;
 }
 
 // Derives birth year from a team age-group label (e.g. U17, 18+) by stripping
@@ -1600,7 +1650,11 @@ async function listPlayers(teamName, query, actor) {
     values
   );
 
-  return result.rows.map(toPlayerPayload);
+  const players = result.rows.map(toPlayerPayload);
+  const anyByPlayer = await listAnySkillRatingsByPlayerIds(players.map((player) => player.id));
+  return players.map((player) => Object.assign({}, player, {
+    anySkillRatings: anyByPlayer.get(String(player.id)) || []
+  }));
 }
 
 // Resolves any active actor (Coach or SystemAdmin) by email. Returns null when

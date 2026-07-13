@@ -345,17 +345,81 @@ header {
 
 .player-card {
   display: flex;
-  gap: 1rem;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-start;
   padding: 1.1rem 1.25rem;
-  padding-bottom: 1.6rem;
+  padding-top: 1.85rem;
   overflow: hidden;
+  cursor: pointer;
+}
+
+.player-card:focus-visible {
+  outline: 2px solid #c6ff3a;
+  outline-offset: 2px;
+}
+
+.player-card-actions {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.65rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-card-trend {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.player-card-trend .trend-arrow {
+  display: inline-block;
+  font-weight: 700;
+  transform-origin: center;
+}
+
+.player-card-trend.trend-improving {
+  color: var(--up);
+  background: var(--up-bg);
+  border-color: rgba(74, 222, 128, 0.3);
+}
+
+.player-card-trend.trend-improving .trend-arrow {
+  transform: rotate(-45deg);
+}
+
+.player-card-trend.trend-declining {
+  color: #eab308;
+  background: rgba(234, 179, 8, 0.14);
+  border-color: rgba(234, 179, 8, 0.35);
+}
+
+.player-card-trend.trend-declining .trend-arrow {
+  transform: rotate(45deg);
+}
+
+.player-card-trend.trend-plateau {
+  color: #9ca3af;
+  background: rgba(156, 163, 175, 0.12);
+  border-color: rgba(156, 163, 175, 0.35);
+}
+
+.player-card-trend.trend-plateau .trend-arrow {
+  transform: none;
 }
 
 .player-card-video-link {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.55rem;
+  position: static;
   z-index: 1;
   display: inline-flex;
   align-items: center;
@@ -375,6 +439,46 @@ header {
   transform: scale(1.08);
   border-color: var(--border-strong);
   background: rgba(10, 15, 30, 0.8);
+}
+
+.player-card-skills {
+  flex: 1 1 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0.15rem 0 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.player-card-skill-abbrs,
+.player-card-skill-ratings {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.15rem 0 0;
+  list-style: none;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+
+.player-card-skill-abbrs {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.player-card-skill-ratings {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.player-card-skill-abbrs li,
+.player-card-skill-ratings li {
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-card::before {

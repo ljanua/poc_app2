@@ -171,7 +171,7 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(videoLink).toBeVisible();
     await expect(videoLink).toHaveAttribute('href', /S6-assessment-list\.html\?.*playerId=10/);
     await expect(videoLink).toHaveAttribute('href', /playerName=Lionel%20Messi|playerName=Lionel\+Messi/);
-    await expect(messiCard.locator('.view-btn')).toHaveAttribute('href', /S2-player-dashboard\.html\?player=Lionel%20Messi/);
+    await expect(messiCard.locator('.view-btn')).toHaveCount(0);
 
     await videoLink.click();
     await expect(page).toHaveURL(/S6-assessment-list\.html/);
@@ -197,7 +197,28 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     const card = page.locator('.player-card[data-player-id="991"]');
     await expect(card).toBeVisible();
     await expect(card.getByTestId('player-card-video-link')).toHaveCount(0);
-    await expect(card.locator('.view-btn')).toBeVisible();
+    await expect(card.locator('.view-btn')).toHaveCount(0);
+  });
+
+  test('card click opens S2 dashboard and omits Updated label', async ({ page }) => {
+    const messiCard = page.locator('.player-card[data-player-id="10"]');
+    await expect(messiCard).toBeVisible();
+    await expect(messiCard).not.toContainText(/Updated/i);
+    await messiCard.locator('.player-name').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html\?.*player=Lionel(%20|\+)Messi/);
+  });
+
+  test('shows Any-position skill abbreviations and ratings on the card', async ({ page }) => {
+    const messiCard = page.locator('.player-card[data-player-id="10"]');
+    await expect(messiCard.getByTestId('player-card-skills')).toBeVisible();
+    await expect(messiCard.getByTestId('player-card-skill-abbr')).toHaveCount(5);
+    for (const abbr of ['AWR', 'BCN', 'FIT', 'PAS', 'SPD']) {
+      await expect(messiCard.getByTestId('player-card-skill-abbr').filter({ hasText: abbr })).toHaveCount(1);
+    }
+    await expect(messiCard.getByTestId('player-card-skill-rating')).toHaveCount(5);
+    await expect(messiCard.getByTestId('player-card-skill-rating').filter({ hasText: '84%' })).toHaveCount(1);
+    await expect(messiCard.getByTestId('player-card-skill-rating').filter({ hasText: '—' })).toHaveCount(1);
+    await expect(messiCard.getByTestId('player-card-trend')).toHaveAttribute('aria-label', 'Improving');
   });
 });
 

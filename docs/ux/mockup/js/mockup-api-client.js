@@ -332,7 +332,13 @@
         { positionId: 'pos_st', skillId: 's_heading', skillName: 'Heading', status: 'active' },
         { positionId: 'pos_st', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' }
       ],
-      playerSkillRatings: []
+      playerSkillRatings: [
+        { playerId: 10, skillId: 's_ball_control', rating: 88 },
+        { playerId: 10, skillId: 's_passing', rating: 84 },
+        { playerId: 10, skillId: 's_game_awareness', rating: 90 },
+        { playerId: 10, skillId: 's_fitness', rating: null },
+        { playerId: 10, skillId: 's_speed', rating: 76 }
+      ]
     };
   }
 
@@ -2328,7 +2334,28 @@
           .map((player) => {
             const avatars = store.playerAvatars || {};
             const storedAvatar = avatars[player.id] || avatars[String(player.id)] || null;
-            return Object.assign({}, player, { avatarUrl: storedAvatar });
+            const anySkillRatings = listSkillsForPlayerOffline(store, player)
+              .filter(function (row) {
+                return String(row.positionName || '').toLowerCase() === 'any position';
+              })
+              .map(function (row) {
+                const skill = (store.skills || []).find(function (entry) {
+                  return String(entry.id) === String(row.skillId);
+                });
+                const abbreviation = (skill && skill.abbreviation)
+                  || suggestSkillAbbreviation(row.skillName)
+                  || '';
+                return {
+                  skillId: row.skillId,
+                  skillName: row.skillName,
+                  abbreviation: String(abbreviation).toUpperCase().slice(0, 3),
+                  rating: row.rating
+                };
+              });
+            return Object.assign({}, player, {
+              avatarUrl: storedAvatar,
+              anySkillRatings: anySkillRatings
+            });
           })
       );
     },
