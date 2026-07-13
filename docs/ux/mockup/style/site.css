@@ -535,11 +535,31 @@ header {
 .player-meta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   margin-top: 0.55rem;
   font-size: 0.75rem;
   color: var(--text-dim);
+  width: 100%;
+}
+
+.player-meta .team-chip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-card-overall-rating {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #facc15;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Trend + status pills */

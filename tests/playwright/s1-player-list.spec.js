@@ -219,6 +219,29 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(messiCard.getByTestId('player-card-skill-rating').filter({ hasText: '84%' })).toHaveCount(1);
     await expect(messiCard.getByTestId('player-card-skill-rating').filter({ hasText: '—' })).toHaveCount(1);
     await expect(messiCard.getByTestId('player-card-trend')).toHaveAttribute('aria-label', 'Improving');
+    // Feature 039: (88+84+90+76)/4 = 84.5 → 85%; no visible Overall label.
+    await expect(messiCard.getByTestId('player-card-overall-rating')).toHaveText('85%');
+    await expect(messiCard.locator('.player-meta')).not.toContainText(/Overall/i);
+  });
+
+  test('shows dash overall rating when no Any skills are rated above zero', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 992,
+        name: 'Unrated Uma',
+        normalizedName: 'unrated uma',
+        teamName: 'U19 Prime',
+        position: 'Position not set',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    const card = page.locator('.player-card[data-player-id="992"]');
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId('player-card-overall-rating')).toHaveText('—');
   });
 });
 

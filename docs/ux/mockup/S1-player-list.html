@@ -216,6 +216,31 @@
         return String(Math.round(num)) + '%';
       }
 
+      // Feature 039: average of Any-position ratings that are numeric and > 0.
+      function computeOverallAnyRating(anySkillRatings) {
+        const rows = Array.isArray(anySkillRatings) ? anySkillRatings : [];
+        const values = [];
+        rows.forEach(function (row) {
+          const num = Number(row && row.rating);
+          if (Number.isFinite(num) && num > 0) {
+            values.push(num);
+          }
+        });
+        if (!values.length) {
+          return null;
+        }
+        const sum = values.reduce(function (acc, value) { return acc + value; }, 0);
+        return Math.round(sum / values.length);
+      }
+
+      function formatOverallAnyRating(anySkillRatings) {
+        const overall = computeOverallAnyRating(anySkillRatings);
+        if (overall === null) {
+          return '—';
+        }
+        return String(overall) + '%';
+      }
+
       function buildAnySkillsMarkup(player) {
         const rows = Array.isArray(player.anySkillRatings) ? player.anySkillRatings : [];
         if (!rows.length) {
@@ -420,6 +445,10 @@
             '<div class="player-position">' + escapeHtml(player.position) + '</div>' +
             '<div class="player-meta">' +
             '<span class="team-chip">' + escapeHtml(player.teamName) + '</span>' +
+            '<span class="player-card-overall-rating" data-testid="player-card-overall-rating" ' +
+            'aria-label="Overall rating" title="Overall rating">' +
+            escapeHtml(formatOverallAnyRating(player.anySkillRatings)) +
+            '</span>' +
             '</div>' +
             '</div>' +
             buildAnySkillsMarkup(player);

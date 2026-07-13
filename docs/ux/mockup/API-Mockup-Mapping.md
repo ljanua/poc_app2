@@ -121,6 +121,19 @@ Source plan: `docs/plans/2026-07-13-007-feat-s1-player-card-redesign-plan.md`.
 - `tests/playwright/s1-player-list.spec.js`
 - `apps/api/tests/integration/players/players-list-scoping.spec.ts` (listPlayers body still scopes; enrichment helper present in serve-mockup)
 
+## S1 overall Any-position rating (Feature 039)
+
+Source plan: `docs/plans/2026-07-13-008-feat-s1-overall-any-rating-plan.md`.
+
+### UI
+
+- On the team-chip row, far right: unlabeled bright yellow overall rating (`[data-testid="player-card-overall-rating"]`).
+- Value = `Math.round` average of `anySkillRatings` entries with numeric rating **> 0**; otherwise `—`. `aria-label`/`title` may say “Overall rating” without visible label text.
+
+### Test traceability
+
+- `tests/playwright/s1-player-list.spec.js`
+
 ---
 
 ## Prior S1 notes (unchanged)
