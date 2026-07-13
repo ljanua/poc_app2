@@ -348,7 +348,33 @@ header {
   gap: 1rem;
   align-items: center;
   padding: 1.1rem 1.25rem;
+  padding-bottom: 1.6rem;
   overflow: hidden;
+}
+
+.player-card-video-link {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.55rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-md);
+  text-decoration: none;
+  font-size: 0.95rem;
+  line-height: 1;
+  background: rgba(10, 15, 30, 0.55);
+  border: 1px solid var(--border-soft);
+  transition: transform var(--t-base), border-color var(--t-base), background var(--t-base);
+}
+
+.player-card-video-link:hover {
+  transform: scale(1.08);
+  border-color: var(--border-strong);
+  background: rgba(10, 15, 30, 0.8);
 }
 
 .player-card::before {

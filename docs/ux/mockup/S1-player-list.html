@@ -277,6 +277,36 @@
         });
       }
 
+      function getPlayerIdsWithClips() {
+        const filters = {};
+        if (state.selectedTeam && state.selectedTeam !== 'all') {
+          filters.teamName = state.selectedTeam;
+        }
+        const clips = MockupApi.listClips(filters) || [];
+        const ids = new Set();
+        clips.forEach(function (clip) {
+          if (clip && clip.playerId !== undefined && clip.playerId !== null) {
+            ids.add(String(clip.playerId));
+          }
+        });
+        return ids;
+      }
+
+      function buildS6Href(player) {
+        const params = new URLSearchParams();
+        if (player.id !== undefined && player.id !== null) {
+          params.set('playerId', String(player.id));
+        }
+        if (player.name) {
+          params.set('playerName', String(player.name));
+        }
+        if (player.teamName) {
+          params.set('teamName', String(player.teamName));
+        }
+        const query = params.toString();
+        return './S6-assessment-list.html' + (query ? '?' + query : '');
+      }
+
       function updateListStatus(visiblePlayers) {
         // When a specific team is selected, the team-scoped copy takes precedence
         // regardless of the Only My Players toggle (the team filter narrows the
@@ -294,6 +324,7 @@
 
       function renderPlayers() {
         const visiblePlayers = getVisiblePlayers();
+        const playerIdsWithClips = getPlayerIdsWithClips();
         playerGrid.innerHTML = '';
 
         visiblePlayers.forEach(function (player) {
@@ -308,6 +339,12 @@
           const card = document.createElement('div');
           card.className = 'player-card';
           card.dataset.playerId = String(player.id);
+          const hasClips = playerIdsWithClips.has(String(player.id));
+          const videoLinkHtml = hasClips
+            ? '<a class="player-card-video-link" data-testid="player-card-video-link" href="' +
+              buildS6Href(player) +
+              '" aria-label="View video assessments for ' + player.name + '">📹</a>'
+            : '';
           card.innerHTML =
             '__AVATAR_WRAPPER__' +
             '<div class="player-info">' +
@@ -319,7 +356,8 @@
             '<span class="trend-badge ' + trend.className + '">' + trend.icon + ' ' + trend.text + '</span>' +
             '</div>' +
             '</div>' +
-            '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(player.name) + '">View</a>';
+            '<a class="view-btn" href="./S2-player-dashboard.html?player=' + encodeURIComponent(player.name) + '">View</a>' +
+            videoLinkHtml;
           card.innerHTML = card.innerHTML.replace('__AVATAR_WRAPPER__', imgWrap.outerHTML);
           playerGrid.appendChild(card);
         });

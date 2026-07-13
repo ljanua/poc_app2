@@ -163,6 +163,42 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(messiCard.locator('.player-image')).not.toContainText('⚽');
     await expect(messiCard.locator('.player-image')).toHaveClass(/has-avatar/);
   });
+
+  test('shows video icon only for players with clips and deep-links to S6', async ({ page }) => {
+    const messiCard = page.locator('.player-card[data-player-id="10"]');
+    await expect(messiCard).toBeVisible();
+    const videoLink = messiCard.getByTestId('player-card-video-link');
+    await expect(videoLink).toBeVisible();
+    await expect(videoLink).toHaveAttribute('href', /S6-assessment-list\.html\?.*playerId=10/);
+    await expect(videoLink).toHaveAttribute('href', /playerName=Lionel%20Messi|playerName=Lionel\+Messi/);
+    await expect(messiCard.locator('.view-btn')).toHaveAttribute('href', /S2-player-dashboard\.html\?player=Lionel%20Messi/);
+
+    await videoLink.click();
+    await expect(page).toHaveURL(/S6-assessment-list\.html/);
+    await expect(page.getByTestId('preselected-player-filter')).toBeChecked();
+    await expect(page.getByText('Lionel Messi').first()).toBeVisible();
+  });
+
+  test('hides video icon for players with no clips', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 991,
+        name: 'No Clip Nova',
+        normalizedName: 'no clip nova',
+        teamName: 'U19 Prime',
+        position: 'Position not set',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    const card = page.locator('.player-card[data-player-id="991"]');
+    await expect(card).toBeVisible();
+    await expect(card.getByTestId('player-card-video-link')).toHaveCount(0);
+    await expect(card.locator('.view-btn')).toBeVisible();
+  });
 });
 
 // Regression: avatar uploaded via the live backend PATCH must surface on the
