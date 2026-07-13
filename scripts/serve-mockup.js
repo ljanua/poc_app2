@@ -9,6 +9,7 @@ const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJ
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 const { generateShareToken, hashShareToken } = require('./share-token');
+const { suggestSkillAbbreviation, normalizeSkillAbbreviation, validateSkillAbbreviation } = require('./skills/suggest-abbreviation');
 const crypto = require('node:crypto');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
@@ -686,6 +687,7 @@ function toSkillPayload(row) {
   return {
     id: row.id,
     name: row.name,
+    abbreviation: row.abbreviation || suggestSkillAbbreviation(row.name),
     status: row.status || 'active',
     assignedPositionCount: row.assignedPositionCount === undefined || row.assignedPositionCount === null ? null : Number(row.assignedPositionCount)
   };
@@ -802,6 +804,7 @@ async function listSkillsWithCounts(statusFilter, client) {
       SELECT
         s.id,
         s.name,
+        s.abbreviation,
         s.status,
         (SELECT COUNT(*) FROM position_skills ps WHERE ps.skill_id = s.id) AS "assignedPositionCount"
       FROM skills s
@@ -1459,6 +1462,39 @@ async function ensureDatabase() {
     CREATE INDEX IF NOT EXISTS idx_player_data_audits_player_created
       ON player_data_audits(player_id, created_at DESC);
   `);
+
+  // Feature 037: skill abbreviation (additive; skills table comes from migrations/deploy).
+  try {
+    await pool.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS abbreviation TEXT;`);
+    const missingAbbr = await pool.query(
+      `SELECT id, name FROM skills WHERE abbreviation IS NULL OR BTRIM(abbreviation) = ''`
+    );
+    for (const row of missingAbbr.rows) {
+      const abbr = suggestSkillAbbreviation(row.name);
+      if (!abbr) {
+        continue;
+      }
+      await pool.query(`UPDATE skills SET abbreviation = $1 WHERE id = $2`, [abbr, row.id]);
+    }
+    await pool.query(`
+      UPDATE skills
+      SET abbreviation = UPPER(LEFT(REGEXP_REPLACE(name, '[^A-Za-z0-9]', '', 'g'), 3))
+      WHERE abbreviation IS NULL OR BTRIM(abbreviation) = ''
+    `);
+    try {
+      await pool.query(`ALTER TABLE skills ALTER COLUMN abbreviation SET NOT NULL`);
+    } catch (_err) {
+      // Ignore if table empty or already constrained.
+    }
+    await pool.query(`ALTER TABLE skills DROP CONSTRAINT IF EXISTS skills_abbreviation_len_check`);
+    await pool.query(`
+      ALTER TABLE skills
+        ADD CONSTRAINT skills_abbreviation_len_check
+        CHECK (char_length(abbreviation) >= 1 AND char_length(abbreviation) <= 3)
+    `);
+  } catch (error) {
+    console.warn('skills abbreviation ensure skipped:', error.message || error);
+  }
 
   if (seedDatabase) {
     await pool.query(`
@@ -4296,6 +4332,12 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
     const trimmedName = String(payload.name).trim();
+    const abbreviation = normalizeSkillAbbreviation(payload.abbreviation, trimmedName);
+    const abbrError = validateSkillAbbreviation(abbreviation);
+    if (abbrError) {
+      sendJson(res, 400, appError(400, 'validation_error', abbrError));
+      return;
+    }
     const existing = await findSkillByName(trimmedName);
     if (existing) {
       sendJson(res, 409, appError(409, 'conflict', 'A skill with this name already exists.'));
@@ -4303,8 +4345,8 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
     const skillId = `s_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(
-      `INSERT INTO skills (id, name, status) VALUES ($1, $2, 'active')`,
-      [skillId, trimmedName]
+      `INSERT INTO skills (id, name, abbreviation, status) VALUES ($1, $2, $3, 'active')`,
+      [skillId, trimmedName, abbreviation]
     );
     const row = (await listSkillsWithCounts('all')).find((r) => r.id === skillId);
     sendJson(res, 201, { data: row });
@@ -4325,6 +4367,12 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
     const trimmedName = String(payload.name).trim();
+    const abbreviation = normalizeSkillAbbreviation(payload.abbreviation, trimmedName);
+    const abbrError = validateSkillAbbreviation(abbreviation);
+    if (abbrError) {
+      sendJson(res, 400, appError(400, 'validation_error', abbrError));
+      return;
+    }
     const existing = await pool.query(`SELECT id FROM skills WHERE id = $1`, [skillId]);
     if (!existing.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'Skill not found.'));
@@ -4335,7 +4383,10 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 409, appError(409, 'conflict', 'A skill with this name already exists.'));
       return;
     }
-    await pool.query(`UPDATE skills SET name = $1, updated_at = NOW() WHERE id = $2`, [trimmedName, skillId]);
+    await pool.query(
+      `UPDATE skills SET name = $1, abbreviation = $2, updated_at = NOW() WHERE id = $3`,
+      [trimmedName, abbreviation, skillId]
+    );
     const row = (await listSkillsWithCounts('all')).find((r) => r.id === skillId);
     sendJson(res, 200, { data: row });
     return;

@@ -175,7 +175,19 @@ describe('mockup-api-client.js — S8 skills / positions / sports', () => {
     expect(s8Html).toContain('data-testid="sport-name-input"');
     expect(s8Html).toContain('data-testid="position-name-input"');
     expect(s8Html).toContain('data-testid="skill-name-input"');
+    expect(s8Html).toContain('data-testid="skill-abbreviation-input"');
+    expect(s8Html).toContain('data-testid="rename-skill-abbreviation-input"');
     expect(s8Html).toContain('data-testid="assign-skills-submit"');
+  });
+
+  it('exposes suggestSkillAbbreviation and offline skill abbreviations (Feature 037)', () => {
+    expect(clientSource).toContain('suggestSkillAbbreviation(name)');
+    expect(clientSource).toContain("abbreviation: 'BCN'");
+    expect(clientSource).toContain("abbreviation: 'PAS'");
+    expect(clientSource).toContain("abbreviation: 'SPD'");
+    expect(clientSource).toMatch(/abbreviation:\s*payload\s*&&\s*payload\.abbreviation/);
+    expect(s8Html).toContain('Abbreviation');
+    expect(s8Html).toContain('skillAbbreviationInput');
   });
 
   it('S8-skills.html enforces the SystemAdmin direct-navigation guard', () => {

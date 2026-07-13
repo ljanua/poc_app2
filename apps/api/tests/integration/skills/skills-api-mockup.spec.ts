@@ -70,6 +70,14 @@ describe('skills/positions/sports handlers in serve-mockup.js', () => {
     expect(source).toContain("validateName(payload.name, 2, 60, 'Skill')");
   });
 
+  it('persists and validates skill abbreviation on POST/PATCH (Feature 037)', () => {
+    expect(source).toContain('normalizeSkillAbbreviation');
+    expect(source).toContain('validateSkillAbbreviation');
+    expect(source).toContain('INSERT INTO skills (id, name, abbreviation, status)');
+    expect(source).toContain('UPDATE skills SET name = $1, abbreviation = $2');
+    expect(source).toContain('abbreviation: row.abbreviation');
+  });
+
   it('rejects non-active sport when creating a position', () => {
     expect(source).toContain('Cannot add a position under an inactive sport.');
   });

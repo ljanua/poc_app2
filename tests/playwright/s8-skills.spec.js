@@ -43,18 +43,22 @@ async function createPositionViaApi(page, name, sportId) {
   return result;
 }
 
-async function createSkillViaApi(page, name) {
-  const result = await page.evaluate(async ({ name }) => {
+async function createSkillViaApi(page, name, abbreviation) {
+  const result = await page.evaluate(async ({ name, abbreviation }) => {
+    const body = {
+      name,
+      actorEmail: 'maria@vantageiq.club'
+    };
+    if (abbreviation) {
+      body.abbreviation = abbreviation;
+    }
     const response = await fetch('/api/v1/skills', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        actorEmail: 'maria@vantageiq.club'
-      })
+      body: JSON.stringify(body)
     });
     return { status: response.status, body: await response.json() };
-  }, { name });
+  }, { name, abbreviation: abbreviation || null });
   return result;
 }
 
@@ -128,14 +132,44 @@ test.describe('S8 Skills page', () => {
     const first = await createSkillViaApi(page, name);
     expect(first.status).toBe(201);
     expect(first.body.data.name).toBe(name);
+    expect(first.body.data.abbreviation).toBeTruthy();
+    expect(String(first.body.data.abbreviation).length).toBeLessThanOrEqual(3);
 
     await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
     await expect(page.locator('#skillsTableBody tr', { hasText: name })).toHaveCount(1);
+    await expect(
+      page.locator('#skillsTableBody tr', { hasText: name }).getByTestId('skill-abbreviation-cell')
+    ).toHaveText(first.body.data.abbreviation);
 
     // Second POST with the same name returns 409 conflict
     const second = await createSkillViaApi(page, name);
     expect(second.status).toBe(409);
     expect(second.body.code).toBe('conflict');
+  });
+
+  test('Add Skill UI suggests abbreviation and rename can override it', async ({ page }) => {
+    const suffix = Date.now().toString(36);
+    const name = 'Long shots QA ' + suffix;
+    await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await page.getByTestId('add-skill').click();
+    await page.getByTestId('skill-name-input').fill(name);
+    await expect(page.getByTestId('skill-abbreviation-input')).toHaveValue(/^[A-Z0-9]{1,3}$/);
+    const suggested = await page.getByTestId('skill-abbreviation-input').inputValue();
+    await page.getByTestId('skill-abbreviation-input').fill('LSQ');
+    await page.getByTestId('create-skill-submit').click();
+    await expect(page.locator('#skillsTableBody tr', { hasText: name })).toHaveCount(1);
+    await expect(
+      page.locator('#skillsTableBody tr', { hasText: name }).getByTestId('skill-abbreviation-cell')
+    ).toHaveText('LSQ');
+    expect(suggested).not.toBe('');
+
+    const row = page.locator('#skillsTableBody tr', { hasText: name });
+    await row.getByRole('button', { name: 'Rename' }).click();
+    await page.getByTestId('rename-skill-abbreviation-input').fill('ZZ1');
+    await page.getByTestId('rename-skill-submit').click();
+    await expect(row.getByTestId('skill-abbreviation-cell')).toHaveText('ZZ1');
   });
 
   test('Assign Skills flow adds two new skills to a position', async ({ page }) => {

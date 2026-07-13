@@ -178,6 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_positions_status_name ON positions(status, name);
 CREATE TABLE IF NOT EXISTS skills (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
+  abbreviation TEXT NOT NULL CHECK (char_length(abbreviation) >= 1 AND char_length(abbreviation) <= 3),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

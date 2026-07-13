@@ -22,6 +22,72 @@
       .join(' ');
   }
 
+  const SKILL_ABBR_OVERRIDES = {
+    'ball control': 'BCN',
+    fitness: 'FIT',
+    'game awareness': 'AWR',
+    passing: 'PAS',
+    speed: 'SPD'
+  };
+
+  function suggestSkillAbbreviation(name) {
+    const key = normalizeComparable(name);
+    if (SKILL_ABBR_OVERRIDES[key]) {
+      return SKILL_ABBR_OVERRIDES[key];
+    }
+    const tokens = String(name || '')
+      .trim()
+      .split(/[\s/\u2013\u2014\-]+/)
+      .map(function (part) { return part.replace(/[^A-Za-z0-9]/g, ''); })
+      .filter(Boolean);
+    if (!tokens.length) {
+      return '';
+    }
+    function consonantsAfterFirst(token) {
+      let out = '';
+      for (let i = 1; i < token.length; i++) {
+        const ch = token.charAt(i);
+        if (/[A-Za-z]/.test(ch) && !/[AEIOUaeiou]/.test(ch)) {
+          out += ch.toUpperCase();
+        }
+      }
+      return out;
+    }
+    let abbr = '';
+    if (tokens.length >= 2) {
+      for (let i = 0; i < Math.min(3, tokens.length); i++) {
+        abbr += tokens[i].charAt(0).toUpperCase();
+      }
+      const pad = consonantsAfterFirst(tokens[tokens.length - 1]);
+      let pi = 0;
+      while (abbr.length < 3 && pi < pad.length) {
+        abbr += pad.charAt(pi);
+        pi += 1;
+      }
+    } else {
+      const word = tokens[0];
+      abbr = word.charAt(0).toUpperCase();
+      const pad = consonantsAfterFirst(word);
+      let pi = 0;
+      while (abbr.length < 3 && pi < pad.length) {
+        abbr += pad.charAt(pi);
+        pi += 1;
+      }
+      if (abbr.length < 3) {
+        abbr = word.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+      }
+    }
+    return String(abbr || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+  }
+
+  function normalizeSkillAbbreviation(value, fallbackName) {
+    let abbr = String(value == null ? '' : value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 3);
+    if (!abbr && fallbackName) {
+      abbr = suggestSkillAbbreviation(fallbackName);
+    }
+    return abbr;
+  }
+
   // Derives birth year from a team age-group label. Mirrors serve-mockup.js.
   function birthYearFromAgeGroup(ageGroup, now) {
     const digits = String(ageGroup == null ? '' : ageGroup).replace(/\D/g, '');
@@ -155,37 +221,37 @@
         { id: 'pos_st', name: 'ST – Striker', sportId: 'sport_soccer', status: 'active', skillCount: 5 }
       ],
       skills: [
-        { id: 's_acceleration', name: 'Acceleration', status: 'active', assignedPositionCount: 1 },
-        { id: 's_aerial_control', name: 'Aerial control', status: 'active', assignedPositionCount: 1 },
-        { id: 's_agility', name: 'Agility', status: 'active', assignedPositionCount: 1 },
-        { id: 's_ball_control', name: 'Ball Control', status: 'active', assignedPositionCount: 5 },
-        { id: 's_composure', name: 'Composure', status: 'active', assignedPositionCount: 1 },
-        { id: 's_creativity', name: 'Creativity', status: 'active', assignedPositionCount: 3 },
-        { id: 's_crossing', name: 'Crossing', status: 'active', assignedPositionCount: 4 },
-        { id: 's_defensive_awareness', name: 'Defensive awareness', status: 'active', assignedPositionCount: 1 },
-        { id: 's_defensive_contribution', name: 'Defensive contribution', status: 'active', assignedPositionCount: 1 },
-        { id: 's_dribbling', name: 'Dribbling', status: 'active', assignedPositionCount: 5 },
-        { id: 's_finishing', name: 'Finishing', status: 'active', assignedPositionCount: 4 },
-        { id: 's_fitness', name: 'Fitness', status: 'active', assignedPositionCount: 1 },
-        { id: 's_game_awareness', name: 'Game Awareness', status: 'active', assignedPositionCount: 1 },
-        { id: 's_handling', name: 'Handling', status: 'active', assignedPositionCount: 1 },
-        { id: 's_heading', name: 'Heading', status: 'active', assignedPositionCount: 2 },
-        { id: 's_high_stamina', name: 'High stamina', status: 'active', assignedPositionCount: 1 },
-        { id: 's_interceptions', name: 'Interceptions', status: 'active', assignedPositionCount: 2 },
-        { id: 's_link_up_play', name: 'Link-up play', status: 'active', assignedPositionCount: 1 },
-        { id: 's_long_shots', name: 'Long shots', status: 'active', assignedPositionCount: 1 },
-        { id: 's_marking', name: 'Marking', status: 'active', assignedPositionCount: 1 },
-        { id: 's_off_ball_movement', name: 'Off-ball movement', status: 'active', assignedPositionCount: 1 },
-        { id: 's_pace', name: 'Pace', status: 'active', assignedPositionCount: 4 },
-        { id: 's_passing', name: 'Passing', status: 'active', assignedPositionCount: 5 },
-        { id: 's_positioning', name: 'Positioning', status: 'active', assignedPositionCount: 3 },
-        { id: 's_reflexes', name: 'Reflexes', status: 'active', assignedPositionCount: 1 },
-        { id: 's_shot_stopping', name: 'Shot stopping', status: 'active', assignedPositionCount: 1 },
-        { id: 's_speed', name: 'Speed', status: 'active', assignedPositionCount: 1 },
-        { id: 's_stamina', name: 'Stamina', status: 'active', assignedPositionCount: 2 },
-        { id: 's_strength', name: 'Strength', status: 'active', assignedPositionCount: 2 },
-        { id: 's_tackling', name: 'Tackling', status: 'active', assignedPositionCount: 3 },
-        { id: 's_vision', name: 'Vision', status: 'active', assignedPositionCount: 4 }
+        { id: 's_acceleration', name: 'Acceleration', abbreviation: 'ACC', status: 'active', assignedPositionCount: 1 },
+        { id: 's_aerial_control', name: 'Aerial control', abbreviation: 'ACN', status: 'active', assignedPositionCount: 1 },
+        { id: 's_agility', name: 'Agility', abbreviation: 'AGL', status: 'active', assignedPositionCount: 1 },
+        { id: 's_ball_control', name: 'Ball Control', abbreviation: 'BCN', status: 'active', assignedPositionCount: 5 },
+        { id: 's_composure', name: 'Composure', abbreviation: 'CMP', status: 'active', assignedPositionCount: 1 },
+        { id: 's_creativity', name: 'Creativity', abbreviation: 'CRT', status: 'active', assignedPositionCount: 3 },
+        { id: 's_crossing', name: 'Crossing', abbreviation: 'CRS', status: 'active', assignedPositionCount: 4 },
+        { id: 's_defensive_awareness', name: 'Defensive awareness', abbreviation: 'DAW', status: 'active', assignedPositionCount: 1 },
+        { id: 's_defensive_contribution', name: 'Defensive contribution', abbreviation: 'DCN', status: 'active', assignedPositionCount: 1 },
+        { id: 's_dribbling', name: 'Dribbling', abbreviation: 'DRB', status: 'active', assignedPositionCount: 5 },
+        { id: 's_finishing', name: 'Finishing', abbreviation: 'FNS', status: 'active', assignedPositionCount: 4 },
+        { id: 's_fitness', name: 'Fitness', abbreviation: 'FIT', status: 'active', assignedPositionCount: 1 },
+        { id: 's_game_awareness', name: 'Game Awareness', abbreviation: 'AWR', status: 'active', assignedPositionCount: 1 },
+        { id: 's_handling', name: 'Handling', abbreviation: 'HND', status: 'active', assignedPositionCount: 1 },
+        { id: 's_heading', name: 'Heading', abbreviation: 'HDN', status: 'active', assignedPositionCount: 2 },
+        { id: 's_high_stamina', name: 'High stamina', abbreviation: 'HST', status: 'active', assignedPositionCount: 1 },
+        { id: 's_interceptions', name: 'Interceptions', abbreviation: 'INT', status: 'active', assignedPositionCount: 2 },
+        { id: 's_link_up_play', name: 'Link-up play', abbreviation: 'LUP', status: 'active', assignedPositionCount: 1 },
+        { id: 's_long_shots', name: 'Long shots', abbreviation: 'LSH', status: 'active', assignedPositionCount: 1 },
+        { id: 's_marking', name: 'Marking', abbreviation: 'MRK', status: 'active', assignedPositionCount: 1 },
+        { id: 's_off_ball_movement', name: 'Off-ball movement', abbreviation: 'OBM', status: 'active', assignedPositionCount: 1 },
+        { id: 's_pace', name: 'Pace', abbreviation: 'PAC', status: 'active', assignedPositionCount: 4 },
+        { id: 's_passing', name: 'Passing', abbreviation: 'PAS', status: 'active', assignedPositionCount: 5 },
+        { id: 's_positioning', name: 'Positioning', abbreviation: 'PST', status: 'active', assignedPositionCount: 3 },
+        { id: 's_reflexes', name: 'Reflexes', abbreviation: 'RFL', status: 'active', assignedPositionCount: 1 },
+        { id: 's_shot_stopping', name: 'Shot stopping', abbreviation: 'SST', status: 'active', assignedPositionCount: 1 },
+        { id: 's_speed', name: 'Speed', abbreviation: 'SPD', status: 'active', assignedPositionCount: 1 },
+        { id: 's_stamina', name: 'Stamina', abbreviation: 'STM', status: 'active', assignedPositionCount: 2 },
+        { id: 's_strength', name: 'Strength', abbreviation: 'STR', status: 'active', assignedPositionCount: 2 },
+        { id: 's_tackling', name: 'Tackling', abbreviation: 'TCK', status: 'active', assignedPositionCount: 3 },
+        { id: 's_vision', name: 'Vision', abbreviation: 'VSN', status: 'active', assignedPositionCount: 4 }
       ],
       positionSkills: [
         { positionId: 'pos_any', skillId: 's_ball_control', skillName: 'Ball Control', status: 'active' },
@@ -996,6 +1062,10 @@
       return clone(seed);
     },
 
+    suggestSkillAbbreviation(name) {
+      return suggestSkillAbbreviation(name);
+    },
+
     birthYearFromAgeGroup(ageGroup, now) {
       return birthYearFromAgeGroup(ageGroup, now);
     },
@@ -1551,6 +1621,7 @@
         const assignedPositionCount = (store.positionSkills || []).filter((entry) => entry.skillId === skill.id).length;
         return Object.assign({}, skill, {
           status: skill.status || 'active',
+          abbreviation: skill.abbreviation || suggestSkillAbbreviation(skill.name),
           assignedPositionCount: assignedPositionCount
         });
       };
@@ -1561,6 +1632,7 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/skills', {
           name: payload && payload.name,
+          abbreviation: payload && payload.abbreviation,
           actorRole,
           actorEmail
         });
@@ -1580,13 +1652,23 @@
       if (!name || name.length < 2 || name.length > 60) {
         return { status: 400, code: 'validation_error', message: 'Skill name must be 2-60 characters.' };
       }
+      const abbreviation = normalizeSkillAbbreviation(payload && payload.abbreviation, name);
+      if (!abbreviation || abbreviation.length < 1 || abbreviation.length > 3) {
+        return { status: 400, code: 'validation_error', message: 'Skill abbreviation must be 1-3 letters or digits.' };
+      }
       if (!Array.isArray(store.skills)) store.skills = [];
       if (store.skills.some((skill) => skill.name.toLowerCase() === name.toLowerCase())) {
         return { status: 409, code: 'conflict', message: 'A skill with this name already exists.' };
       }
 
       const nextId = 's_' + Date.now().toString(36);
-      const created = { id: nextId, name: name, status: 'active', assignedPositionCount: 0 };
+      const created = {
+        id: nextId,
+        name: name,
+        abbreviation: abbreviation,
+        status: 'active',
+        assignedPositionCount: 0
+      };
       store.skills.push(created);
       saveStore(store);
       return { status: 201, code: 'created', skill: clone(created) };
@@ -1596,6 +1678,7 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('PATCH', '/skills/' + encodeURIComponent(skillId), {
           name: payload && payload.name,
+          abbreviation: payload && payload.abbreviation,
           actorRole,
           actorEmail
         });
@@ -1619,11 +1702,16 @@
       if (!name || name.length < 2 || name.length > 60) {
         return { status: 400, code: 'validation_error', message: 'Skill name must be 2-60 characters.' };
       }
+      const abbreviation = normalizeSkillAbbreviation(payload && payload.abbreviation, name);
+      if (!abbreviation || abbreviation.length < 1 || abbreviation.length > 3) {
+        return { status: 400, code: 'validation_error', message: 'Skill abbreviation must be 1-3 letters or digits.' };
+      }
       if (store.skills.some((other) => other.id !== skillId && other.name.toLowerCase() === name.toLowerCase())) {
         return { status: 409, code: 'conflict', message: 'A skill with this name already exists.' };
       }
       const oldName = skill.name;
       skill.name = name;
+      skill.abbreviation = abbreviation;
       // Cascade the renamed label onto existing position_skills rows so the
       // position-Skills table keeps showing the latest skill label.
       if (Array.isArray(store.positionSkills)) {

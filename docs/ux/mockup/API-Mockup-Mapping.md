@@ -393,3 +393,28 @@ Source plan: `docs/plans/2026-07-13-005-feat-player-data-change-audit-plan.md` (
 - `apps/api/tests/integration/players/player-data-audits-api.spec.ts`
 - `apps/api/tests/integration/video-processing/sync-player-skill-ratings-from-clip.spec.ts`
 - `tests/playwright/player-data-audit.spec.js`
+
+## Skill abbreviations (Feature 037)
+
+Source plan: `docs/plans/2026-07-13-006-feat-skill-abbreviation-plan.md`.
+
+### Schema
+
+- Migration `apps/api/src/db/migrations/025_skill_abbreviation.sql` — `skills.abbreviation` (1–3 chars, NOT NULL after backfill). Duplicates allowed. Fixed backfill: Ball Control→BCN, Fitness→FIT, Game Awareness→AWR, Passing→PAS, Speed→SPD; algorithm for remaining catalog rows. Mirrored in `tables.sql` / `deploy.sql` / `ensureDatabase`.
+
+### API / writes
+
+- `GET/POST /v1/skills` and `PATCH /v1/skills/{id}` include `abbreviation` (required on write; coerced uppercase; suggest from name when omitted). Shared helper: `scripts/skills/suggest-abbreviation.js`.
+
+### UI
+
+- **S8:** Abbreviation column; Add Skill auto-suggests from name (dirty-flag preserves manual edits); Rename/Update editable abbreviation.
+- **S6:** Assessed card per-skill rows show abbreviation with `title` = full skill name (catalog lookup); unknown names keep full label.
+
+### Test traceability
+
+- `apps/api/tests/integration/db/skills-abbreviation-migration.spec.ts`
+- `apps/api/tests/integration/skills/skills-api-mockup.spec.ts`
+- `apps/api/tests/integration/skills/mockup-api-client.spec.ts`
+- `tests/playwright/s8-skills.spec.js`
+- `tests/playwright/s6-assessment-list.spec.js`

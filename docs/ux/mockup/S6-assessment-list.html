@@ -367,6 +367,29 @@
         return ordered;
       }
 
+      const skillAbbrByName = (function () {
+        const map = {};
+        const catalog = MockupApi.listSkills(
+          currentUser && currentUser.role,
+          currentUser && currentUser.email,
+          'all'
+        ) || [];
+        catalog.forEach(function (skill) {
+          if (!skill || !skill.name) return;
+          const key = String(skill.name).trim().toLowerCase();
+          const abbr = skill.abbreviation || (MockupApi.suggestSkillAbbreviation && MockupApi.suggestSkillAbbreviation(skill.name));
+          if (key && abbr) {
+            map[key] = abbr;
+          }
+        });
+        return map;
+      })();
+
+      function skillDisplayLabel(skillName) {
+        const key = String(skillName || '').trim().toLowerCase();
+        return (key && skillAbbrByName[key]) || skillName;
+      }
+
       function buildSkillListMarkup(clip, isComplete) {
         if (!isComplete) {
           return '';
@@ -379,9 +402,10 @@
         const rows = skills.map(function (skillName) {
           const value = Object.prototype.hasOwnProperty.call(ratings, skillName) ? ratings[skillName] : null;
           const formatted = formatClipScore(value);
+          const label = skillDisplayLabel(skillName);
           return (
             '<li class="result-skill-row" data-testid="result-skill-row">' +
-            '<span class="result-skill-name">' + escapeHtml(skillName) + '</span>' +
+            '<span class="result-skill-name" title="' + escapeHtml(skillName) + '">' + escapeHtml(label) + '</span>' +
             '<span class="result-skill-value" data-testid="result-skill-value">' + escapeHtml(formatted.label) + '</span>' +
             '</li>'
           );

@@ -116,6 +116,7 @@
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Abbreviation</th>
                   <th>Status</th>
                   <th># Positions</th>
                   <th>Actions</th>
@@ -279,7 +280,9 @@
       <form id="createSkillForm" class="modal-form">
         <label class="form-label" for="skillNameInput">Skill Name <span class="required">*</span></label>
         <input id="skillNameInput" data-testid="skill-name-input" type="text" required minlength="2" maxlength="60">
-        <p class="error-msg" id="createSkillError">Skill name must be 2-60 characters and unique.</p>
+        <label class="form-label" for="skillAbbreviationInput">Abbreviation <span class="required">*</span></label>
+        <input id="skillAbbreviationInput" data-testid="skill-abbreviation-input" type="text" required minlength="1" maxlength="3" autocomplete="off">
+        <p class="error-msg" id="createSkillError">Skill name must be 2-60 characters and unique; abbreviation 1-3 characters.</p>
 
         <div class="inline-actions">
           <button class="btn btn-primary" type="submit" data-testid="create-skill-submit">Save Skill</button>
@@ -299,7 +302,9 @@
         <div class="notice">Selected skill: <strong id="renameTargetSkill">-</strong></div>
         <label class="form-label" for="renameSkillName">New Name <span class="required">*</span></label>
         <input id="renameSkillName" type="text" required minlength="2" maxlength="60">
-        <p class="error-msg" id="renameSkillError">Skill name must be 2-60 characters and unique.</p>
+        <label class="form-label" for="renameSkillAbbreviation">Abbreviation <span class="required">*</span></label>
+        <input id="renameSkillAbbreviation" data-testid="rename-skill-abbreviation-input" type="text" required minlength="1" maxlength="3" autocomplete="off">
+        <p class="error-msg" id="renameSkillError">Skill name must be 2-60 characters and unique; abbreviation 1-3 characters.</p>
 
         <div class="inline-actions">
           <button class="btn btn-primary" type="submit" data-testid="rename-skill-submit">Update</button>
@@ -342,7 +347,9 @@
         showInactive: false,
         selectedSportId: 'sport_soccer',
         selectedPositionId: null,
-        selectedSkillId: null
+        selectedSkillId: null,
+        createAbbrDirty: false,
+        renameAbbrDirty: false
       };
 
       const currentUser = MockupApi.getCurrentUser();
@@ -522,12 +529,15 @@
         const body = document.getElementById('skillsTableBody');
         body.innerHTML = '';
         skills.forEach(function (skill) {
+          const abbr = skill.abbreviation || MockupApi.suggestSkillAbbreviation(skill.name) || '—';
           const tr = document.createElement('tr');
           tr.id = 'skillRow-' + skill.id;
           tr.setAttribute('data-skill-id', skill.id);
           tr.setAttribute('data-skill-name', skill.name);
+          tr.setAttribute('data-skill-abbreviation', abbr);
           tr.innerHTML =
             '<td>' + escapeHtml(skill.name) + '</td>' +
+            '<td data-testid="skill-abbreviation-cell">' + escapeHtml(abbr) + '</td>' +
             '<td>' + statusBadge(skill.status || 'active') + '</td>' +
             '<td>' + (skill.assignedPositionCount == null ? '—' : skill.assignedPositionCount) + '</td>' +
             '<td><div class="inline-actions">' +
@@ -619,8 +629,28 @@
       });
       document.querySelector('[data-testid="add-skill"]').addEventListener('click', function () {
         document.getElementById('skillNameInput').value = '';
+        document.getElementById('skillAbbreviationInput').value = '';
+        state.createAbbrDirty = false;
         document.getElementById('createSkillError').classList.remove('show');
         openModal('createSkillModal');
+      });
+
+      document.getElementById('skillNameInput').addEventListener('input', function () {
+        if (state.createAbbrDirty) return;
+        document.getElementById('skillAbbreviationInput').value =
+          MockupApi.suggestSkillAbbreviation(document.getElementById('skillNameInput').value) || '';
+      });
+      document.getElementById('skillAbbreviationInput').addEventListener('input', function () {
+        state.createAbbrDirty = true;
+      });
+
+      document.getElementById('renameSkillName').addEventListener('input', function () {
+        if (state.renameAbbrDirty) return;
+        document.getElementById('renameSkillAbbreviation').value =
+          MockupApi.suggestSkillAbbreviation(document.getElementById('renameSkillName').value) || '';
+      });
+      document.getElementById('renameSkillAbbreviation').addEventListener('input', function () {
+        state.renameAbbrDirty = true;
       });
 
       // Sport row actions.
@@ -695,8 +725,11 @@
         const currentName = row ? row.getAttribute('data-skill-name') : null;
         if (renameBtn && skillId) {
           state.selectedSkillId = skillId;
+          const currentAbbr = row ? row.getAttribute('data-skill-abbreviation') : '';
           document.getElementById('renameTargetSkill').textContent = currentName || skillId;
           document.getElementById('renameSkillName').value = currentName || '';
+          document.getElementById('renameSkillAbbreviation').value = currentAbbr || MockupApi.suggestSkillAbbreviation(currentName || '') || '';
+          state.renameAbbrDirty = false;
           document.getElementById('renameSkillError').classList.remove('show');
           openModal('renameSkillModal');
           return;
@@ -827,7 +860,8 @@
       document.getElementById('createSkillForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('skillNameInput').value.trim();
-        const response = MockupApi.createSkill({ name: name }, state.actorRole, state.actorEmail);
+        const abbreviation = document.getElementById('skillAbbreviationInput').value.trim();
+        const response = MockupApi.createSkill({ name: name, abbreviation: abbreviation }, state.actorRole, state.actorEmail);
         if (response.status >= 400) {
           document.getElementById('createSkillError').textContent = response.message || 'Could not create skill.';
           document.getElementById('createSkillError').classList.add('show');
@@ -835,6 +869,7 @@
         }
         closeModal('createSkillModal');
         event.target.reset();
+        state.createAbbrDirty = false;
         renderAll();
         showToast('Skill "' + (response.skill && response.skill.name) + '" created.');
       });
@@ -842,13 +877,20 @@
       document.getElementById('renameSkillForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('renameSkillName').value.trim();
-        const response = MockupApi.updateSkill(state.selectedSkillId, { name: name }, state.actorRole, state.actorEmail);
+        const abbreviation = document.getElementById('renameSkillAbbreviation').value.trim();
+        const response = MockupApi.updateSkill(
+          state.selectedSkillId,
+          { name: name, abbreviation: abbreviation },
+          state.actorRole,
+          state.actorEmail
+        );
         if (response.status >= 400) {
           document.getElementById('renameSkillError').textContent = response.message || 'Could not update skill.';
           document.getElementById('renameSkillError').classList.add('show');
           return;
         }
         closeModal('renameSkillModal');
+        state.renameAbbrDirty = false;
         renderAll();
         showToast('Skill updated.');
       });

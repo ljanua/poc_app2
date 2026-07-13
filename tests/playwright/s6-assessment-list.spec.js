@@ -85,6 +85,10 @@ test.describe('S6 Assessment Results list', () => {
     await expect(messiCard.getByTestId('result-skill-value').filter({ hasText: 'N/A' })).toHaveCount(1);
     await expect(messiCard.getByTestId('rating-label')).toHaveText('84%');
     await expect(page.getByRole('link', { name: 'View Results' })).toHaveCount(0);
+
+    // Catalog skill "Composure" displays as CMP; unknown "Decision-making" keeps full name.
+    await expect(messiCard.locator('.result-skill-name', { hasText: 'CMP' })).toHaveAttribute('title', 'Composure');
+    await expect(messiCard.locator('.result-skill-name', { hasText: 'Decision-making' })).toHaveCount(1);
   });
 
   test('does not force Pre-Selected Player without query params', async ({ page }) => {
