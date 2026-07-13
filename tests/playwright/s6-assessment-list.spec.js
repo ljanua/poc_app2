@@ -253,4 +253,42 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page.getByTestId('clip-player-unavailable')).toBeVisible();
     await expect(page.getByTestId('clip-player-unavailable')).toContainText('unavailable');
   });
+
+  test('shows clip thumbnail when thumbnail route returns JPEG', async ({ page }) => {
+    const jpeg = Buffer.from(
+      '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDAREAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIQAxAAAADpH//Z',
+      'base64'
+    );
+
+    await page.route('**/api/v1/clips/*/thumbnail', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/jpeg',
+        body: jpeg
+      });
+    });
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByTestId('clip-thumbnail').first()).toBeVisible();
+    await expect(page.getByTestId('clip-play-button').first()).toBeVisible();
+  });
+
+  test('keeps placeholder when thumbnail route is missing', async ({ page }) => {
+    await page.route('**/api/v1/clips/*/thumbnail', async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Not Found' })
+      });
+    });
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByTestId('clip-play-button').first()).toBeVisible();
+    await expect.poll(async () => page.getByTestId('clip-thumbnail').count()).toBe(0);
+    await expect(page.locator('.result-thumbnail-fallback').first()).toBeVisible();
+  });
 });

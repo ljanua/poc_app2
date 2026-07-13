@@ -7,11 +7,12 @@ const {
   removeDirRecursive,
   segmentVideo,
   extractSegmentFrames,
+  extractPosterFrame,
   readFramesAsBase64,
   ensureFfmpegAvailable,
   setFfmpegPath
 } = require('./ffmpeg-utils');
-const { getFfmpegPath, ensureSegmentsDirForClip } = require('./config');
+const { getFfmpegPath, ensureSegmentsDirForClip, ensureThumbnailPathForClip } = require('./config');
 const { reviewSegment } = require('./ollama-client');
 const {
   shouldStopAssessing,
@@ -197,6 +198,20 @@ async function processClip(pool, clipId) {
 
     const score = computeOverallScore(ratingsBySkill);
     const summary = buildSummary(ratingsBySkill, lastComments);
+    try {
+      const posterSource = segmentPaths[0] || clip.videoStoragePath;
+      if (posterSource) {
+        const thumbPath = ensureThumbnailPathForClip(clipId);
+        await extractPosterFrame(posterSource, thumbPath);
+        logAuditEvent('clip.thumbnail.written', { clipId, path: thumbPath });
+      }
+    } catch (thumbError) {
+      console.error(`Clip ${clipId} thumbnail generation failed:`, thumbError);
+      logAuditEvent('clip.thumbnail.error', {
+        clipId,
+        error: thumbError.message || String(thumbError)
+      });
+    }
     await markClipComplete(pool, clipId, {
       skillRatings: ratingsBySkill,
       score,

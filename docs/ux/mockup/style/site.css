@@ -775,13 +775,29 @@ textarea::placeholder { color: var(--text-dim); }
   display: grid;
   place-items: center;
   font-size: 2rem;
+  overflow: hidden;
   background:
     radial-gradient(circle at 50% 40%, rgba(124, 92, 255, 0.35), transparent 65%),
     linear-gradient(160deg, rgba(34, 211, 238, 0.2), rgba(10, 15, 30, 0.6));
 }
 
+.result-thumbnail-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.result-thumbnail-fallback {
+  position: relative;
+  z-index: 0;
+}
+
 .play-icon {
   position: absolute;
+  z-index: 1;
   width: 44px;
   height: 44px;
   border: 0;

@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { getVideoRoot } = require('./config');
+const { getVideoRoot, thumbnailPathForClip } = require('./config');
 const { listSegmentsForClips, selectClipById } = require('./clip-upload');
 
 function isPathUnderVideoRoot(filePath) {
@@ -72,6 +72,33 @@ async function resolveClipMediaPath(pool, clipId, source) {
   return { filePath: resolved, status: 200 };
 }
 
+/**
+ * Resolve the durable JPEG poster path for a clip (convention: thumbnails/{clipId}.jpg).
+ */
+async function resolveClipThumbnailPath(pool, clipId) {
+  const id = String(clipId || '').trim();
+  if (!id) {
+    return { filePath: null, status: 400, code: 'validation_error', message: 'clipId is required.' };
+  }
+
+  const clip = await selectClipById(pool, id);
+  if (!clip) {
+    return { filePath: null, status: 404, code: 'not_found', message: 'Clip not found.' };
+  }
+
+  const candidate = thumbnailPathForClip(id);
+  const resolved = path.resolve(String(candidate));
+  if (!isPathUnderVideoRoot(resolved)) {
+    return { filePath: null, status: 404, code: 'not_found', message: 'No thumbnail is available for this clip.' };
+  }
+
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    return { filePath: null, status: 404, code: 'not_found', message: 'No thumbnail is available for this clip.' };
+  }
+
+  return { filePath: resolved, status: 200 };
+}
+
 function parseRange(rangeHeader, fileSize) {
   const match = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader || '').trim());
   if (!match) {
@@ -112,8 +139,20 @@ function streamVideoFile(req, res, filePath) {
   fs.createReadStream(filePath).pipe(res);
 }
 
+function streamJpegFile(res, filePath) {
+  const stat = fs.statSync(filePath);
+  res.writeHead(200, {
+    'Content-Length': stat.size,
+    'Content-Type': 'image/jpeg',
+    'Cache-Control': 'private, max-age=300'
+  });
+  fs.createReadStream(filePath).pipe(res);
+}
+
 module.exports = {
   isPathUnderVideoRoot,
   resolveClipMediaPath,
-  streamVideoFile
+  resolveClipThumbnailPath,
+  streamVideoFile,
+  streamJpegFile
 };

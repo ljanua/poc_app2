@@ -3050,6 +3050,12 @@
       return '/api/v1/clips/' + id + '/media?source=' + encodeURIComponent(sourceKey);
     },
 
+    /** HTTP URL for the process-time JPEG poster (404 when missing). */
+    clipThumbnailUrl(clipId) {
+      const id = encodeURIComponent(String(clipId || '').trim());
+      return '/api/v1/clips/' + id + '/thumbnail';
+    },
+
     /**
      * Choose media source for a clip payload: first segment when any exist,
      * otherwise original when path is present, otherwise null (unavailable).

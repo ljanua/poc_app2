@@ -334,9 +334,13 @@
 
           const card = document.createElement('div');
           card.className = 'result-card';
+          const thumbUrl = MockupApi.clipThumbnailUrl(clip.id);
           card.innerHTML =
             '<div class="result-thumbnail">' +
-            '<span aria-hidden="true">📹</span>' +
+            '<span class="result-thumbnail-fallback" aria-hidden="true">📹</span>' +
+            '<img class="result-thumbnail-img" data-testid="clip-thumbnail" alt="" src="' +
+            escapeHtml(thumbUrl) +
+            '" onerror="this.remove()">' +
             '<button type="button" class="play-icon" data-testid="clip-play-button" data-clip-id="' +
             escapeHtml(clip.id) +
             '" aria-label="Play clip">▶</button>' +

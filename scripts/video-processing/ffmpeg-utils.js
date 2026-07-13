@@ -99,6 +99,21 @@ async function extractSegmentFrames(segmentPath, framesDir) {
     .map((name) => path.join(framesDir, name));
 }
 
+async function extractPosterFrame(videoPath, outputJpegPath) {
+  const dir = path.dirname(outputJpegPath);
+  fs.mkdirSync(dir, { recursive: true });
+  await runCommand(ffmpegPath, [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-y',
+    '-i', videoPath,
+    '-frames:v', '1',
+    '-q:v', '2',
+    outputJpegPath
+  ]);
+  return outputJpegPath;
+}
+
 function readFramesAsBase64(framePaths) {
   return framePaths.map((framePath) => fs.readFileSync(framePath).toString('base64'));
 }
@@ -113,5 +128,6 @@ module.exports = {
   removeDirRecursive,
   segmentVideo,
   extractSegmentFrames,
+  extractPosterFrame,
   readFramesAsBase64
 };

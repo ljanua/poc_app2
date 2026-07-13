@@ -33,6 +33,19 @@ function ensureSegmentsDirForClip(clipId) {
   return dir;
 }
 
+function thumbnailsDir() {
+  return path.join(getVideoRoot(), 'thumbnails');
+}
+
+function thumbnailPathForClip(clipId) {
+  return path.join(thumbnailsDir(), `${String(clipId)}.jpg`);
+}
+
+function ensureThumbnailPathForClip(clipId) {
+  fs.mkdirSync(thumbnailsDir(), { recursive: true });
+  return thumbnailPathForClip(clipId);
+}
+
 async function getProcessingConfig(pool, key, fallback) {
   const result = await pool.query(
     'SELECT value FROM processing_config WHERE key = $1 LIMIT 1',
@@ -117,6 +130,9 @@ module.exports = {
   segmentsDirForClip,
   ensureOriginalsDir,
   ensureSegmentsDirForClip,
+  thumbnailsDir,
+  thumbnailPathForClip,
+  ensureThumbnailPathForClip,
   getProcessingConfig,
   getMaxParallelProcesses,
   getOllamaBaseUrl,

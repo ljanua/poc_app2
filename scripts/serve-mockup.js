@@ -5,7 +5,7 @@ const { URL } = require('node:url');
 const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
 const { createClipUpload, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
-const { resolveClipMediaPath, streamVideoFile } = require('./video-processing/clip-media');
+const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJpegFile } = require('./video-processing/clip-media');
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 
@@ -2922,6 +2922,22 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
     streamVideoFile(req, res, resolved.filePath);
+    return;
+  }
+
+  const clipThumbnailMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/clips/([^/]+)/thumbnail$`));
+  if (req.method === 'GET' && clipThumbnailMatch) {
+    const clipId = decodeURIComponent(clipThumbnailMatch[1] || '');
+    const resolved = await resolveClipThumbnailPath(pool, clipId);
+    if (resolved.status !== 200 || !resolved.filePath) {
+      sendJson(res, resolved.status || 404, appError(
+        resolved.status || 404,
+        resolved.code || 'not_found',
+        resolved.message || 'No thumbnail is available for this clip.'
+      ));
+      return;
+    }
+    streamJpegFile(res, resolved.filePath);
     return;
   }
 
