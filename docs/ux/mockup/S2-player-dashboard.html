@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <title>S2: Player Development Dashboard — VantageIQ</title>
   <link rel="stylesheet" href="./style/site.css">
 </head>
@@ -11,7 +12,7 @@
     <header>
       <a class="back-btn" href="./S1-player-list.html">←</a>
       <div class="header-title">Player Development</div>
-      <div class="header-meta">Coach View</div>
+      <div class="header-meta" id="dashboardHeaderMeta">Coach View</div>
       <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
     </header>
 
@@ -21,8 +22,17 @@
           <option value="">Team: —</option>
         </select>
         <a class="btn btn-secondary" id="editPlayerLink" href="./S1-player-list.html" hidden>Edit Player</a>
-        <a class="btn btn-secondary" href="./S1-player-list.html">Back to Player List</a>
+        <button type="button" class="btn btn-secondary" id="shareLinkButton" data-testid="share-link-button" hidden>Share link</button>
+        <button type="button" class="btn btn-secondary" id="revokeShareButton" data-testid="revoke-share-button" hidden>Revoke share</button>
+        <a class="btn btn-secondary" id="backToListLink" href="./S1-player-list.html">Back to Player List</a>
       </div>
+
+      <div class="notice" id="shareNotice" data-testid="share-notice" hidden></div>
+      <label class="share-url-row" id="shareUrlRow" hidden style="display:none; margin: 0.75rem 0; gap: 0.5rem; align-items: center;">
+        <span class="muted" style="font-size: 0.85rem;">Share URL</span>
+        <input type="text" id="shareUrlInput" data-testid="share-url-input" readonly style="flex:1; min-width:0;">
+        <button type="button" class="btn btn-secondary" id="copyShareUrlButton" data-testid="copy-share-url-button">Copy</button>
+      </label>
 
       <div class="notice" id="dashboardNotice" hidden></div>
 
@@ -231,13 +241,37 @@
     </nav>
   </div>
 
+  <div class="modal" id="clipPlayerModal" data-testid="clip-player-modal" aria-hidden="true">
+    <div class="modal-panel clip-player-panel" role="dialog" aria-modal="true" aria-labelledby="clipPlayerTitle">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+        <h2 id="clipPlayerTitle" style="margin:0;font-size:1.1rem;">Clip playback</h2>
+        <button type="button" class="exit-btn" id="clipPlayerClose" data-testid="clip-player-close" aria-label="Close player">✕</button>
+      </div>
+      <p id="clipPlayerUnavailable" class="notice" data-testid="clip-player-unavailable" hidden>Video is unavailable for this clip.</p>
+      <video id="clipPlayerVideo" data-testid="clip-player-video" controls playsinline style="width: 100%; max-height: 70vh; border-radius: var(--r-md); background: #000;"></video>
+    </div>
+  </div>
+
   <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
       const params = new URLSearchParams(window.location.search);
       const selectedPlayer = params.get('player') || '';
-      MockupApi.applyRoleGatedNav();
-      const dashboard = MockupApi.getDashboardPlayer(selectedPlayer);
+      const shareToken = String(params.get('share') || '').trim();
+      const isGuest = Boolean(shareToken);
+
+      const dashboardHeaderMeta = document.getElementById('dashboardHeaderMeta');
+      if (dashboardHeaderMeta) {
+        dashboardHeaderMeta.textContent = isGuest ? 'Guest View' : 'Coach View';
+      }
+
+      if (!isGuest) {
+        MockupApi.applyRoleGatedNav();
+      }
+
+      const dashboard = isGuest
+        ? MockupApi.getDashboardByShareToken(shareToken)
+        : MockupApi.getDashboardPlayer(selectedPlayer);
       const dashboardNotice = document.getElementById('dashboardNotice');
       const noStatsNotice = document.getElementById('noStatsNotice');
       const statsSections = document.querySelectorAll('.stats-section');
@@ -245,9 +279,14 @@
       if (!dashboard) {
         dashboardNotice.textContent = (window.__MOCK_API_LAST_ERROR__ && window.__MOCK_API_LAST_ERROR__.message) || 'Dashboard data is unavailable right now.';
         dashboardNotice.hidden = false;
-        document.querySelectorAll('.toolbar, .player-summary, .section, .cta-buttons').forEach(function (element) {
+        document.querySelectorAll('.toolbar, .player-summary, .section, .cta-buttons, #shareUrlRow').forEach(function (element) {
           element.hidden = true;
+          element.style.display = 'none';
         });
+        const nameEl = document.getElementById('dashboardPlayerName');
+        if (nameEl) {
+          nameEl.textContent = '';
+        }
         return;
       }
 
@@ -259,21 +298,11 @@
       const trendText = trend === 'improving' ? 'Improving' : trend === 'declining' ? 'Declining' : 'Plateau';
       const trendClass = trend === 'improving' ? 'badge-improving' : trend === 'declining' ? 'badge-declining' : 'badge-plateau';
 
-      // Player identity always renders, even when this player has no real
-      // stats yet -- only the stats-derived sections below are conditional.
       document.getElementById('dashboardPlayerName').textContent = player.name;
-      // The player meta line shows "Position • Age N" when the birth date is
-      // known, and just the position when it isn't. The age comes from
-      // MockupApi.getDashboardPlayer (server-derived in backend mode, computed
-      // locally in offline mode via the same computeAge helper).
       const ageSuffix = (player.age != null) ? ' • Age ' + player.age : '';
       document.getElementById('dashboardPlayerMeta').textContent = player.position + ageSuffix;
       document.getElementById('dashboardTeamChip').textContent = player.teamName;
 
-      // The team dropdown is locked to the player being viewed. A coach
-      // cannot change a player's team assignment from the dashboard, so the
-      // <select> is rendered with a single option mirroring the chip below
-      // and marked disabled. Both stay in sync with player.teamName.
       const teamSelect = document.getElementById('dashboardTeamSelect');
       if (teamSelect) {
         const teamOption = teamSelect.querySelector('option');
@@ -288,9 +317,6 @@
       trendBadge.className = 'badge ' + trendClass;
       trendBadge.textContent = trendArrow + ' ' + trendText;
 
-      // Edit Player is available whenever the dashboard resolved a player --
-      // including the no-stats-yet state, where editing is the way to record
-      // the player's first real stats.
       const editPlayerLink = document.getElementById('editPlayerLink');
       if (editPlayerLink && player.id !== undefined && player.id !== null) {
         editPlayerLink.href = './S5-player-edit.html?playerId=' + encodeURIComponent(player.id);
@@ -300,6 +326,9 @@
       const viewResultsLink = document.getElementById('viewResultsLink');
       if (viewResultsLink) {
         const viewParams = new URLSearchParams();
+        if (isGuest && shareToken) {
+          viewParams.set('share', shareToken);
+        }
         if (player.id !== undefined && player.id !== null) {
           viewParams.set('playerId', String(player.id));
         }
@@ -325,14 +354,11 @@
         submitClipLink.href = submitClipHref;
       }
 
-      // Avatar: show uploaded image or ⚽ fallback; hover shows camera overlay.
       MockupApi.applyAvatar('playerAvatarImg', player.avatarUrl || null);
       MockupApi.initAvatarHover('playerAvatarContainer');
 
-      // Live clips drive Video Assessments visibility when growth stats are
-      // missing — do not trust cached dashboard.clipStats for that gate.
       const liveClips = (player.id !== undefined && player.id !== null)
-        ? MockupApi.listClips({ playerId: player.id })
+        ? (isGuest ? MockupApi.listClipsByShareToken(shareToken) : MockupApi.listClips({ playerId: player.id }))
         : [];
       const missingStats = Boolean(dashboard.performance.missingDataMessage);
       const skillRatingRows = Array.isArray(dashboard.skillRatings) ? dashboard.skillRatings : [];
@@ -340,10 +366,6 @@
         return row.rating !== null && row.rating !== undefined;
       });
 
-      // A player with no real recorded stats yet must never show fabricated
-      // growth numbers. Hide Development / Match Time / Recent Performance,
-      // but keep Video Assessments when live clips exist and Skill Ratings
-      // when at least one skill has a recorded rating (e.g. from video sync).
       if (missingStats) {
         noStatsNotice.textContent = dashboard.performance.missingDataMessage;
         noStatsNotice.hidden = false;
@@ -382,6 +404,97 @@
         return status === 'in_progress' ? 'in progress' : String(status || 'submitted');
       }
 
+      const clipsById = {};
+      const clipPlayerModal = document.getElementById('clipPlayerModal');
+      const clipPlayerVideo = document.getElementById('clipPlayerVideo');
+      const clipPlayerUnavailable = document.getElementById('clipPlayerUnavailable');
+      const clipPlayerTitle = document.getElementById('clipPlayerTitle');
+      const clipPlayerClose = document.getElementById('clipPlayerClose');
+
+      function openClipPlayerModal() {
+        if (!clipPlayerModal) {
+          return;
+        }
+        clipPlayerModal.classList.add('open');
+        clipPlayerModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeClipPlayerModal() {
+        if (!clipPlayerModal) {
+          return;
+        }
+        clipPlayerModal.classList.remove('open');
+        clipPlayerModal.setAttribute('aria-hidden', 'true');
+        if (clipPlayerVideo) {
+          clipPlayerVideo.pause();
+          clipPlayerVideo.removeAttribute('src');
+          clipPlayerVideo.load();
+        }
+      }
+
+      function showClipUnavailable(message) {
+        if (clipPlayerUnavailable) {
+          clipPlayerUnavailable.textContent = message || 'Video is unavailable for this clip.';
+          clipPlayerUnavailable.hidden = false;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.hidden = true;
+          clipPlayerVideo.pause();
+          clipPlayerVideo.removeAttribute('src');
+          clipPlayerVideo.load();
+        }
+        openClipPlayerModal();
+      }
+
+      function playClip(clip) {
+        if (!clip) {
+          showClipUnavailable('Video is unavailable for this clip.');
+          return;
+        }
+        if (clipPlayerTitle) {
+          clipPlayerTitle.textContent = clip.situation || clip.skill || 'Clip playback';
+        }
+        const resolved = MockupApi.resolveClipMediaSource(clip);
+        if (!resolved) {
+          showClipUnavailable('Video is unavailable for this clip.');
+          return;
+        }
+        const mediaUrl = isGuest
+          ? MockupApi.clipMediaUrlForShare(shareToken, resolved.clipId, resolved.source)
+          : MockupApi.clipMediaUrl(resolved.clipId, resolved.source);
+        if (clipPlayerUnavailable) {
+          clipPlayerUnavailable.hidden = true;
+        }
+        if (clipPlayerVideo) {
+          clipPlayerVideo.hidden = false;
+          clipPlayerVideo.onerror = function () {
+            if (clipPlayerUnavailable) {
+              clipPlayerUnavailable.textContent = 'Video is unavailable for this clip.';
+              clipPlayerUnavailable.hidden = false;
+            }
+          };
+          clipPlayerVideo.src = mediaUrl;
+          openClipPlayerModal();
+          const playPromise = clipPlayerVideo.play();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(function () {});
+          }
+        } else {
+          openClipPlayerModal();
+        }
+      }
+
+      if (clipPlayerClose) {
+        clipPlayerClose.addEventListener('click', closeClipPlayerModal);
+      }
+      if (clipPlayerModal) {
+        clipPlayerModal.addEventListener('click', function (event) {
+          if (event.target === clipPlayerModal) {
+            closeClipPlayerModal();
+          }
+        });
+      }
+
       function renderVideoAssessments(clips) {
         const summaryEl = document.getElementById('dashboardClipSummary');
         const listEl = document.getElementById('dashboardClipList');
@@ -390,6 +503,8 @@
         }
 
         const rows = Array.isArray(clips) ? clips : [];
+        Object.keys(clipsById).forEach(function (key) { delete clipsById[key]; });
+
         if (summaryEl) {
           if (!rows.length) {
             summaryEl.textContent = 'No clips submitted yet.';
@@ -403,6 +518,9 @@
 
         listEl.innerHTML = '';
         rows.forEach(function (clip) {
+          if (clip && clip.id != null) {
+            clipsById[String(clip.id)] = clip;
+          }
           const row = document.createElement('div');
           row.className = 'dashboard-clip-row';
           row.setAttribute('data-testid', 'dashboard-clip-row');
@@ -423,13 +541,31 @@
             main.appendChild(meta);
           }
 
+          const actions = document.createElement('div');
+          actions.className = 'dashboard-clip-actions';
+          actions.style.display = 'flex';
+          actions.style.alignItems = 'center';
+          actions.style.gap = '0.5rem';
+
+          const playBtn = document.createElement('button');
+          playBtn.type = 'button';
+          playBtn.className = 'btn btn-secondary';
+          playBtn.setAttribute('data-testid', 'dashboard-clip-play');
+          playBtn.setAttribute('data-clip-id', String(clip.id || ''));
+          playBtn.textContent = 'Play';
+          playBtn.addEventListener('click', function () {
+            playClip(clipsById[String(clip.id)]);
+          });
+
           const badge = document.createElement('span');
           badge.className = 'status-badge ' + clipStatusClass(clip.status);
           badge.setAttribute('data-testid', 'dashboard-clip-status');
           badge.textContent = clipStatusLabel(clip.status);
 
+          actions.appendChild(playBtn);
+          actions.appendChild(badge);
           row.appendChild(main);
-          row.appendChild(badge);
+          row.appendChild(actions);
           listEl.appendChild(row);
         });
       }
@@ -456,8 +592,8 @@
           list.forEach(function (row) {
             const tr = document.createElement('tr');
             tr.setAttribute('data-testid', 'skill-rating-row-' + row.skillId);
-            const skillTd = document.createElement('td');
-            skillTd.textContent = row.skillName || row.skillId;
+            const nameTd = document.createElement('td');
+            nameTd.textContent = row.skillName || row.skillId;
             const ratingTd = document.createElement('td');
             if (row.rating === null || row.rating === undefined) {
               const muted = document.createElement('span');
@@ -470,40 +606,175 @@
               ratingTd.setAttribute('data-testid', 'skill-rating-value-' + row.skillId);
               ratingTd.textContent = String(row.rating) + '%';
             }
-            tr.appendChild(skillTd);
+            tr.appendChild(nameTd);
             tr.appendChild(ratingTd);
             bodyEl.appendChild(tr);
           });
         }
 
-        if (rows.length === 0) {
+        if (!rows.length) {
           emptyEl.hidden = false;
           anyBlock.hidden = true;
           roleBlock.hidden = true;
           return;
         }
-
         emptyEl.hidden = true;
         const anyRows = rows.filter(isAnyRow);
         const roleRows = rows.filter(function (row) { return !isAnyRow(row); });
-
-        if (anyRows.length > 0) {
-          anyBlock.hidden = false;
+        anyBlock.hidden = anyRows.length === 0;
+        if (anyRows.length) {
           appendRatingRows(anyBody, anyRows);
-        } else {
-          anyBlock.hidden = true;
         }
-
-        if (roleRows.length > 0) {
-          roleBlock.hidden = false;
+        roleBlock.hidden = roleRows.length === 0;
+        if (roleRows.length) {
           if (roleTitle) {
             roleTitle.textContent = roleRows[0].positionName || 'Position';
           }
           appendRatingRows(roleBody, roleRows);
-        } else {
-          roleBlock.hidden = true;
         }
       })();
+      }
+
+      renderVideoAssessments(liveClips);
+
+      // —— Guest inert write surfaces ——
+      function makeInert(el) {
+        if (!el) {
+          return;
+        }
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('is-inert');
+        if (el.tagName === 'A') {
+          el.removeAttribute('href');
+          el.addEventListener('click', function (event) {
+            event.preventDefault();
+          });
+        } else if (el.tagName === 'BUTTON') {
+          el.disabled = true;
+        }
+      }
+
+      if (isGuest) {
+        makeInert(editPlayerLink);
+        makeInert(submitNewClipLink);
+        makeInert(submitClipLink);
+        // View Results stays active and carries share= (Feature 035).
+        makeInert(document.getElementById('backToListLink'));
+        makeInert(document.getElementById('shareLinkButton'));
+        makeInert(document.getElementById('revokeShareButton'));
+        document.querySelectorAll('.bottom-nav a.nav-item').forEach(makeInert);
+        document.querySelectorAll('.cta-buttons .btn').forEach(function (btn) {
+          if (btn.id !== 'viewResultsLink' && btn.id !== 'submitNewClipLink' && btn.id !== 'submitClipLink') {
+            makeInert(btn);
+          }
+        });
+        // Keep View Results clickable even inside .cta-buttons.
+        if (viewResultsLink) {
+          viewResultsLink.classList.remove('is-inert');
+          viewResultsLink.removeAttribute('aria-disabled');
+        }
+
+        const avatarContainer = document.getElementById('playerAvatarContainer');
+        if (avatarContainer) {
+          avatarContainer.style.cursor = 'default';
+          avatarContainer.removeAttribute('onclick');
+          avatarContainer.title = '';
+          avatarContainer.onclick = null;
+        }
+        const avatarInput = document.getElementById('avatarFileInput');
+        if (avatarInput) {
+          avatarInput.disabled = true;
+        }
+        // Disable exit logout navigation for guests (no session to clear meaningfully).
+        const exitBtn = document.querySelector('[data-testid="exit-button"]');
+        if (exitBtn) {
+          makeInert(exitBtn);
+        }
+      } else if (player.id !== undefined && player.id !== null) {
+        const shareBtn = document.getElementById('shareLinkButton');
+        const revokeBtn = document.getElementById('revokeShareButton');
+        const shareNotice = document.getElementById('shareNotice');
+        const shareUrlRow = document.getElementById('shareUrlRow');
+        const shareUrlInput = document.getElementById('shareUrlInput');
+        const copyShareBtn = document.getElementById('copyShareUrlButton');
+
+        function refreshShareControls() {
+          const status = MockupApi.getPlayerShareStatus(player.id);
+          if (shareBtn) {
+            shareBtn.hidden = false;
+            shareBtn.textContent = status.active ? 'New share link' : 'Share link';
+          }
+          if (revokeBtn) {
+            revokeBtn.hidden = !status.active;
+          }
+        }
+
+        refreshShareControls();
+
+        if (shareBtn) {
+          shareBtn.addEventListener('click', function () {
+            const result = MockupApi.createPlayerShare(player.id);
+            if (!result || result.status !== 200 || !result.data) {
+              if (shareNotice) {
+                shareNotice.textContent = (result && result.message) || 'Could not create share link.';
+                shareNotice.hidden = false;
+              }
+              return;
+            }
+            const relativeUrl = result.data.url || ('./S2-player-dashboard.html?share=' + encodeURIComponent(result.data.token));
+            const absoluteUrl = new URL(relativeUrl, window.location.href).href;
+            if (shareUrlInput) {
+              shareUrlInput.value = absoluteUrl;
+            }
+            if (shareUrlRow) {
+              shareUrlRow.hidden = false;
+              shareUrlRow.style.display = 'flex';
+            }
+            if (shareNotice) {
+              shareNotice.textContent = 'Share link created. Copy and send it — anyone with the link can view this player read-only.';
+              shareNotice.hidden = false;
+            }
+            refreshShareControls();
+          });
+        }
+
+        if (revokeBtn) {
+          revokeBtn.addEventListener('click', function () {
+            const result = MockupApi.revokePlayerShare(player.id);
+            if (shareUrlRow) {
+              shareUrlRow.hidden = true;
+              shareUrlRow.style.display = 'none';
+            }
+            if (shareNotice) {
+              shareNotice.textContent = (result && result.status === 200)
+                ? 'Share link revoked.'
+                : ((result && result.message) || 'Could not revoke share link.');
+              shareNotice.hidden = false;
+            }
+            refreshShareControls();
+          });
+        }
+
+        if (copyShareBtn && shareUrlInput) {
+          copyShareBtn.addEventListener('click', function () {
+            const value = shareUrlInput.value;
+            if (!value) {
+              return;
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(value).then(function () {
+                if (shareNotice) {
+                  shareNotice.textContent = 'Link copied to clipboard.';
+                  shareNotice.hidden = false;
+                }
+              }).catch(function () {
+                shareUrlInput.select();
+              });
+            } else {
+              shareUrlInput.select();
+            }
+          });
+        }
       }
 
       function initDashboardSectionToggles(playerId) {
@@ -618,7 +889,7 @@
       }
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
-      if (exitButton) {
+      if (exitButton && !isGuest) {
         exitButton.addEventListener('click', () => {
           MockupApi.logout();
           window.location.href = './S0-login.html';
@@ -628,6 +899,9 @@
 
     // Global upload handler — wired to the hidden file input's onchange.
     function handleAvatarFileSelect(input) {
+      if (new URLSearchParams(window.location.search).get('share')) {
+        return;
+      }
       var file = input && input.files && input.files[0];
       if (!file) return;
 

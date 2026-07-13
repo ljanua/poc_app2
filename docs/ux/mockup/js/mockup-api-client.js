@@ -2534,6 +2534,102 @@
       return buildDashboardSnapshot(store, selected);
     },
 
+    /** Guest read-only dashboard via opaque share token (Feature 034). */
+    getDashboardByShareToken(shareToken) {
+      const token = String(shareToken || '').trim();
+      if (!token || !shouldUseBackendPlayersMode()) {
+        return null;
+      }
+      const response = backendRequest(
+        'GET',
+        '/share/' + encodeURIComponent(token) + '/dashboard'
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return clone(response.body.data);
+      }
+      if (response.status !== 0 && response.status !== 503) {
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+      }
+      return null;
+    },
+
+    listClipsByShareToken(shareToken) {
+      const token = String(shareToken || '').trim();
+      if (!token || !shouldUseBackendPlayersMode()) {
+        return [];
+      }
+      const response = backendRequest(
+        'GET',
+        '/share/' + encodeURIComponent(token) + '/clips'
+      );
+      if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+        return clone(response.body.data);
+      }
+      return [];
+    },
+
+    clipMediaUrlForShare(shareToken, clipId, source) {
+      const token = encodeURIComponent(String(shareToken || '').trim());
+      const id = encodeURIComponent(String(clipId || '').trim());
+      const sourceKey = String(source || 'first').trim().toLowerCase() === 'original'
+        ? 'original'
+        : 'first';
+      return '/api/v1/share/' + token + '/clips/' + id + '/media?source=' + encodeURIComponent(sourceKey);
+    },
+
+    clipThumbnailUrlForShare(shareToken, clipId) {
+      const token = encodeURIComponent(String(shareToken || '').trim());
+      const id = encodeURIComponent(String(clipId || '').trim());
+      return '/api/v1/share/' + token + '/clips/' + id + '/thumbnail';
+    },
+
+    getPlayerShareStatus(playerId) {
+      if (!shouldUseBackendPlayersMode()) {
+        return { active: false, shareId: null, createdAt: null };
+      }
+      const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+      const response = backendRequest(
+        'GET',
+        '/players/' + encodeURIComponent(playerId) + '/share' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '')
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return clone(response.body.data);
+      }
+      return { active: false, shareId: null, createdAt: null };
+    },
+
+    createPlayerShare(playerId) {
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'unavailable', message: 'Share links require the live backend.' };
+      }
+      const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+      const response = backendRequest(
+        'POST',
+        '/players/' + encodeURIComponent(playerId) + '/share' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
+        { actorEmail }
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, data: clone(response.body.data) };
+      }
+      return clone(Object.assign({ status: response.status || 500 }, response.body || {}));
+    },
+
+    revokePlayerShare(playerId) {
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'unavailable', message: 'Share links require the live backend.' };
+      }
+      const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+      const response = backendRequest(
+        'DELETE',
+        '/players/' + encodeURIComponent(playerId) + '/share' + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : ''),
+        { actorEmail }
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, data: clone(response.body.data) };
+      }
+      return clone(Object.assign({ status: response.status || 500 }, response.body || {}));
+    },
+
     getPlayerProfile(playerId) {
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();

@@ -191,3 +191,17 @@ CREATE TABLE IF NOT EXISTS player_skill_ratings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_skill_id ON player_skill_ratings(skill_id);
+
+CREATE TABLE IF NOT EXISTS player_share_links (
+  id TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_share_links_player_id ON player_share_links(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_share_links_active
+  ON player_share_links(player_id)
+  WHERE revoked_at IS NULL;

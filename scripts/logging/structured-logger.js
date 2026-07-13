@@ -38,6 +38,8 @@ function sanitizeDetails(details) {
   delete copy.password;
   delete copy.passwordHash;
   delete copy.token;
+  delete copy.shareToken;
+  delete copy.rawToken;
   return copy;
 }
 

@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
   <title>S6: Assessment Results — VantageIQ</title>
   <link rel="stylesheet" href="./style/site.css">
 </head>
@@ -80,14 +81,50 @@
   <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
-      const currentUser = MockupApi.getCurrentUser();
-      document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
-      MockupApi.applyRoleGatedNav(currentUser);
-
       const params = new URLSearchParams(window.location.search);
-      const contextPlayerId = String(params.get('playerId') || '').trim();
-      const contextPlayerName = String(params.get('playerName') || '').trim();
-      const contextTeamName = String(params.get('teamName') || '').trim();
+      const shareToken = String(params.get('share') || '').trim();
+      const isGuest = Boolean(shareToken);
+
+      const currentUser = isGuest ? null : MockupApi.getCurrentUser();
+      document.getElementById('roleMeta').textContent = isGuest
+        ? 'Guest View'
+        : (currentUser ? currentUser.role : 'Guest');
+      if (!isGuest) {
+        MockupApi.applyRoleGatedNav(currentUser);
+      }
+
+      let contextPlayerId = String(params.get('playerId') || '').trim();
+      let contextPlayerName = String(params.get('playerName') || '').trim();
+      let contextTeamName = String(params.get('teamName') || '').trim();
+
+      if (isGuest) {
+        const dashboard = MockupApi.getDashboardByShareToken(shareToken);
+        if (!dashboard || !dashboard.player) {
+          const notice = (window.__MOCK_API_LAST_ERROR__ && window.__MOCK_API_LAST_ERROR__.message)
+            || 'This share link is not available.';
+          document.getElementById('assessmentHeaderMeta').textContent = '0 submitted • 0 assessed';
+          document.getElementById('resultsGrid').innerHTML =
+            '<div class="notice" data-testid="guest-share-unavailable">' + notice + '</div>';
+          document.querySelectorAll('.assessment-toolbar, .filters').forEach(function (el) {
+            el.hidden = true;
+          });
+          document.querySelectorAll('.bottom-nav a.nav-item').forEach(function (el) {
+            el.removeAttribute('href');
+            el.setAttribute('aria-disabled', 'true');
+            el.classList.add('is-inert');
+            el.addEventListener('click', function (event) { event.preventDefault(); });
+          });
+          const exitEarly = document.querySelector('[data-testid="exit-button"]');
+          if (exitEarly) {
+            exitEarly.disabled = true;
+          }
+          return;
+        }
+        contextPlayerId = String(dashboard.player.id || contextPlayerId || '');
+        contextPlayerName = String(dashboard.player.name || contextPlayerName || '');
+        contextTeamName = String(dashboard.player.teamName || contextTeamName || '');
+      }
+
       const hasPlayerContext = Boolean(contextPlayerId || contextPlayerName);
 
       const teamFilter = document.getElementById('teamFilter');
@@ -104,6 +141,22 @@
       const clipPlayerTitle = document.getElementById('clipPlayerTitle');
       let selectedStatus = 'all';
       const clipsById = {};
+
+      function makeInert(el) {
+        if (!el) {
+          return;
+        }
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('is-inert');
+        if (el.tagName === 'A') {
+          el.removeAttribute('href');
+          el.addEventListener('click', function (event) {
+            event.preventDefault();
+          });
+        } else if (el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'INPUT') {
+          el.disabled = true;
+        }
+      }
 
       function openClipPlayerModal() {
         if (!clipPlayerModal) {
@@ -161,7 +214,9 @@
           showClipUnavailable('Video is unavailable for this clip.');
           return;
         }
-        const mediaUrl = MockupApi.clipMediaUrl(resolved.clipId, resolved.source);
+        const mediaUrl = isGuest
+          ? MockupApi.clipMediaUrlForShare(shareToken, resolved.clipId, resolved.source)
+          : MockupApi.clipMediaUrl(resolved.clipId, resolved.source);
         if (clipPlayerUnavailable) {
           clipPlayerUnavailable.hidden = true;
         }
@@ -177,21 +232,69 @@
           openClipPlayerModal();
           const playPromise = clipPlayerVideo.play();
           if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(function () {
-              // Autoplay may still be blocked; controls remain available.
-            });
+            playPromise.catch(function () {});
           }
         } else {
           openClipPlayerModal();
         }
       }
 
-      if (hasPlayerContext) {
+      if (hasPlayerContext || isGuest) {
         preselectedLabel.hidden = false;
         preselectedCheckbox.checked = true;
         preselectedText.textContent = contextPlayerName
           ? 'Pre-Selected Player: ' + contextPlayerName
           : 'Pre-Selected Player';
+        if (isGuest) {
+          makeInert(preselectedCheckbox);
+          makeInert(teamFilter);
+        }
+      }
+
+      function guestBackHref() {
+        const backParams = new URLSearchParams();
+        if (shareToken) {
+          backParams.set('share', shareToken);
+        }
+        if (contextPlayerName) {
+          backParams.set('player', contextPlayerName);
+        }
+        const q = backParams.toString();
+        return './S2-player-dashboard.html' + (q ? '?' + q : '');
+      }
+
+      function statusMatchesFilter(clip, statusFilter) {
+        const status = String(clip.status || '');
+        if (!statusFilter || statusFilter === 'all') {
+          return true;
+        }
+        if (statusFilter === 'assessed') {
+          return status === 'complete' || status === 'assessed';
+        }
+        if (statusFilter === 'pending') {
+          return status === 'submitted' || status === 'in_progress' || status === 'pending';
+        }
+        if (statusFilter === 'failed') {
+          return status === 'failed';
+        }
+        return status === statusFilter;
+      }
+
+      function loadClipsForRender(statusOverride) {
+        const status = statusOverride || selectedStatus;
+        if (isGuest) {
+          return (MockupApi.listClipsByShareToken(shareToken) || []).filter(function (clip) {
+            return statusMatchesFilter(clip, status);
+          });
+        }
+        return MockupApi.listClips(buildClipFilters(status));
+      }
+
+      function loadClipsForCounts() {
+        if (isGuest) {
+          return MockupApi.listClipsByShareToken(shareToken) || [];
+        }
+        return MockupApi.listClips(buildClipFilters('all'));
       }
 
       function escapeHtml(value) {
@@ -302,8 +405,8 @@
       }
 
       function render() {
-        const clips = MockupApi.listClips(buildClipFilters(selectedStatus));
-        const countClips = MockupApi.listClips(buildClipFilters('all'));
+        const clips = loadClipsForRender(selectedStatus);
+        const countClips = loadClipsForCounts();
         const assessedCount = countClips.filter(function (clip) {
           return clip.status === 'complete' || clip.status === 'assessed';
         }).length;
@@ -327,14 +430,18 @@
             ? '<button class="view-btn" disabled>Pending</button>'
             : isFailed
               ? '<button class="view-btn" disabled>Failed</button>'
-              : '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">Back</a>';
+              : isGuest
+                ? '<a class="view-btn" data-testid="back-link" href="' + escapeHtml(guestBackHref()) + '">Back</a>'
+                : '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">Back</a>';
           const scoreMarkup = buildScoreMarkup(clip, isComplete, isFailed);
           const skillListMarkup = buildSkillListMarkup(clip, isComplete);
           const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
 
           const card = document.createElement('div');
           card.className = 'result-card';
-          const thumbUrl = MockupApi.clipThumbnailUrl(clip.id);
+          const thumbUrl = isGuest
+            ? MockupApi.clipThumbnailUrlForShare(shareToken, clip.id)
+            : MockupApi.clipThumbnailUrl(clip.id);
           card.innerHTML =
             '<div class="result-thumbnail">' +
             '<span class="result-thumbnail-fallback" aria-hidden="true">📹</span>' +
@@ -363,29 +470,39 @@
         });
       }
 
-      const teamQuery = currentUser && currentUser.email
-        ? (currentUser.role === 'Coach'
-          ? 'actorEmail=' + encodeURIComponent(currentUser.email) + '&status=active'
-          : 'status=active')
-        : 'status=active';
-      MockupApi.listTeams(teamQuery).forEach(function (team) {
-        const option = document.createElement('option');
-        option.value = team.name;
-        option.textContent = team.name;
-        teamFilter.appendChild(option);
-      });
-
-      if (contextTeamName) {
-        const hasTeam = Array.from(teamFilter.options).some(function (option) {
-          return option.value === contextTeamName;
+      if (!isGuest) {
+        const teamQuery = currentUser && currentUser.email
+          ? (currentUser.role === 'Coach'
+            ? 'actorEmail=' + encodeURIComponent(currentUser.email) + '&status=active'
+            : 'status=active')
+          : 'status=active';
+        MockupApi.listTeams(teamQuery).forEach(function (team) {
+          const option = document.createElement('option');
+          option.value = team.name;
+          option.textContent = team.name;
+          teamFilter.appendChild(option);
         });
-        if (hasTeam) {
-          teamFilter.value = contextTeamName;
+
+        if (contextTeamName) {
+          const hasTeam = Array.from(teamFilter.options).some(function (option) {
+            return option.value === contextTeamName;
+          });
+          if (hasTeam) {
+            teamFilter.value = contextTeamName;
+          }
         }
+
+        teamFilter.addEventListener('change', render);
+        preselectedCheckbox.addEventListener('change', render);
+      } else if (contextTeamName) {
+        teamFilter.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = contextTeamName;
+        option.textContent = contextTeamName;
+        teamFilter.appendChild(option);
+        teamFilter.value = contextTeamName;
       }
 
-      teamFilter.addEventListener('change', render);
-      preselectedCheckbox.addEventListener('change', render);
       filterButtons.forEach(function (button) {
         button.addEventListener('click', function () {
           filterButtons.forEach(function (entry) { entry.classList.remove('active'); });
@@ -422,14 +539,20 @@
         }
       });
 
+      if (isGuest) {
+        document.querySelectorAll('.bottom-nav a.nav-item').forEach(makeInert);
+      }
+
       render();
 
       const exitButton = document.querySelector('[data-testid="exit-button"]');
-      if (exitButton) {
+      if (exitButton && !isGuest) {
         exitButton.addEventListener('click', () => {
           MockupApi.logout();
           window.location.href = './S0-login.html';
         });
+      } else if (exitButton && isGuest) {
+        makeInert(exitButton);
       }
     })();
   </script>

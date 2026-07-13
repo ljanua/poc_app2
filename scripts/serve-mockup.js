@@ -8,6 +8,8 @@ const { createClipUpload, toClipResponse, listSegmentsForClips } = require('./vi
 const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJpegFile } = require('./video-processing/clip-media');
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
+const { generateShareToken, hashShareToken } = require('./share-token');
+const crypto = require('node:crypto');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 
@@ -43,7 +45,11 @@ function send(res, status, body, contentType) {
 }
 
 function sendJson(res, status, payload) {
-  send(res, status, JSON.stringify(payload), 'application/json; charset=utf-8');
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  res.end(JSON.stringify(payload));
 }
 
 function logStructured(functionality, userId, details) {
@@ -1346,6 +1352,24 @@ async function ensureDatabase() {
   await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS skill_progress_change_label TEXT;`);
   await pool.query(`ALTER TABLE player_stats ADD COLUMN IF NOT EXISTS skill_progress_change_trend TEXT CHECK (skill_progress_change_trend IN ('improving', 'plateau', 'declining'));`);
 
+  // Feature 034: guest share links (token hash only; never expires until revoked).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_share_links (
+      id TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at TIMESTAMPTZ
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_player_share_links_player_id ON player_share_links(player_id);`);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_player_share_links_active
+      ON player_share_links(player_id)
+      WHERE revoked_at IS NULL;
+  `);
+
   if (seedDatabase) {
     await pool.query(`
       INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
@@ -1569,6 +1593,128 @@ async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
   return result.rows[0] || null;
 }
 
+const DASHBOARD_PLAYER_SELECT = `
+        p.id,
+        p.name,
+        p.normalized_name AS "normalizedName",
+        p.player_avatar_url AS "avatarUrl",
+        t.name AS "teamName",
+        p.position,
+        p.trend,
+        p.birth_month AS "birthMonth",
+        p.birth_year AS "birthYear",
+        ps.growth_status AS "growthStatus",
+        ps.current_level AS "currentLevel",
+        ps.fitness,
+        ps.skill_progress AS "skillProgress",
+        ps.total_minutes AS "totalMinutes",
+        ps.appearances,
+        ps.recent_avg AS "recentAvg",
+        ps.average_score AS "averageScore",
+        ps.last_match_score AS "lastMatchScore",
+        ps.last_match_summary AS "lastMatchSummary",
+        ps.clip_submitted_count AS "clipSubmittedCount",
+        ps.clip_assessed_count AS "clipAssessedCount",
+        ps.clip_pending_count AS "clipPendingCount",
+        ps.missing_data_message AS "missingDataMessage",
+        ps.current_level_change_label AS "currentLevelChangeLabel",
+        ps.current_level_change_trend AS "currentLevelChangeTrend",
+        ps.fitness_change_label AS "fitnessChangeLabel",
+        ps.fitness_change_trend AS "fitnessChangeTrend",
+        ps.skill_progress_change_label AS "skillProgressChangeLabel",
+        ps.skill_progress_change_trend AS "skillProgressChangeTrend"
+`;
+
+async function findPlayerDashboardByLookup(playerLookup, executor = pool) {
+  const lookup = normalizeLookup(playerLookup || '');
+  const result = await executor.query(
+    `
+      SELECT ${DASHBOARD_PLAYER_SELECT}
+      FROM players p
+      JOIN player_team_assignments a ON a.player_id = p.id
+      JOIN teams t ON t.id = a.team_id
+      LEFT JOIN player_stats ps ON ps.player_id = p.id
+      WHERE ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
+      ORDER BY p.name ASC
+      LIMIT 1
+    `,
+    [lookup]
+  );
+  return result.rows[0] || null;
+}
+
+async function findPlayerDashboardById(playerId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT ${DASHBOARD_PLAYER_SELECT}
+      FROM players p
+      JOIN player_team_assignments a ON a.player_id = p.id
+      JOIN teams t ON t.id = a.team_id
+      LEFT JOIN player_stats ps ON ps.player_id = p.id
+      WHERE p.id = $1
+      LIMIT 1
+    `,
+    [playerId]
+  );
+  return result.rows[0] || null;
+}
+
+async function resolveShareEditorForPlayer(actorEmail, playerId) {
+  const email = String(actorEmail || '').trim().toLowerCase();
+  if (!email || !playerId) {
+    return null;
+  }
+  const actorResult = await pool.query(
+    `SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email]
+  );
+  const actor = actorResult.rows[0] || null;
+  if (!actor || actor.status !== 'active') {
+    return null;
+  }
+  if (actor.role === 'SystemAdmin') {
+    const row = await findPlayerDashboardById(playerId);
+    if (!row) {
+      return null;
+    }
+    return { actor, player: row };
+  }
+  if (actor.role === 'Coach') {
+    const row = await findPlayerProfileForCoach(playerId, actor.id);
+    if (!row) {
+      return null;
+    }
+    return { actor, player: row };
+  }
+  return null;
+}
+
+async function findActiveShareByToken(rawToken) {
+  const token = String(rawToken || '').trim();
+  if (!token) {
+    return null;
+  }
+  const tokenHash = hashShareToken(token);
+  const result = await pool.query(
+    `
+      SELECT id, player_id AS "playerId", created_by_user_id AS "createdByUserId", created_at AS "createdAt"
+      FROM player_share_links
+      WHERE token_hash = $1 AND revoked_at IS NULL
+      LIMIT 1
+    `,
+    [tokenHash]
+  );
+  return result.rows[0] || null;
+}
+
+function shareNotFoundResponse() {
+  return appError(404, 'not_found', 'This share link is not available.');
+}
+
+function buildGuestSharePageUrl(rawToken) {
+  return './S2-player-dashboard.html?share=' + encodeURIComponent(String(rawToken || ''));
+}
+
 const TREND_VALUES = new Set(['improving', 'plateau', 'declining']);
 const GROWTH_STATUS_VALUES = new Set(['on_track', 'watch', 'at_risk']);
 
@@ -1767,7 +1913,11 @@ function parseUpdateProfilePayload(payload) {
 }
 
 async function handlePlayersApi(req, res, requestUrl) {
-  console.log('API request', req.method, requestUrl.pathname);
+  const logPath = String(requestUrl.pathname || '').replace(
+    new RegExp(`^${apiPrefix}/share/[^/]+`),
+    `${apiPrefix}/share/<token>`
+  );
+  console.log('API request', req.method, logPath);
 
   const mutatingMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
   if (mutatingMethods.has(req.method) && requestUrl.pathname !== `${apiPrefix}/auth/login`) {
@@ -1795,63 +1945,281 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
     const actor = actorResult.rows[0] || null;
-    if (!actor || actor.role !== 'Coach' || actor.status !== 'active') {
+    const isSystemAdmin = assertSystemAdminActor(actor);
+    const isCoach = Boolean(actor && actor.role === 'Coach' && actor.status === 'active');
+    if (!isSystemAdmin && !isCoach) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
 
-    const dashboardRows = await pool.query(
-      `
-        SELECT
-          p.id,
-          p.name,
-          p.normalized_name AS "normalizedName",
-          p.player_avatar_url AS "avatarUrl",
-          t.name AS "teamName",
-          p.position,
-          p.trend,
-          p.birth_month AS "birthMonth",
-          p.birth_year AS "birthYear",
-          ps.growth_status AS "growthStatus",
-          ps.current_level AS "currentLevel",
-          ps.fitness,
-          ps.skill_progress AS "skillProgress",
-          ps.total_minutes AS "totalMinutes",
-          ps.appearances,
-          ps.recent_avg AS "recentAvg",
-          ps.average_score AS "averageScore",
-          ps.last_match_score AS "lastMatchScore",
-          ps.last_match_summary AS "lastMatchSummary",
-          ps.clip_submitted_count AS "clipSubmittedCount",
-          ps.clip_assessed_count AS "clipAssessedCount",
-          ps.clip_pending_count AS "clipPendingCount",
-          ps.missing_data_message AS "missingDataMessage",
-          ps.current_level_change_label AS "currentLevelChangeLabel",
-          ps.current_level_change_trend AS "currentLevelChangeTrend",
-          ps.fitness_change_label AS "fitnessChangeLabel",
-          ps.fitness_change_trend AS "fitnessChangeTrend",
-          ps.skill_progress_change_label AS "skillProgressChangeLabel",
-          ps.skill_progress_change_trend AS "skillProgressChangeTrend"
-        FROM players p
-        JOIN player_team_assignments a ON a.player_id = p.id
-        JOIN teams t ON t.id = a.team_id
-        JOIN users coach ON coach.id = t.lead_coach_user_id
-        LEFT JOIN player_stats ps ON ps.player_id = p.id
-        WHERE coach.id = $2
-          AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
-        ORDER BY p.name ASC
-        LIMIT 1
-      `,
-      [playerName, actor.id]
-    );
+    let dashboardRow = null;
+    if (isSystemAdmin) {
+      dashboardRow = await findPlayerDashboardByLookup(playerName);
+    } else {
+      const dashboardRows = await pool.query(
+        `
+          SELECT ${DASHBOARD_PLAYER_SELECT}
+          FROM players p
+          JOIN player_team_assignments a ON a.player_id = p.id
+          JOIN teams t ON t.id = a.team_id
+          JOIN users coach ON coach.id = t.lead_coach_user_id
+          LEFT JOIN player_stats ps ON ps.player_id = p.id
+          WHERE coach.id = $2
+            AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
+          ORDER BY p.name ASC
+          LIMIT 1
+        `,
+        [playerName, actor.id]
+      );
+      dashboardRow = dashboardRows.rows[0] || null;
+    }
 
-    if (!dashboardRows.rows[0]) {
+    if (!dashboardRow) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
       return;
     }
 
-    const skillRatings = await listSkillsForPlayer(dashboardRows.rows[0].id);
-    sendJson(res, 200, { data: toDashboardPayload(dashboardRows.rows[0], skillRatings) });
+    const skillRatings = await listSkillsForPlayer(dashboardRow.id);
+    sendJson(res, 200, { data: toDashboardPayload(dashboardRow, skillRatings) });
+    return;
+  }
+
+  const playerShareMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/players/([^/]+)/share$`));
+  if (playerShareMatch && (req.method === 'GET' || req.method === 'POST' || req.method === 'DELETE')) {
+    const playerId = decodeURIComponent(playerShareMatch[1] || '');
+    let actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    if (!actorEmail && (req.method === 'POST' || req.method === 'DELETE')) {
+      try {
+        const payload = await readJsonBody(req);
+        actorEmail = String((payload && payload.actorEmail) || '').trim().toLowerCase();
+      } catch {
+        actorEmail = '';
+      }
+    }
+
+    const editor = await resolveShareEditorForPlayer(actorEmail, playerId);
+    if (!editor) {
+      // Distinguish missing player vs forbidden when actor is valid but out of scope.
+      const actorResult = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [actorEmail]
+      );
+      const actor = actorResult.rows[0] || null;
+      if (!actor || actor.status !== 'active' || (actor.role !== 'Coach' && actor.role !== 'SystemAdmin')) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
+      const anyPlayer = await findPlayerDashboardById(playerId);
+      if (!anyPlayer) {
+        sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+        return;
+      }
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    if (req.method === 'GET') {
+      const active = await pool.query(
+        `
+          SELECT id, created_at AS "createdAt"
+          FROM player_share_links
+          WHERE player_id = $1 AND revoked_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        `,
+        [playerId]
+      );
+      sendJson(res, 200, {
+        data: {
+          active: Boolean(active.rows[0]),
+          shareId: active.rows[0] ? active.rows[0].id : null,
+          createdAt: active.rows[0] ? active.rows[0].createdAt : null
+        }
+      });
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      const revoked = await pool.query(
+        `
+          UPDATE player_share_links
+          SET revoked_at = NOW()
+          WHERE player_id = $1 AND revoked_at IS NULL
+          RETURNING id
+        `,
+        [playerId]
+      );
+      logStructured('share.revoke', editor.actor.id, {
+        playerId,
+        revokedCount: revoked.rowCount
+      });
+      sendJson(res, 200, { data: { revoked: revoked.rowCount > 0 } });
+      return;
+    }
+
+    // POST — replace-on-create
+    const rawToken = generateShareToken();
+    const tokenHash = hashShareToken(rawToken);
+    const shareId = 'psl_' + crypto.randomBytes(8).toString('hex');
+
+    await pool.query(
+      `
+        UPDATE player_share_links
+        SET revoked_at = NOW()
+        WHERE player_id = $1 AND revoked_at IS NULL
+      `,
+      [playerId]
+    );
+    await pool.query(
+      `
+        INSERT INTO player_share_links (id, player_id, token_hash, created_by_user_id)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [shareId, playerId, tokenHash, editor.actor.id]
+    );
+
+    const url = buildGuestSharePageUrl(rawToken);
+    logStructured('share.create', editor.actor.id, {
+      playerId,
+      shareId
+    });
+    sendJson(res, 200, {
+      data: {
+        shareId,
+        playerId,
+        token: rawToken,
+        url
+      }
+    });
+    return;
+  }
+
+  const shareDashboardMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/share/([^/]+)/dashboard$`));
+  if (req.method === 'GET' && shareDashboardMatch) {
+    const rawToken = decodeURIComponent(shareDashboardMatch[1] || '');
+    const share = await findActiveShareByToken(rawToken);
+    if (!share) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const dashboardRow = await findPlayerDashboardById(share.playerId);
+    if (!dashboardRow) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const skillRatings = await listSkillsForPlayer(dashboardRow.id);
+    sendJson(res, 200, { data: toDashboardPayload(dashboardRow, skillRatings) });
+    return;
+  }
+
+  const shareClipsMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/share/([^/]+)/clips$`));
+  if (req.method === 'GET' && shareClipsMatch) {
+    const rawToken = decodeURIComponent(shareClipsMatch[1] || '');
+    const share = await findActiveShareByToken(rawToken);
+    if (!share) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const clipRows = await pool.query(
+      `
+        SELECT
+          c.id,
+          c.player_id AS "playerId",
+          c.situation,
+          c.status,
+          c.score,
+          c.summary,
+          c.comments,
+          c.submitted_at_label AS "submittedAt",
+          c.skill,
+          c.skill_focus AS "skillFocus",
+          c.skill_ratings AS "skillRatings",
+          c.error_message AS "errorMessage",
+          c.video_storage_path AS "videoStoragePath",
+          c.video_storage_path AS "path",
+          p.name AS "playerName",
+          t.name AS "teamName"
+        FROM clips c
+        JOIN players p ON p.id = c.player_id
+        LEFT JOIN player_team_assignments a ON a.player_id = p.id
+        LEFT JOIN teams t ON t.id = a.team_id
+        WHERE c.player_id = $1
+        ORDER BY c.created_at DESC
+      `,
+      [share.playerId]
+    );
+    const segmentsByClip = await listSegmentsForClips(
+      pool,
+      clipRows.rows.map((row) => row.id)
+    );
+    sendJson(res, 200, {
+      data: clipRows.rows.map((row) => toClipResponse(row, segmentsByClip.get(row.id) || []))
+    });
+    return;
+  }
+
+  const shareClipMediaMatch = requestUrl.pathname.match(
+    new RegExp(`^${apiPrefix}/share/([^/]+)/clips/([^/]+)/media$`)
+  );
+  if (req.method === 'GET' && shareClipMediaMatch) {
+    const rawToken = decodeURIComponent(shareClipMediaMatch[1] || '');
+    const clipId = decodeURIComponent(shareClipMediaMatch[2] || '');
+    const share = await findActiveShareByToken(rawToken);
+    if (!share) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const clipOwner = await pool.query(
+      `SELECT player_id AS "playerId" FROM clips WHERE id = $1 LIMIT 1`,
+      [clipId]
+    );
+    if (!clipOwner.rows[0] || String(clipOwner.rows[0].playerId) !== String(share.playerId)) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const source = String(requestUrl.searchParams.get('source') || 'first').trim().toLowerCase();
+    const resolved = await resolveClipMediaPath(pool, clipId, source);
+    if (resolved.status !== 200 || !resolved.filePath) {
+      sendJson(res, resolved.status || 404, appError(
+        resolved.status || 404,
+        resolved.code || 'not_found',
+        resolved.message || 'No video file is available for this clip.'
+      ));
+      return;
+    }
+    streamVideoFile(req, res, resolved.filePath);
+    return;
+  }
+
+  const shareClipThumbMatch = requestUrl.pathname.match(
+    new RegExp(`^${apiPrefix}/share/([^/]+)/clips/([^/]+)/thumbnail$`)
+  );
+  if (req.method === 'GET' && shareClipThumbMatch) {
+    const rawToken = decodeURIComponent(shareClipThumbMatch[1] || '');
+    const clipId = decodeURIComponent(shareClipThumbMatch[2] || '');
+    const share = await findActiveShareByToken(rawToken);
+    if (!share) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const clipOwner = await pool.query(
+      `SELECT player_id AS "playerId" FROM clips WHERE id = $1 LIMIT 1`,
+      [clipId]
+    );
+    if (!clipOwner.rows[0] || String(clipOwner.rows[0].playerId) !== String(share.playerId)) {
+      sendJson(res, 404, shareNotFoundResponse());
+      return;
+    }
+    const resolved = await resolveClipThumbnailPath(pool, clipId);
+    if (resolved.status !== 200 || !resolved.filePath) {
+      sendJson(res, resolved.status || 404, appError(
+        resolved.status || 404,
+        resolved.code || 'not_found',
+        resolved.message || 'No thumbnail is available for this clip.'
+      ));
+      return;
+    }
+    streamJpegFile(res, resolved.filePath);
     return;
   }
 

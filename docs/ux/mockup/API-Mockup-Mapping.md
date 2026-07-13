@@ -35,8 +35,11 @@ Source plans:
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
-| S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, per-metric change indicators, and `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]` for the player's current position | 403 forbidden, 404 not_found |
+| S2-player-dashboard.html | Load player development dashboard | Get player development dashboard | GET /v1/players/dashboard?playerName=&actorEmail= | 200 OK with growth status, match/performance stats, per-metric change indicators, and `skillRatings: [{ skillId, skillName, rating, positionId, positionName }]` for the player's current position. **Coach** (lead-coach scoped) or **SystemAdmin** (any player). | 403 forbidden, 404 not_found |
 | S2-player-dashboard.html | Edit Player action (toolbar) | Navigation to S5 edit page | (client-side link to `S5-player-edit.html?playerId=`) | Opens S5 for the viewed player (shown even in the no-stats-yet state) | n/a |
+| S2-player-dashboard.html | Share link (toolbar) | Create / revoke guest share | POST /v1/players/{playerId}/share ; DELETE /v1/players/{playerId}/share ; GET status | 200 with one-time `{ token, url }` (hash stored); replace-on-create; Coach lead-coach or SystemAdmin | 403 forbidden, 404 not_found |
+| S2-player-dashboard.html | Guest open `?share=` | Guest read-only dashboard | GET /v1/share/{token}/dashboard ; GET /v1/share/{token}/clips ; GET /v1/share/{token}/clips/{id}/media | 200 dashboard + clips for bound player only; Video Assessments Play uses share media URL; **View Results** active → S6 with `share=`; other write CTAs visible but inert | 404 not_found (unknown/revoked/mismatch) |
+| S6-assessment-list.html | Guest open `?share=` | Guest read-only assessment list | GET /v1/share/{token}/dashboard ; GET /v1/share/{token}/clips ; share media + thumbnail | Bound player clips only; Pre-Selected/team locked; play via share URLs; Back → S2 with `share=`; nav inert | 404 → guest-share-unavailable notice |
 | S2-player-dashboard.html | Upload player avatar (click icon) | Upload avatar | PATCH /v1/players/{playerId}?actorEmail= with `{ avatarUrl }` | 200 OK with updated `{ player, stats }`; `player.avatarUrl` set | 400 validation_error, 403 forbidden, 404 not_found |
 | S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats, skillRatings }` (full editable identity + `PlayerDashboardStats` + position-scoped skill ratings) | 403 forbidden, 404 not_found |
 | S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats, skillRatings }`; when `position` changes, server replaces all `player_skill_ratings` rows for the new position as null; `missingDataMessage` cleared only when at least one Development Progress rating is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
@@ -95,7 +98,7 @@ Edit player contract (`S5-player-edit.html`, `PATCH /v1/players/{playerId}`):
 - Clips carry `comments` (LLM video observation on successful assessment; on failure the same text as `error_message`). `GET /api/v1/clips` and upload responses include `comments`. S6 assessment cards render `comments` **above** the rating row when present.
 - **S6 score display** — clip `score` is a 0–1 fraction from video processing. S6 shows it as a **0%–100%** label; the star is bright only when percent **> 80** (otherwise muted/gray). Missing scores show **N/A**.
 - **S6 card skills + Back** — complete cards list assessment skills from `skillFocus` ∪ `skillRatings` keys, each as percent or **N/A**. The card action that returns to S2 is labeled **Back** (S2’s deep-link into S6 remains **View Results**).
-- **S2 → S6 View Results** — the Video Assessments **View Results** control deep-links to `S6-assessment-list.html?playerId=&playerName=&teamName=` for the dashboard player. S6 shows a toggleable **Pre-Selected Player** checkbox (`[data-testid="preselected-player-filter"]`) that defaults **ON** when those params are present (OFF / hidden when opening S6 without player context). Team defaults to the player's `teamName` when it appears in the allowed team list. Coaches load teams via `GET /v1/teams?actorEmail=` (club-scoped); **All Teams** means all teams in the coach's club(s). SystemAdmin keeps a broader team list. `GET /v1/clips` accepts optional `playerId` / `playerName` in addition to `teamName` and `status`.
+- **S2 → S6 View Results** — the Video Assessments **View Results** control deep-links to `S6-assessment-list.html?playerId=&playerName=&teamName=` for the dashboard player. Guest S2 also appends `share=<token>`; guest S6 loads via share-scoped clip/media APIs and locks Pre-Selected/team. S6 shows a toggleable **Pre-Selected Player** checkbox (`[data-testid="preselected-player-filter"]`) that defaults **ON** when those params are present (OFF / hidden when opening S6 without player context; always on+locked for guests). Team defaults to the player's `teamName` when it appears in the allowed team list. Coaches load teams via `GET /v1/teams?actorEmail=` (club-scoped); **All Teams** means all teams in the coach's club(s). SystemAdmin keeps a broader team list. `GET /v1/clips` accepts optional `playerId` / `playerName` in addition to `teamName` and `status`.
 - **S1 → S6 video icon** — each S1 `.player-card` shows a lower-right `[data-testid="player-card-video-link"]` **only when** live `MockupApi.listClips` (optionally team-scoped) includes ≥1 clip for that `playerId` (any status; not `clipStats`). Click uses the same S6 query params as S2 View Results.
 - **S6 play / media** — `GET /v1/clips` includes original `path` and `segments: [{ index, path }]`. S6 card play (`[data-testid="clip-play-button"]`) opens a modal player and sets `<video src>` to `GET /api/v1/clips/{clipId}/media?source=first|original` (first segment when any exist; otherwise original). The media route resolves the file from the DB only, rejects paths outside `VANTAGEIQ_VIDEO_ROOT` / `c:/vantageiq_videos`, and streams `video/mp4` (Range supported). If neither source is available, the modal shows an unavailable notice.
 - **S6 thumbnails** — on successful process-clip, a JPEG poster is written to `{videoRoot}/thumbnails/{clipId}.jpg` from the first segment (else original). S6 cards load `GET /api/v1/clips/{clipId}/thumbnail` into `[data-testid="clip-thumbnail"]` inside `.result-thumbnail`; `onerror` removes the img so the emoji/gradient placeholder remains. Offline seed keeps the placeholder (no binary images).
@@ -332,3 +335,36 @@ Source plans:
 - `apps/api/tests/integration/players/mockup-api-client-skill-ratings.spec.ts`
 - `apps/api/tests/integration/players/s2-s5-skill-ratings.spec.ts`
 - `tests/playwright/player-skill-ratings.spec.js`
+
+## Guest read-only share links (S2 + S6)
+
+Source plans:
+- Feature 034: `docs/plans/2026-07-13-003-feat-guest-readonly-social-share-plan.md` (S2)
+- Feature 035: `docs/plans/2026-07-13-004-feat-guest-s6-share-view-plan.md` (S6 follow-on)
+- Backlog: `docs/backlog/007-guest-readonly-social-share.md`
+
+### Schema
+
+- Migration `apps/api/src/db/migrations/023_player_share_links.sql` — `player_share_links (id, player_id, token_hash UNIQUE, created_by_user_id, created_at, revoked_at)`. Raw token never stored. Mirrored in `tables.sql` / `deploy.sql` / `ensureDatabase`.
+
+### API
+
+- `POST /v1/players/{playerId}/share` `{ actorEmail }` — replace-on-create; returns one-time `{ token, url, shareId, playerId }`. Coach lead-coach or SystemAdmin.
+- `DELETE /v1/players/{playerId}/share` — sets `revoked_at` on active rows.
+- `GET /v1/players/{playerId}/share?actorEmail=` — `{ active, shareId, createdAt }` (no token).
+- Guest: `GET /v1/share/{token}/dashboard`, `/clips`, `/clips/{id}/media`, `/clips/{id}/thumbnail`. Unknown/revoked/mismatch → uniform 404.
+- `GET /v1/players/dashboard` also allows SystemAdmin (any player).
+
+### UI
+
+- S2 toolbar Share / Revoke + copyable URL row for editors.
+- Guest S2: `S2-player-dashboard.html?share=<token>` — Guest View; **View Results** active and carries `share` (+ player context) to S6; other write CTAs visible but inert; Video Assessments **Play** via share-scoped media URL.
+- Guest S6: `S6-assessment-list.html?share=<token>` — lists/plays bound player only via share APIs; Pre-Selected Player + team filter locked; bottom nav / Exit inert; assessed **Back** → guest S2 with same `share`. Invalid/revoked → `[data-testid="guest-share-unavailable"]`.
+- Copy/paste only — no social network buttons.
+- Coach/SystemAdmin S6 without `share` unchanged (open `listClips` / coach media URLs).
+
+### Test traceability
+
+- `apps/api/tests/integration/players/player-share-links.spec.ts`
+- `tests/playwright/s2-guest-share.spec.js` (S2 guest + Feature 035 View Results → guest S6)
+- `tests/playwright/s6-guest-share.spec.js` (coach S6 without share regression)
