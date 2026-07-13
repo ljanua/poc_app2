@@ -45,7 +45,8 @@ Source plans:
 | S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats, skillRatings }`; when `position` changes, server replaces all `player_skill_ratings` rows for the new position as null; `missingDataMessage` cleared only when at least one Development Progress rating is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
 | S5-player-edit.html | Save Player (skill ratings) | Update player skill ratings | PUT /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` after partial upsert/delete of listed skills | 400 validation_error, 403 forbidden, 404 not_found |
 | S2-player-dashboard.html / S5-player-edit.html | Read skill ratings only | List player skill ratings | GET /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` for the player's current position (null ratings included) | 403 forbidden, 404 not_found |
-|| S8-skills.html | Add Sport modal submit | Create sport | POST /v1/sports | 201 Created with sanitized sport object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
+| S2-player-dashboard.html | Change History section | List player data audits | GET /v1/players/{playerId}/audits?actorEmail= | 200 OK with `{ audits }` (profile / team / skill changes; Coach scoped or SystemAdmin). Hidden for guest share. | 403 forbidden |
+| S8-skills.html | Add Sport modal submit | Create sport | POST /v1/sports | 201 Created with sanitized sport object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
 || S8-skills.html | Rename Sport modal submit | Update sport | PATCH /v1/sports/{sportId} | 200 OK with updated sport | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
 || S8-skills.html | Sport Deactivate / Reactivate action | Set sport status | PATCH /v1/sports/{sportId}/status | 200 OK with updated status | 400 validation_error, 403 forbidden, 404 not_found |
 || S8-skills.html | Add Position modal submit | Create position | POST /v1/positions | 201 Created with new position (requires `sportId`) | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
@@ -368,3 +369,27 @@ Source plans:
 - `apps/api/tests/integration/players/player-share-links.spec.ts`
 - `tests/playwright/s2-guest-share.spec.js` (S2 guest + Feature 035 View Results → guest S6)
 - `tests/playwright/s6-guest-share.spec.js` (coach S6 without share regression)
+
+## Player data change audit (Feature 036)
+
+Source plan: `docs/plans/2026-07-13-005-feat-player-data-change-audit-plan.md` (backlog 008).
+
+### Schema
+
+- Migration `apps/api/src/db/migrations/024_player_data_audits.sql` — append-only `player_data_audits` (entity profile | team_assignment | skill_rating; actor_kind user | system; nullable actor_user_id for clip sync). Mirrored in `tables.sql` / `deploy.sql` / `ensureDatabase`.
+
+### API / writes
+
+- Side effect on `PATCH /v1/players/{id}`, `PUT .../skill-ratings`, and clip→skill sync upserts (diff-only).
+- `GET /v1/players/{id}/audits?actorEmail=` — Coach (scoped) or SystemAdmin; newest first.
+
+### UI
+
+- S2 collapsible **Change History**; hidden for guest share views.
+
+### Test traceability
+
+- `apps/api/tests/integration/db/player-data-audits-migration.spec.ts`
+- `apps/api/tests/integration/players/player-data-audits-api.spec.ts`
+- `apps/api/tests/integration/video-processing/sync-player-skill-ratings-from-clip.spec.ts`
+- `tests/playwright/player-data-audit.spec.js`

@@ -1028,25 +1028,93 @@ function parseUpdateSkillRatingsPayload(payload) {
   return { ratings };
 }
 
-async function upsertSkillRatings(client, playerId, ratings) {
+function normalizeAuditScalar(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return String(value);
+}
+
+function auditValuesEqual(oldValue, newValue) {
+  return normalizeAuditScalar(oldValue) === normalizeAuditScalar(newValue);
+}
+
+async function insertPlayerDataAudit(executor, row) {
+  if (!executor || !row || !row.playerId || !row.entity || !row.fieldKey) {
+    return false;
+  }
+  if (auditValuesEqual(row.oldValue, row.newValue)) {
+    return false;
+  }
+  const id = 'pda_' + crypto.randomBytes(8).toString('hex');
+  await executor.query(
+    `
+      INSERT INTO player_data_audits (
+        id, player_id, entity, field_key, skill_id, old_value, new_value,
+        actor_user_id, actor_kind, source, clip_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `,
+    [
+      id,
+      row.playerId,
+      row.entity,
+      row.fieldKey,
+      row.skillId || null,
+      normalizeAuditScalar(row.oldValue),
+      normalizeAuditScalar(row.newValue),
+      row.actorUserId || null,
+      row.actorKind || 'user',
+      row.source || 'coach_ui',
+      row.clipId || null
+    ]
+  );
+  return true;
+}
+
+async function upsertSkillRatings(client, playerId, ratings, auditMeta = null) {
   for (const entry of ratings) {
+    const previous = await client.query(
+      `SELECT rating FROM player_skill_ratings WHERE player_id = $1 AND skill_id = $2`,
+      [playerId, entry.skillId]
+    );
+    const oldRating = previous.rows[0]
+      ? (previous.rows[0].rating === null || previous.rows[0].rating === undefined
+        ? null
+        : Number(previous.rows[0].rating))
+      : null;
+
     if (entry.rating === null) {
       await client.query(
         `DELETE FROM player_skill_ratings WHERE player_id = $1 AND skill_id = $2`,
         [playerId, entry.skillId]
       );
-      continue;
+    } else {
+      await client.query(
+        `
+          INSERT INTO player_skill_ratings (player_id, skill_id, rating, updated_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (player_id, skill_id) DO UPDATE SET
+            rating = EXCLUDED.rating,
+            updated_at = NOW()
+        `,
+        [playerId, entry.skillId, entry.rating]
+      );
     }
-    await client.query(
-      `
-        INSERT INTO player_skill_ratings (player_id, skill_id, rating, updated_at)
-        VALUES ($1, $2, $3, NOW())
-        ON CONFLICT (player_id, skill_id) DO UPDATE SET
-          rating = EXCLUDED.rating,
-          updated_at = NOW()
-      `,
-      [playerId, entry.skillId, entry.rating]
-    );
+
+    if (auditMeta) {
+      await insertPlayerDataAudit(client, {
+        playerId,
+        entity: 'skill_rating',
+        fieldKey: 'rating',
+        skillId: entry.skillId,
+        oldValue: oldRating,
+        newValue: entry.rating,
+        actorUserId: auditMeta.actorUserId,
+        actorKind: auditMeta.actorKind || 'user',
+        source: auditMeta.source || 'coach_ui',
+        clipId: auditMeta.clipId || null
+      });
+    }
   }
 }
 
@@ -1370,6 +1438,28 @@ async function ensureDatabase() {
       WHERE revoked_at IS NULL;
   `);
 
+  // Feature 036: append-only player profile / team / skill change history.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_data_audits (
+      id TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      entity TEXT NOT NULL CHECK (entity IN ('profile', 'team_assignment', 'skill_rating')),
+      field_key TEXT NOT NULL,
+      skill_id TEXT REFERENCES skills(id) ON DELETE SET NULL,
+      old_value TEXT,
+      new_value TEXT,
+      actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      actor_kind TEXT NOT NULL CHECK (actor_kind IN ('user', 'system')),
+      source TEXT NOT NULL,
+      clip_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_player_data_audits_player_created
+      ON player_data_audits(player_id, created_at DESC);
+  `);
+
   if (seedDatabase) {
     await pool.query(`
       INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
@@ -1687,6 +1777,11 @@ async function resolveShareEditorForPlayer(actorEmail, playerId) {
     return { actor, player: row };
   }
   return null;
+}
+
+/** Coach (scoped) or SystemAdmin may read player change history. */
+async function resolvePlayerHistoryViewer(actorEmail, playerId) {
+  return resolveShareEditorForPlayer(actorEmail, playerId);
 }
 
 async function findActiveShareByToken(rawToken) {
@@ -3730,7 +3825,11 @@ async function handlePlayersApi(req, res, requestUrl) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await upsertSkillRatings(client, playerId, parsed.ratings);
+      await upsertSkillRatings(client, playerId, parsed.ratings, {
+        actorUserId: actor.id,
+        actorKind: 'user',
+        source: 'coach_ui'
+      });
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -3741,6 +3840,48 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const skillRatings = await listSkillsForPlayer(playerId);
     sendJson(res, 200, { data: { skillRatings } });
+    return;
+  }
+
+  const auditsMatch = requestUrl.pathname.match(/^\/api\/v1\/players\/([^/]+)\/audits$/);
+  if (req.method === 'GET' && auditsMatch) {
+    const playerId = auditsMatch[1];
+    const viewer = await resolvePlayerHistoryViewer(requestUrl.searchParams.get('actorEmail'), playerId);
+    if (!viewer) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const limitRaw = Number(requestUrl.searchParams.get('limit') || 100);
+    const limit = Number.isFinite(limitRaw) ? Math.min(200, Math.max(1, Math.floor(limitRaw))) : 100;
+    const result = await pool.query(
+      `
+        SELECT
+          a.id,
+          a.player_id AS "playerId",
+          a.entity,
+          a.field_key AS "fieldKey",
+          a.skill_id AS "skillId",
+          s.name AS "skillName",
+          a.old_value AS "oldValue",
+          a.new_value AS "newValue",
+          a.actor_user_id AS "actorUserId",
+          u.name AS "actorName",
+          u.email AS "actorEmail",
+          a.actor_kind AS "actorKind",
+          a.source,
+          a.clip_id AS "clipId",
+          a.created_at AS "createdAt"
+        FROM player_data_audits a
+        LEFT JOIN users u ON u.id = a.actor_user_id
+        LEFT JOIN skills s ON s.id = a.skill_id
+        WHERE a.player_id = $1
+        ORDER BY a.created_at DESC
+        LIMIT $2
+      `,
+      [playerId, limit]
+    );
+    sendJson(res, 200, { data: { audits: result.rows } });
     return;
   }
 
@@ -3786,6 +3927,44 @@ async function handlePlayersApi(req, res, requestUrl) {
         return;
       }
 
+      const assignment = await client.query(
+        `SELECT team_id AS "teamId" FROM player_team_assignments WHERE player_id = $1`,
+        [playerId]
+      );
+      const previousTeamId = assignment.rows[0] ? assignment.rows[0].teamId : null;
+
+      const profileFields = [
+        { key: 'name', oldValue: existing.name, newValue: parsed.identity.name },
+        { key: 'position', oldValue: existing.position, newValue: parsed.identity.position },
+        { key: 'trend', oldValue: existing.trend, newValue: parsed.identity.trend },
+        { key: 'avatarUrl', oldValue: existing.avatarUrl, newValue: parsed.identity.avatarUrl },
+        { key: 'birthMonth', oldValue: existing.birthMonth, newValue: parsed.identity.birthMonth },
+        { key: 'birthYear', oldValue: existing.birthYear, newValue: parsed.identity.birthYear }
+      ];
+      for (const field of profileFields) {
+        await insertPlayerDataAudit(client, {
+          playerId,
+          entity: 'profile',
+          fieldKey: field.key,
+          oldValue: field.oldValue,
+          newValue: field.newValue,
+          actorUserId: actor.id,
+          actorKind: 'user',
+          source: 'coach_ui'
+        });
+      }
+
+      await insertPlayerDataAudit(client, {
+        playerId,
+        entity: 'team_assignment',
+        fieldKey: 'teamId',
+        oldValue: previousTeamId,
+        newValue: team.id,
+        actorUserId: actor.id,
+        actorKind: 'user',
+        source: 'coach_ui'
+      });
+
       await client.query(
         `
           UPDATE players
@@ -3818,8 +3997,47 @@ async function handlePlayersApi(req, res, requestUrl) {
       const previousPosition = String(existing.position || '').trim();
       const nextPosition = String(parsed.identity.position || '').trim();
       if (previousPosition !== nextPosition) {
+        const beforeRatings = await client.query(
+          `SELECT skill_id AS "skillId", rating FROM player_skill_ratings WHERE player_id = $1`,
+          [playerId]
+        );
+        const beforeMap = new Map(
+          beforeRatings.rows.map((row) => [
+            row.skillId,
+            row.rating === null || row.rating === undefined ? null : Number(row.rating)
+          ])
+        );
         const newPositionId = await resolvePositionIdForPlayer(client, playerId, nextPosition);
         await replaceSkillRatingsForPosition(client, playerId, newPositionId);
+        const afterRatings = await client.query(
+          `SELECT skill_id AS "skillId", rating FROM player_skill_ratings WHERE player_id = $1`,
+          [playerId]
+        );
+        const afterMap = new Map(
+          afterRatings.rows.map((row) => [
+            row.skillId,
+            row.rating === null || row.rating === undefined ? null : Number(row.rating)
+          ])
+        );
+        const skillIds = new Set([...beforeMap.keys(), ...afterMap.keys()]);
+        for (const skillId of skillIds) {
+          const oldValue = beforeMap.has(skillId) ? beforeMap.get(skillId) : null;
+          const newValue = afterMap.has(skillId) ? afterMap.get(skillId) : null;
+          // Rows removed by position replace: treat as clearing to null when gone.
+          const effectiveNew = afterMap.has(skillId) ? newValue : null;
+          const effectiveOld = beforeMap.has(skillId) ? oldValue : null;
+          await insertPlayerDataAudit(client, {
+            playerId,
+            entity: 'skill_rating',
+            fieldKey: 'rating',
+            skillId,
+            oldValue: effectiveOld,
+            newValue: effectiveNew,
+            actorUserId: actor.id,
+            actorKind: 'user',
+            source: 'coach_ui'
+          });
+        }
       }
 
       await client.query('COMMIT');

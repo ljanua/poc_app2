@@ -19,8 +19,16 @@ describe('sync-player-skill-ratings-from-clip', () => {
           expect(params?.[0]).toBe('Passing');
           return { rows: [{ id: 's_passing' }] };
         }
+        if (sql.includes('SELECT rating FROM player_skill_ratings')) {
+          return { rows: [] };
+        }
         if (sql.includes('INSERT INTO player_skill_ratings')) {
           expect(params).toEqual(['p_10', 's_passing', 84]);
+          return { rows: [] };
+        }
+        if (sql.includes('INSERT INTO player_data_audits')) {
+          expect(params?.[2]).toBe('s_passing');
+          expect(params?.[4]).toBe('84');
           return { rows: [] };
         }
         return { rows: [] };
@@ -32,11 +40,39 @@ describe('sync-player-skill-ratings-from-clip', () => {
     );
     const result = await syncPlayerSkillRatingsFromClip(pool, {
       playerId: 'p_10',
-      skillRatings: { Passing: 0.84 }
+      skillRatings: { Passing: 0.84 },
+      clipId: 'c_1'
     });
 
     expect(result).toEqual({ upserted: 1, skipped: 0 });
-    expect(pool.query).toHaveBeenCalledTimes(2);
+    expect(pool.query.mock.calls.some((call) => String(call[0]).includes('INSERT INTO player_data_audits'))).toBe(true);
+  });
+
+  it('skips audit when rating is unchanged', async () => {
+    const pool = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM skills')) {
+          return { rows: [{ id: 's_passing' }] };
+        }
+        if (sql.includes('SELECT rating FROM player_skill_ratings')) {
+          return { rows: [{ rating: 84 }] };
+        }
+        if (sql.includes('INSERT INTO player_skill_ratings')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      })
+    };
+
+    const { syncPlayerSkillRatingsFromClip } = await import(
+      '../../../../../scripts/video-processing/sync-player-skill-ratings-from-clip.js'
+    );
+    await syncPlayerSkillRatingsFromClip(pool, {
+      playerId: 'p_10',
+      skillRatings: { Passing: 0.84 }
+    });
+
+    expect(pool.query.mock.calls.some((call) => String(call[0]).includes('INSERT INTO player_data_audits'))).toBe(false);
   });
 
   it('no-ops for empty or null skill ratings', async () => {

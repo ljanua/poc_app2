@@ -226,7 +226,8 @@ async function processClip(pool, clipId) {
     try {
       await syncPlayerSkillRatingsFromClip(pool, {
         playerId: clip.playerId,
-        skillRatings: ratingsBySkill
+        skillRatings: ratingsBySkill,
+        clipId
       });
     } catch (syncError) {
       console.error(`Clip ${clipId} skill rating sync failed:`, syncError);

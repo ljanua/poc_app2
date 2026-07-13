@@ -2693,6 +2693,37 @@
       return { status: 200, data: { skillRatings: clone(skillRatings) }, skillRatings: clone(skillRatings) };
     },
 
+    listPlayerDataAudits(playerId, limit) {
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 200, data: { audits: [] }, audits: [] };
+      }
+      const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+      const query = [];
+      if (actorEmail) {
+        query.push('actorEmail=' + encodeURIComponent(actorEmail));
+      }
+      if (limit) {
+        query.push('limit=' + encodeURIComponent(String(limit)));
+      }
+      const qs = query.length ? '?' + query.join('&') : '';
+      const response = backendRequest(
+        'GET',
+        '/players/' + encodeURIComponent(playerId) + '/audits' + qs
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return {
+          status: 200,
+          data: clone(response.body.data),
+          audits: clone(response.body.data.audits || [])
+        };
+      }
+      if (response.status !== 0 && response.status !== 503) {
+        window.__MOCK_API_LAST_ERROR__ = response.body;
+        return clone(Object.assign({ status: response.status }, response.body || {}));
+      }
+      return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+    },
+
     updatePlayerSkillRatings(playerId, payload) {
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();

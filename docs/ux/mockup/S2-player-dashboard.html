@@ -96,6 +96,32 @@
         </div>
       </div>
 
+      <div class="section stats-section is-collapsed" data-testid="change-history-section" data-section="change-history">
+        <button type="button" class="section-title section-toggle" id="toggle-change-history"
+          aria-expanded="false" aria-controls="body-change-history"
+          data-testid="dashboard-section-toggle-change-history">
+          Change History
+        </button>
+        <div class="section-body" id="body-change-history">
+          <div id="changeHistoryEmpty" class="muted" data-testid="change-history-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+            No profile, team, or skill changes recorded yet.
+          </div>
+          <div class="table-wrap" id="changeHistoryTableWrap" data-testid="change-history-table-wrap" hidden>
+            <table class="data-table" data-testid="change-history-table" style="min-width: 0;">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Who</th>
+                  <th>Change</th>
+                  <th>From → To</th>
+                </tr>
+              </thead>
+              <tbody id="changeHistoryBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="section stats-section is-collapsed" data-section="development-progress">
         <button type="button" class="section-title section-toggle" id="toggle-development-progress"
           aria-expanded="false" aria-controls="body-development-progress"
@@ -375,6 +401,8 @@
             element.hidden = liveClips.length === 0;
           } else if (section === 'skill-ratings') {
             element.hidden = !hasRatedSkills;
+          } else if (section === 'change-history') {
+            element.hidden = isGuest;
           } else {
             element.hidden = true;
           }
@@ -382,7 +410,12 @@
       } else {
         noStatsNotice.hidden = true;
         statsSections.forEach(function (element) {
-          element.hidden = false;
+          const section = element.getAttribute('data-section');
+          if (section === 'change-history') {
+            element.hidden = isGuest;
+          } else {
+            element.hidden = false;
+          }
         });
       }
 
@@ -633,6 +666,67 @@
           appendRatingRows(roleBody, roleRows);
         }
       })();
+      }
+
+      if (!isGuest) {
+        (function renderChangeHistory() {
+          function escapeHtml(value) {
+            return String(value == null ? '' : value)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;');
+          }
+          const emptyEl = document.getElementById('changeHistoryEmpty');
+          const wrapEl = document.getElementById('changeHistoryTableWrap');
+          const bodyEl = document.getElementById('changeHistoryBody');
+          const sectionEl = document.querySelector('[data-section="change-history"]');
+          if (!emptyEl || !wrapEl || !bodyEl || !sectionEl || sectionEl.hidden) {
+            return;
+          }
+          const result = MockupApi.listPlayerDataAudits(player.id, 50);
+          const audits = (result && result.status === 200 && Array.isArray(result.audits))
+            ? result.audits
+            : [];
+          bodyEl.innerHTML = '';
+          if (!audits.length) {
+            emptyEl.hidden = false;
+            wrapEl.hidden = true;
+            return;
+          }
+          emptyEl.hidden = true;
+          wrapEl.hidden = false;
+          audits.forEach(function (row) {
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-testid', 'change-history-row');
+            const when = row.createdAt ? String(row.createdAt).replace('T', ' ').slice(0, 19) : '';
+            const who = row.actorKind === 'system'
+              ? ('System' + (row.source === 'clip_sync' ? ' (video)' : ''))
+              : (row.actorName || row.actorEmail || 'User');
+            let changeLabel = row.fieldKey || '';
+            if (row.entity === 'skill_rating') {
+              changeLabel = 'Skill: ' + (row.skillName || row.skillId || 'rating');
+            } else if (row.entity === 'team_assignment') {
+              changeLabel = 'Team';
+            } else if (row.entity === 'profile') {
+              changeLabel = 'Profile: ' + row.fieldKey;
+            }
+            const fromTo = (row.oldValue == null ? '—' : String(row.oldValue))
+              + ' → '
+              + (row.newValue == null ? '—' : String(row.newValue));
+            tr.innerHTML =
+              '<td>' + escapeHtml(when) + '</td>' +
+              '<td>' + escapeHtml(who) + '</td>' +
+              '<td>' + escapeHtml(changeLabel) + '</td>' +
+              '<td>' + escapeHtml(fromTo) + '</td>';
+            bodyEl.appendChild(tr);
+          });
+        })();
+      } else {
+        const historySection = document.querySelector('[data-section="change-history"]');
+        if (historySection) {
+          historySection.hidden = true;
+        }
       }
 
       renderVideoAssessments(liveClips);
