@@ -1233,6 +1233,21 @@ function assertSystemAdminActor(actor) {
   return true;
 }
 
+function isClubScopedActor(actor) {
+  return Boolean(
+    actor &&
+      actor.status === 'active' &&
+      (actor.role === 'Coach' || actor.role === 'ClubAdmin')
+  );
+}
+
+function isLeadScopedActor(actor) {
+  return Boolean(actor && actor.status === 'active' && actor.role === 'Coach');
+}
+
+const ALL_ROLES = ['SystemAdmin', 'Coach', 'ClubAdmin'];
+const TEAM_EDITOR_ROLES = ['SystemAdmin', 'Coach', 'ClubAdmin'];
+
 function toTeamPayload(row) {
   return {
     id: row.id,
@@ -1312,7 +1327,7 @@ async function ensureDatabase() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
-      role TEXT NOT NULL CHECK (role IN ('SystemAdmin', 'Coach')),
+      role TEXT NOT NULL CHECK (role IN ('SystemAdmin', 'Coach', 'ClubAdmin')),
       status TEXT NOT NULL DEFAULT 'active',
       password_hash TEXT,
       last_login_label TEXT,
@@ -1320,6 +1335,25 @@ async function ensureDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       deactivated_at TIMESTAMPTZ
     );
+  `);
+
+  // Existing DBs keep the old two-role CHECK; recreate like clips_status_check.
+  await pool.query(`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;`);
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.table_constraints
+        WHERE constraint_schema = 'public'
+          AND table_name = 'users'
+          AND constraint_name = 'users_role_check'
+      ) THEN
+        ALTER TABLE users
+          ADD CONSTRAINT users_role_check
+          CHECK (role IN ('SystemAdmin', 'Coach', 'ClubAdmin'));
+      END IF;
+    END $$;
   `);
 
   await pool.query(`
@@ -1595,9 +1629,20 @@ async function ensureDatabase() {
       VALUES
         ('u_admin_maria', 'Maria Alves', 'maria@vantageiq.club', 'SystemAdmin', 'active', 'SecurePass123', 'Today, 08:31'),
         ('u_coach_joao', 'Joao Lima', 'joao@vantageiq.club', 'Coach', 'active', 'SecurePass123', 'Yesterday'),
-        ('u_coach_ana', 'Ana Costa', 'ana@vantageiq.club', 'Coach', 'inactive', 'SecurePass123', '6 days ago')
+        ('u_coach_ana', 'Ana Costa', 'ana@vantageiq.club', 'Coach', 'inactive', 'SecurePass123', '6 days ago'),
+        ('u_clubadmin_rita', 'Rita Costa', 'rita@vantageiq.club', 'ClubAdmin', 'active', 'SecurePass123', 'Today')
       ON CONFLICT (id) DO NOTHING;
     `);
+
+    try {
+      await pool.query(`
+        INSERT INTO coach_clubs (user_id, club_id)
+        VALUES ('u_clubadmin_rita', 'c_default')
+        ON CONFLICT (user_id, club_id) DO NOTHING;
+      `);
+    } catch (error) {
+      console.warn('club admin coach_clubs seed skipped:', error.message || error);
+    }
 
     await pool.query(`
       INSERT INTO teams (id, name, age_group, lead_coach_user_id)
@@ -1666,12 +1711,12 @@ async function listPlayers(teamName, query, actor, options) {
     predicates.push(`(LOWER(p.name) LIKE LOWER($${values.length}) OR LOWER(p.position) LIKE LOWER($${values.length}))`);
   }
 
-  // Coach actors are always club-scoped via coach_clubs. When onlyMine is true,
-  // further narrow to teams the coach leads. SystemAdmin / unknown: no scoping.
-  if (actor && actor.role === 'Coach' && actor.status === 'active') {
+  // Coach and ClubAdmin are always club-scoped via coach_clubs. onlyMine further
+  // narrows to lead teams for Coach only. SystemAdmin / unknown: no scoping.
+  if (isClubScopedActor(actor)) {
     values.push(actor.id);
     predicates.push(`t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`);
-    if (onlyMine) {
+    if (onlyMine && isLeadScopedActor(actor)) {
       values.push(actor.id);
       predicates.push(`t.lead_coach_user_id = $${values.length}`);
     }
@@ -1759,6 +1804,10 @@ async function findPlayerById(playerId, executor = pool) {
 // Resolves the active Coach actor for an incoming request. Returns null when
 // the email is unknown, inactive, or not a Coach -- callers map that to 403.
 async function resolveCoachActor(actorEmail) {
+  return resolveClubEditorActor(actorEmail);
+}
+
+async function resolveClubEditorActor(actorEmail) {
   const email = String(actorEmail || '').trim().toLowerCase();
   if (!email) {
     return null;
@@ -1768,20 +1817,66 @@ async function resolveCoachActor(actorEmail) {
     [email]
   );
   const actor = result.rows[0] || null;
-  if (!actor || actor.role !== 'Coach' || actor.status !== 'active') {
+  if (!isClubScopedActor(actor)) {
     return null;
   }
   return actor;
 }
 
-// Loads a single player + stats row scoped to a team led by the given coach.
-// Mirrors the dashboard query's join/scoping so GET profile and PATCH share
-// the same "belongs to this coach" guard. Returns null when the player is not
-// on any team led by the coach (callers map that to 404).
-async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
-  const result = await executor.query(
+async function resolveActorUserByEmail(actorEmail) {
+  const email = String(actorEmail || '').trim().toLowerCase();
+  if (!email) {
+    return null;
+  }
+  const result = await pool.query(
+    `SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+    [email]
+  );
+  return result.rows[0] || null;
+}
+
+async function listActorClubIds(userId) {
+  const result = await pool.query(
+    `SELECT club_id FROM coach_clubs WHERE user_id = $1`,
+    [userId]
+  );
+  return result.rows.map((row) => row.club_id);
+}
+
+async function usersShareClub(actorId, targetUserId) {
+  const result = await pool.query(
     `
-      SELECT
+      SELECT 1
+      FROM coach_clubs a
+      INNER JOIN coach_clubs b ON b.club_id = a.club_id
+      WHERE a.user_id = $1 AND b.user_id = $2
+      LIMIT 1
+    `,
+    [actorId, targetUserId]
+  );
+  return Boolean(result.rows[0]);
+}
+
+async function resolveUserAdminActor(payload) {
+  const email = String((payload && payload.actorEmail) || '').trim().toLowerCase();
+  const actor = await resolveActorUserByEmail(email);
+  if (assertSystemAdminActor(actor)) {
+    return { actor, isSystemAdmin: true };
+  }
+  if (actor && actor.role === 'ClubAdmin' && actor.status === 'active') {
+    return { actor, isSystemAdmin: false };
+  }
+  return { actor: null, isSystemAdmin: false };
+}
+
+async function clubAdminMayManageUser(actor, targetUser) {
+  if (!actor || !targetUser || targetUser.role !== 'Coach') {
+    return false;
+  }
+  return usersShareClub(actor.id, targetUser.id);
+}
+
+const PLAYER_PROFILE_SELECT = `
         p.id,
         p.name,
         p.normalized_name AS "normalizedName",
@@ -1811,6 +1906,16 @@ async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
         ps.fitness_change_trend AS "fitnessChangeTrend",
         ps.skill_progress_change_label AS "skillProgressChangeLabel",
         ps.skill_progress_change_trend AS "skillProgressChangeTrend"
+`;
+
+// Loads a single player + stats row scoped to a team led by the given coach.
+// Mirrors the dashboard query's join/scoping so GET profile and PATCH share
+// the same "belongs to this coach" guard. Returns null when the player is not
+// on any team led by the coach (callers map that to 404).
+async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT ${PLAYER_PROFILE_SELECT}
       FROM players p
       JOIN player_team_assignments a ON a.player_id = p.id
       JOIN teams t ON t.id = a.team_id
@@ -1822,6 +1927,37 @@ async function findPlayerProfileForCoach(playerId, coachId, executor = pool) {
     [playerId, coachId]
   );
   return result.rows[0] || null;
+}
+
+// ClubAdmin: any player on a team in the actor's coach_clubs set.
+async function findPlayerProfileInActorClubs(playerId, actorId, executor = pool) {
+  const result = await executor.query(
+    `
+      SELECT ${PLAYER_PROFILE_SELECT}
+      FROM players p
+      JOIN player_team_assignments a ON a.player_id = p.id
+      JOIN teams t ON t.id = a.team_id
+      LEFT JOIN player_stats ps ON ps.player_id = p.id
+      WHERE p.id = $1
+        AND t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $2)
+      LIMIT 1
+    `,
+    [playerId, actorId]
+  );
+  return result.rows[0] || null;
+}
+
+async function findPlayerProfileForEditor(playerId, actor, executor = pool) {
+  if (!actor) {
+    return null;
+  }
+  if (actor.role === 'ClubAdmin') {
+    return findPlayerProfileInActorClubs(playerId, actor.id, executor);
+  }
+  if (actor.role === 'Coach') {
+    return findPlayerProfileForCoach(playerId, actor.id, executor);
+  }
+  return null;
 }
 
 const DASHBOARD_PLAYER_SELECT = `
@@ -1910,8 +2046,8 @@ async function resolveShareEditorForPlayer(actorEmail, playerId) {
     }
     return { actor, player: row };
   }
-  if (actor.role === 'Coach') {
-    const row = await findPlayerProfileForCoach(playerId, actor.id);
+  if (isClubScopedActor(actor)) {
+    const row = await findPlayerProfileForEditor(playerId, actor);
     if (!row) {
       return null;
     }
@@ -2182,8 +2318,8 @@ async function handlePlayersApi(req, res, requestUrl) {
     const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
     const actor = actorResult.rows[0] || null;
     const isSystemAdmin = assertSystemAdminActor(actor);
-    const isCoach = Boolean(actor && actor.role === 'Coach' && actor.status === 'active');
-    if (!isSystemAdmin && !isCoach) {
+    const isClubEditor = isClubScopedActor(actor);
+    if (!isSystemAdmin && !isClubEditor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -2191,6 +2327,22 @@ async function handlePlayersApi(req, res, requestUrl) {
     let dashboardRow = null;
     if (isSystemAdmin) {
       dashboardRow = await findPlayerDashboardByLookup(playerName);
+    } else if (actor.role === 'ClubAdmin') {
+      const dashboardRows = await pool.query(
+        `
+          SELECT ${DASHBOARD_PLAYER_SELECT}
+          FROM players p
+          JOIN player_team_assignments a ON a.player_id = p.id
+          JOIN teams t ON t.id = a.team_id
+          LEFT JOIN player_stats ps ON ps.player_id = p.id
+          WHERE t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $2)
+            AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
+          ORDER BY p.name ASC
+          LIMIT 1
+        `,
+        [playerName, actor.id]
+      );
+      dashboardRow = dashboardRows.rows[0] || null;
     } else {
       const dashboardRows = await pool.query(
         `
@@ -2484,13 +2636,13 @@ async function handlePlayersApi(req, res, requestUrl) {
       where.push(`t.status = $${params.length}`);
     }
     if (actorEmail) {
-      if (actor && actor.role === 'Coach' && actor.status === 'active') {
+      if (isClubScopedActor(actor)) {
         params.push(actor.id);
         where.push(
           `t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${params.length})`
         );
       } else if (!actor || actor.role !== 'SystemAdmin') {
-        // actorEmail supplied but the user is unknown, inactive, or not a coach.
+        // actorEmail supplied but the user is unknown, inactive, or not club-scoped.
         // Treat as "no teams visible" rather than leaking the unfiltered list.
         where.push('FALSE');
       }
@@ -2545,10 +2697,9 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     let clubRows;
     const statusClause = statusFilter === 'all' ? '' : `AND c.status = '${statusFilter}'`;
-    if (actorEmail && (!actor || actor.role === 'Coach')) {
-      if (actor && actor.status === 'active') {
-        clubRows = await pool.query(
-          `
+    if (isClubScopedActor(actor)) {
+      clubRows = await pool.query(
+        `
           SELECT c.id, c.name, c.status,
             (SELECT COUNT(*)::int FROM coach_clubs cc2 WHERE cc2.club_id = c.id) AS "coachCount",
             (SELECT COUNT(*)::int FROM teams t WHERE t.club_id = c.id) AS "teamCount"
@@ -2557,11 +2708,10 @@ async function handlePlayersApi(req, res, requestUrl) {
           WHERE cc.user_id = $1 ${statusClause}
           ORDER BY c.name ASC
           `,
-          [actor.id]
-        );
-      } else {
-        clubRows = { rows: [] };
-      }
+        [actor.id]
+      );
+    } else if (actorEmail && !assertSystemAdminActor(actor)) {
+      clubRows = { rows: [] };
     } else {
       clubRows = await pool.query(
         `
@@ -2861,8 +3011,8 @@ async function handlePlayersApi(req, res, requestUrl) {
     const userId = decodeURIComponent(match[1]);
 
     const payload = await readJsonBody(req);
-    const actor = await resolveSystemAdminActor(payload.actorEmail);
-    if (!assertSystemAdminActor(actor)) {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -2873,12 +3023,27 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    if (!isSystemAdmin) {
+      const membership = await pool.query(
+        `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+        [actor.id, clubId]
+      );
+      if (!membership.rows[0]) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
+    }
+
     const user = await pool.query(
       `SELECT id, name, email, role, status FROM users WHERE id = $1 LIMIT 1`,
       [userId]
     );
     if (!user.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (!isSystemAdmin && user.rows[0].role !== 'Coach') {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
     if (user.rows[0].status !== 'active') {
@@ -2926,10 +3091,25 @@ async function handlePlayersApi(req, res, requestUrl) {
     const clubId = decodeURIComponent(match[2]);
 
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
-    const actor = await resolveSystemAdminActor(actorEmail);
-    if (!assertSystemAdminActor(actor)) {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor({ actorEmail });
+    if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
+    }
+    if (!isSystemAdmin) {
+      const membership = await pool.query(
+        `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+        [actor.id, clubId]
+      );
+      if (!membership.rows[0]) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
+      const target = await pool.query(`SELECT id, role, status FROM users WHERE id = $1 LIMIT 1`, [userId]);
+      if (!target.rows[0] || target.rows[0].role !== 'Coach') {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
     }
 
     const removed = await pool.query(
@@ -2958,7 +3138,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const effectiveRole = actorUser ? actorUser.role : actorRole;
-    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+    if (!TEAM_EDITOR_ROLES.includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -2976,7 +3156,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     let leadCoachUserId = actorUser.id;
-    if (effectiveRole === 'SystemAdmin') {
+    if (effectiveRole === 'SystemAdmin' || effectiveRole === 'ClubAdmin') {
       const selectedCoachEmail = String(payload.coachEmail || '').trim().toLowerCase();
       if (!selectedCoachEmail) {
         sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
@@ -2994,7 +3174,7 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     let clubId = String(payload.clubId || '').trim();
     if (!clubId) {
-      if (effectiveRole === 'Coach') {
+      if (effectiveRole === 'Coach' || effectiveRole === 'ClubAdmin') {
         const defaultClub = await pool.query(
           `SELECT club_id FROM coach_clubs WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
           [actorUser.id]
@@ -3011,6 +3191,17 @@ async function handlePlayersApi(req, res, requestUrl) {
     if (!clubRow.rows[0]) {
       sendJson(res, 400, appError(400, 'validation_error', 'The selected club could not be found.'));
       return;
+    }
+
+    if (effectiveRole === 'ClubAdmin') {
+      const membership = await pool.query(
+        `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+        [actorUser.id, clubId]
+      );
+      if (!membership.rows[0]) {
+        sendJson(res, 403, appError(403, 'forbidden_scope', 'Club Admins can only create teams in clubs they belong to.'));
+        return;
+      }
     }
 
     let sportId = String(payload.sportId || '').trim();
@@ -3032,7 +3223,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       [teamId, teamName, ageGroup, leadCoachUserId, clubId, sportId]
     );
 
-    if (effectiveRole === 'SystemAdmin') {
+    if (effectiveRole === 'SystemAdmin' || effectiveRole === 'ClubAdmin') {
       await pool.query(
         `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
         [leadCoachUserId, clubId]
@@ -3081,7 +3272,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const effectiveRole = actorUser ? actorUser.role : actorRole;
-    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+    if (!TEAM_EDITOR_ROLES.includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -3161,7 +3352,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const effectiveRole = actorUser ? actorUser.role : actorRole;
-    if (!['SystemAdmin', 'Coach'].includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
+    if (!TEAM_EDITOR_ROLES.includes(effectiveRole) || !actorUser || actorUser.status !== 'active') {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -3190,15 +3381,15 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    // Coach scope: the team must currently be in one of the coach's clubs AND the new club must also be in that set.
-    if (effectiveRole === 'Coach') {
+    // Club-scoped editors: team must stay within the actor's clubs.
+    if (effectiveRole === 'Coach' || effectiveRole === 'ClubAdmin') {
       const scopeResult = await pool.query(
         `SELECT club_id FROM coach_clubs WHERE user_id = $1`,
         [actorUser.id]
       );
       const allowedClubIds = scopeResult.rows.map((row) => row.club_id);
       if (!allowedClubIds.includes(existing.rows[0].clubId) || !allowedClubIds.includes(newClubId)) {
-        sendJson(res, 403, appError(403, 'forbidden_scope', 'Coaches can only update teams in clubs they belong to.'));
+        sendJson(res, 403, appError(403, 'forbidden_scope', 'You can only update teams in clubs you belong to.'));
         return;
       }
     }
@@ -3278,6 +3469,27 @@ async function handlePlayersApi(req, res, requestUrl) {
 
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/users`) {
     const requestedEmail = (requestUrl.searchParams.get('email') || '').trim().toLowerCase();
+    const actorEmail = (requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const actor = actorEmail ? await resolveActorUserByEmail(actorEmail) : null;
+
+    let whereSql = '';
+    const params = [];
+    if (requestedEmail) {
+      params.push(requestedEmail);
+      whereSql = `WHERE LOWER(email) = LOWER($${params.length})`;
+    }
+    if (actor && actor.role === 'ClubAdmin' && actor.status === 'active') {
+      params.push(actor.id);
+      const clubFilter = `
+        id IN (
+          SELECT b.user_id FROM coach_clubs a
+          INNER JOIN coach_clubs b ON b.club_id = a.club_id
+          WHERE a.user_id = $${params.length}
+        )
+      `;
+      whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
+    }
+
     const userRows = await pool.query(`
       SELECT
         id,
@@ -3292,9 +3504,9 @@ async function handlePlayersApi(req, res, requestUrl) {
           ARRAY[]::text[]
         ) AS "clubIds"
       FROM users
-      ${requestedEmail ? `WHERE LOWER(email) = LOWER($1)` : ''}
+      ${whereSql}
       ORDER BY name ASC
-    `, requestedEmail ? [requestedEmail] : []);
+    `, params);
 
     sendJson(res, 200, { data: userRows.rows.map(toUserPayload) });
     return;
@@ -3302,8 +3514,8 @@ async function handlePlayersApi(req, res, requestUrl) {
 
   if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/users`) {
     const payload = await readJsonBody(req);
-    const actorRole = String(payload.actorRole || '').trim();
-    if (actorRole !== 'SystemAdmin') {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
@@ -3313,8 +3525,9 @@ async function handlePlayersApi(req, res, requestUrl) {
     const role = String(payload.role || '').trim();
     const password = String(payload.password || '').trim();
     const hasNumber = /\d/.test(password);
+    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach'];
 
-    if (!name || !email.includes('@') || !['SystemAdmin', 'Coach'].includes(role) || password.length < 10 || !hasNumber) {
+    if (!name || !email.includes('@') || !allowedRoles.includes(role) || password.length < 10 || !hasNumber) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
       return;
     }
@@ -3331,6 +3544,26 @@ async function handlePlayersApi(req, res, requestUrl) {
       VALUES ($1, $2, $3, $4, 'active', $5, 'Just now')
     `, [userId, name, email, role, password]);
 
+    if (!isSystemAdmin && role === 'Coach') {
+      let clubId = String(payload.clubId || '').trim();
+      if (!clubId) {
+        const clubs = await listActorClubIds(actor.id);
+        clubId = clubs[0] || '';
+      }
+      if (clubId) {
+        const membership = await pool.query(
+          `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+          [actor.id, clubId]
+        );
+        if (membership.rows[0]) {
+          await pool.query(
+            `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+            [userId, clubId]
+          );
+        }
+      }
+    }
+
     const created = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE id = $1 LIMIT 1`, [userId]);
     sendJson(res, 201, { data: toUserPayload(created.rows[0]) });
     return;
@@ -3340,24 +3573,33 @@ async function handlePlayersApi(req, res, requestUrl) {
     const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/role$/);
     const email = decodeURIComponent(match[1]);
     const payload = await readJsonBody(req);
-    const actorRole = String(payload.actorRole || '').trim();
-    if (actorRole !== 'SystemAdmin') {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
 
     const role = String(payload.role || '').trim();
-    if (!['SystemAdmin', 'Coach'].includes(role)) {
+    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach'];
+    if (!allowedRoles.includes(role)) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
       return;
     }
 
-    const updated = await pool.query(`UPDATE users SET role = $1, updated_at = NOW() WHERE LOWER(email) = LOWER($2) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [role, email]);
-    if (!updated.rows[0]) {
+    const target = await pool.query(
+      `SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+    if (!target.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
       return;
     }
+    if (!isSystemAdmin && !(await clubAdminMayManageUser(actor, target.rows[0]))) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
 
+    const updated = await pool.query(`UPDATE users SET role = $1, updated_at = NOW() WHERE LOWER(email) = LOWER($2) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [role, email]);
     sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
     return;
   }
@@ -3366,10 +3608,21 @@ async function handlePlayersApi(req, res, requestUrl) {
     const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/password$/);
     const email = decodeURIComponent(match[1]);
     const payload = await readJsonBody(req);
-    const actorRole = String(payload.actorRole || '').trim();
-    if (actorRole !== 'SystemAdmin') {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
+    }
+
+    if (!isSystemAdmin) {
+      const target = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [email]
+      );
+      if (!target.rows[0] || !(await clubAdminMayManageUser(actor, target.rows[0]))) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
     }
 
     const password = String(payload.password || '').trim();
@@ -3395,18 +3648,25 @@ async function handlePlayersApi(req, res, requestUrl) {
     const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/deactivate$/);
     const email = decodeURIComponent(match[1]);
     const payload = await readJsonBody(req);
-    const actorRole = String(payload.actorRole || '').trim();
-    if (actorRole !== 'SystemAdmin') {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const target = await pool.query(
+      `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+    if (!target.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (!isSystemAdmin && !(await clubAdminMayManageUser(actor, target.rows[0]))) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
 
     const updated = await pool.query(`UPDATE users SET status = 'inactive', updated_at = NOW() WHERE LOWER(email) = LOWER($1) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [email]);
-    if (!updated.rows[0]) {
-      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
-      return;
-    }
-
     sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
     return;
   }
@@ -3415,18 +3675,25 @@ async function handlePlayersApi(req, res, requestUrl) {
     const match = requestUrl.pathname.match(/^\/api\/v1\/users\/([^/]+)\/reactivate$/);
     const email = decodeURIComponent(match[1]);
     const payload = await readJsonBody(req);
-    const actorRole = String(payload.actorRole || '').trim();
-    if (actorRole !== 'SystemAdmin') {
+    const { actor, isSystemAdmin } = await resolveUserAdminActor(payload);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const target = await pool.query(
+      `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+    if (!target.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (!isSystemAdmin && !(await clubAdminMayManageUser(actor, target.rows[0]))) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
 
     const updated = await pool.query(`UPDATE users SET status = 'active', updated_at = NOW() WHERE LOWER(email) = LOWER($1) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [email]);
-    if (!updated.rows[0]) {
-      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
-      return;
-    }
-
     sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
     return;
   }
@@ -3885,7 +4152,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const row = await findPlayerProfileForCoach(profileMatch[1], actor.id);
+    const row = await findPlayerProfileForEditor(profileMatch[1], actor);
     if (!row) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
       return;
@@ -3906,7 +4173,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    const existing = await findPlayerProfileForEditor(playerId, actor);
     if (!existing) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
       return;
@@ -3932,7 +4199,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    const existing = await findPlayerProfileForEditor(playerId, actor);
     if (!existing) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
       return;
@@ -4041,7 +4308,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const existing = await findPlayerProfileForCoach(playerId, actor.id);
+    const existing = await findPlayerProfileForEditor(playerId, actor);
     if (!existing) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
       return;
@@ -4188,7 +4455,7 @@ async function handlePlayersApi(req, res, requestUrl) {
       client.release();
     }
 
-    const row = await findPlayerProfileForCoach(playerId, actor.id);
+    const row = await findPlayerProfileForEditor(playerId, actor);
     const skillRatings = await listSkillsForPlayer(playerId);
     const payload = toDashboardPayload(row, skillRatings);
     sendJson(res, 200, { data: { player: payload.player, stats: payload.stats, skillRatings: payload.skillRatings } });

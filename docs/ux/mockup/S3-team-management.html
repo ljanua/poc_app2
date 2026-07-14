@@ -260,6 +260,10 @@
 
         if (currentUser.role === 'SystemAdmin') {
           onlyMyClubsWrap.hidden = true;
+        } else if (currentUser.role === 'ClubAdmin') {
+          onlyMyClubsWrap.hidden = true;
+          clubFilter.parentElement.querySelector('label[for="clubFilter"]').hidden = false;
+          clubFilter.hidden = false;
         } else {
           clubFilter.parentElement.querySelector('label[for="clubFilter"]').hidden = true;
           clubFilter.hidden = true;
@@ -373,7 +377,7 @@
             '<a class="mini-btn" href="./S1-player-list.html?team=' + teamQuery + '">View</a>' +
             '<a class="mini-btn positive" href="./S1-player-list.html?team=' + teamQuery + '">Assign</a>' +
             '<a class="mini-btn" href="' + updateHref + '" data-testid="row-update-link">Update</a>' +
-            (state.actorRole === 'SystemAdmin'
+            (state.actorRole === 'SystemAdmin' || state.actorRole === 'ClubAdmin'
               ? '<button class="mini-btn js-change-coach" type="button" data-team-name="' + team.name + '">Change Coach</button>'
               : '') +
             '</div>' +
@@ -388,7 +392,7 @@
         teamAgeGroupInput.value = '';
         fillSportSelect(teamSportSelect, 'sport_soccer');
 
-        if (state.actorRole === 'SystemAdmin') {
+        if (state.actorRole === 'SystemAdmin' || state.actorRole === 'ClubAdmin') {
           coachPickerWrap.hidden = false;
           clubPickerWrap.hidden = false;
           coachSelfNotice.hidden = true;
@@ -434,7 +438,9 @@
             name: teamNameInput.value,
             ageGroup: teamAgeGroupInput.value,
             coachEmail: teamCoachSelect.value,
-            clubId: state.actorRole === 'SystemAdmin' ? teamClubSelect.value : '',
+            clubId: (state.actorRole === 'SystemAdmin' || state.actorRole === 'ClubAdmin')
+              ? teamClubSelect.value
+              : '',
             sportId: teamSportSelect.value
           },
           state.actorRole,

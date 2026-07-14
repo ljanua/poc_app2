@@ -5,6 +5,7 @@ components:
       enum:
         - SystemAdmin
         - Coach
+        - ClubAdmin
 
     User:
       type: object

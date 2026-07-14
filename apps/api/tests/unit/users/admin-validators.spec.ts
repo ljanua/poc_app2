@@ -33,4 +33,16 @@ describe('admin validators', () => {
       })
     ).not.toThrow();
   });
+
+  it('accepts ClubAdmin role on create and change-role', () => {
+    expect(() =>
+      validateAdminCreateUser({
+        name: 'Rita Club',
+        email: 'rita@vantageiq.club',
+        role: 'ClubAdmin',
+        initialPassword: 'SecurePass123'
+      })
+    ).not.toThrow();
+    expect(() => validateAdminChangeRole({ role: 'ClubAdmin' })).not.toThrow();
+  });
 });

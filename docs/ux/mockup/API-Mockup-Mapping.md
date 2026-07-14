@@ -289,6 +289,14 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - Direct navigation to `S8-skills.html` while `MockupApi.getCurrentUser()` returns null OR `actorRole !== 'SystemAdmin'` renders the `403 forbidden` notice (`#roleNotice`) instead of the four admin panels. The page is built as four stacked panels (Sports → Positions → Skills → Position Skills) with KPI cards (`# Sports`, `# Active Positions`, `# Skills`, `# Assignments`) live-updated after every successful mutation.
 - Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps the offline store in lockstep: `sports`, `positions`, `skills`, and `positionSkills` keys are added to `createSeed`, and the new 12 methods (`listSports`, `createSport`, `updateSport`, `setSportStatus`, `listPositions`, `createPosition`, `updatePosition`, `setPositionStatus`, `listSkills`, `createSkill`, `updateSkill`, `deleteSkill`, `listPositionSkills`, `assignSkillToPosition`, `removeSkillFromPosition`) cover the same CRUD + assignment surface as the backend handlers. `assignSkillToPosition` returns the `200/201` status split; `deleteSkill` returns `204` or `409`.
 
+## Club Admin role (2026-07-14-001)
+
+- Third role `ClubAdmin` (seed `rita@vantageiq.club`) on `coach_clubs` like Coach.
+- Club-scoped players/teams/clubs lists; no Only My Players lead narrowing.
+- Users nav: `data-role-visible-to="SystemAdmin,ClubAdmin"`; Clubs/Skills remain SystemAdmin-only.
+- User writes resolve `actorEmail`; Club Admin may manage Coach users in shared clubs only.
+- Team create/update allow `ClubAdmin` with club membership checks.
+
 ## S1 Coach Scoping + Clubs Main Menu (2026-07-06-009)
 
 ### API

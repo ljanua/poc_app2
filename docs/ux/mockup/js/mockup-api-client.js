@@ -177,7 +177,8 @@
       coachClubs: [
         { userId: 'u_admin_maria', clubId: 'c_default' },
         { userId: 'u_coach_joao', clubId: 'c_default' },
-        { userId: 'u_coach_ana', clubId: 'c_default' }
+        { userId: 'u_coach_ana', clubId: 'c_default' },
+        { userId: 'u_clubadmin_rita', clubId: 'c_default' }
       ],
       teams: [
         { id: 1, name: 'U17 Elite', ageGroup: 'U17', leadCoach: 'Ana Costa', leadCoachEmail: 'ana@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' },
@@ -200,7 +201,8 @@
       users: [
         { id: 'u_admin_maria', name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
         { id: 'u_coach_joao', name: 'Joao Lima', email: 'joao@vantageiq.club', role: 'Coach', status: 'active', password: 'SecurePass123', lastLogin: 'Yesterday' },
-        { id: 'u_coach_ana', name: 'Ana Costa', email: 'ana@vantageiq.club', role: 'Coach', status: 'inactive', password: 'SecurePass123', lastLogin: '6 days ago' }
+        { id: 'u_coach_ana', name: 'Ana Costa', email: 'ana@vantageiq.club', role: 'Coach', status: 'inactive', password: 'SecurePass123', lastLogin: '6 days ago' },
+        { id: 'u_clubadmin_rita', name: 'Rita Costa', email: 'rita@vantageiq.club', role: 'ClubAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today' }
       ],
       sports: [
         { id: 'sport_soccer', name: 'Soccer', status: 'active', positionCount: 13 }
@@ -1211,7 +1213,7 @@
       };
 
       let scoped;
-      if (role === 'Coach' && actorUser) {
+      if ((role === 'Coach' || role === 'ClubAdmin') && actorUser) {
         const allowedClubIds = new Set(
           store.coachClubs
             .filter((entry) => entry.userId === actorUser.id || entry.userId === actorUser.email)
@@ -2090,7 +2092,7 @@
       const role = actor.role;
       const sessionUser = actor.actorUser;
 
-      if (!['SystemAdmin', 'Coach'].includes(role) || !sessionUser || sessionUser.status !== 'active') {
+      if (!['SystemAdmin', 'Coach', 'ClubAdmin'].includes(role) || !sessionUser || sessionUser.status !== 'active') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -2253,7 +2255,7 @@
       const actorEmail = String(body.actorEmail || '').trim().toLowerCase();
       const actor = resolveActorContext(store, actorRole, actorEmail);
       const sessionUser = actor.actorUser;
-      if (!sessionUser || sessionUser.status !== 'active' || !['SystemAdmin', 'Coach'].includes(actor.role)) {
+      if (!sessionUser || sessionUser.status !== 'active' || !['SystemAdmin', 'Coach', 'ClubAdmin'].includes(actor.role)) {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
       if (actor.role === 'Coach') {
@@ -2323,13 +2325,14 @@
       const teamName = filters.teamName || 'all';
       const query = normalizeComparable(filters.query || '');
 
-      // Coach actors are always club-scoped. When onlyMine is true, further
-      // narrow to teams the coach leads (leadCoachEmail / leadCoach name).
-      // SystemAdmin and unknown actors see the full roster.
+      // Coach and ClubAdmin are always club-scoped. onlyMine further narrows
+      // to lead teams for Coach only. SystemAdmin / unknown: full roster.
       const actor = resolveActorContext(store, null, filters.actorEmail).actorUser;
-      const isCoachScoped = Boolean(actor && actor.role === 'Coach' && actor.status === 'active');
+      const isClubScoped = Boolean(
+        actor && actor.status === 'active' && (actor.role === 'Coach' || actor.role === 'ClubAdmin')
+      );
       let allowedTeamNames = null;
-      if (isCoachScoped) {
+      if (isClubScoped) {
         const actorEmail = String(actor.email || '').trim().toLowerCase();
         const actorId = actor.id;
         const actorName = String(actor.name || '').trim().toLowerCase();
@@ -2349,7 +2352,7 @@
             return teamEmail && teamEmail === actorEmail;
           });
         }
-        if (filters.onlyMine) {
+        if (filters.onlyMine && actor.role === 'Coach') {
           clubTeams = clubTeams.filter((team) => {
             const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
             if (teamEmail && teamEmail === actorEmail) {
@@ -3212,9 +3215,12 @@
       var isActive = Boolean(user && user.status === 'active');
       var nodes = document.querySelectorAll('[data-role-visible-to]');
       for (var i = 0; i < nodes.length; i += 1) {
-        var allowedRole = nodes[i].getAttribute('data-role-visible-to');
-        if (!allowedRole) continue;
-        var visible = isActive && role === allowedRole;
+        var allowedAttr = nodes[i].getAttribute('data-role-visible-to');
+        if (!allowedAttr) continue;
+        var allowedRoles = String(allowedAttr).split(',').map(function (part) {
+          return part.trim();
+        }).filter(Boolean);
+        var visible = isActive && allowedRoles.indexOf(role) !== -1;
         // The hidden attribute wins over inline display; setting both keeps
         // the element out of the layout even when a previous script toggled
         // style.display inline.
@@ -3428,8 +3434,13 @@
     },
 
     listUsers() {
+      const session = this.getCurrentUser();
+      const actorEmail = session && session.email ? String(session.email).trim().toLowerCase() : '';
       if (shouldUseBackendPlayersMode()) {
-        const response = backendRequest('GET', '/users');
+        const params = new URLSearchParams();
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        const query = params.toString() ? '?' + params.toString() : '';
+        const response = backendRequest('GET', '/users' + query);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
           return clone(response.body.data.map((user) => ({
             id: user.id,
@@ -3451,7 +3462,7 @@
       if (!Array.isArray(store.coachClubs)) {
         store.coachClubs = [];
       }
-      return clone((store.users || []).map(function (user) {
+      let users = (store.users || []).map(function (user) {
         const clubIds = store.coachClubs
           .filter(function (entry) {
             return String(entry.userId) === String(user.id);
@@ -3460,17 +3471,38 @@
             return entry.clubId;
           });
         return Object.assign({}, user, { clubIds: clubIds });
-      }));
+      });
+      if (session && session.role === 'ClubAdmin' && session.status === 'active') {
+        const allowed = new Set(
+          store.coachClubs
+            .filter(function (entry) {
+              return String(entry.userId) === String(session.id);
+            })
+            .map(function (entry) {
+              return String(entry.clubId);
+            })
+        );
+        users = users.filter(function (user) {
+          return (user.clubIds || []).some(function (clubId) {
+            return allowed.has(String(clubId));
+          });
+        });
+      }
+      return clone(users);
     },
 
     createUser(payload, actorRole) {
+      const session = this.getCurrentUser();
+      const actorEmail = (payload && payload.actorEmail) || (session && session.email) || '';
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users', {
           name: payload && payload.name,
           email: payload && payload.email,
           role: payload && payload.role,
           password: payload && payload.password,
-          actorRole
+          clubId: payload && payload.clubId,
+          actorRole,
+          actorEmail
         });
 
         if (response.status === 201 && response.body && response.body.data) {
@@ -3480,7 +3512,8 @@
         return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
       }
 
-      if (actorRole !== 'SystemAdmin') {
+      const effectiveRole = (session && session.role) || actorRole;
+      if (effectiveRole !== 'SystemAdmin' && effectiveRole !== 'ClubAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -3490,8 +3523,11 @@
       const role = payload.role;
       const password = String(payload.password || '').trim();
       const hasNumber = /\d/.test(password);
+      const allowedRoles = effectiveRole === 'SystemAdmin'
+        ? ['SystemAdmin', 'Coach', 'ClubAdmin']
+        : ['Coach'];
 
-      if (!name || !email.includes('@') || !['SystemAdmin', 'Coach'].includes(role) || password.length < 10 || !hasNumber) {
+      if (!name || !email.includes('@') || !allowedRoles.includes(role) || password.length < 10 || !hasNumber) {
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
       }
 
@@ -3499,7 +3535,7 @@
         return { status: 409, code: 'conflict', message: 'A user with the same identifier already exists.' };
       }
 
-      const nextId = store.users.reduce((max, user) => Math.max(max, user.id), 0) + 1;
+      const nextId = 'u_' + Date.now();
       const created = {
         id: nextId,
         name,
@@ -3510,15 +3546,26 @@
         lastLogin: 'Just now'
       };
       store.users.push(created);
+      if (effectiveRole === 'ClubAdmin' && role === 'Coach' && session) {
+        const adminClubs = (store.coachClubs || []).filter(function (entry) {
+          return String(entry.userId) === String(session.id);
+        });
+        if (adminClubs[0]) {
+          store.coachClubs.push({ userId: nextId, clubId: adminClubs[0].clubId });
+        }
+      }
       saveStore(store);
       return { status: 201, code: 'created', user: clone(created) };
     },
 
     changeRole(email, role, actorRole) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/role', {
           role,
-          actorRole
+          actorRole,
+          actorEmail
         });
 
         if (response.status === 200 && response.body && response.body.data) {
@@ -3528,7 +3575,8 @@
         return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
       }
 
-      if (actorRole !== 'SystemAdmin') {
+      const effectiveRole = (session && session.role) || actorRole;
+      if (effectiveRole !== 'SystemAdmin' && effectiveRole !== 'ClubAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -3537,8 +3585,14 @@
       if (!user) {
         return { status: 404, code: 'not_found', message: 'The selected user was not found anymore. Refresh and try again.' };
       }
-      if (!['SystemAdmin', 'Coach'].includes(role)) {
+      const allowedRoles = effectiveRole === 'SystemAdmin'
+        ? ['SystemAdmin', 'Coach', 'ClubAdmin']
+        : ['Coach'];
+      if (!allowedRoles.includes(role)) {
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+      }
+      if (effectiveRole === 'ClubAdmin' && user.role !== 'Coach') {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
       user.role = role;
@@ -3547,11 +3601,14 @@
     },
 
     changePassword(email, password, confirmPassword, actorRole) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/password', {
           password,
           confirmPassword,
-          actorRole
+          actorRole,
+          actorEmail
         });
 
         if (response.status === 200 && response.body && response.body.data) {
@@ -3561,7 +3618,8 @@
         return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
       }
 
-      if (actorRole !== 'SystemAdmin') {
+      const effectiveRole = (session && session.role) || actorRole;
+      if (effectiveRole !== 'SystemAdmin' && effectiveRole !== 'ClubAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -3582,9 +3640,12 @@
     },
 
     deactivateUser(email, actorRole) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/deactivate', {
-          actorRole
+          actorRole,
+          actorEmail
         });
 
         if (response.status === 200 && response.body && response.body.data) {
@@ -3594,7 +3655,8 @@
         return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
       }
 
-      if (actorRole !== 'SystemAdmin') {
+      const effectiveRole = (session && session.role) || actorRole;
+      if (effectiveRole !== 'SystemAdmin' && effectiveRole !== 'ClubAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -3610,9 +3672,12 @@
     },
 
     reactivateUser(email, actorRole) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/users/' + encodeURIComponent(email) + '/reactivate', {
-          actorRole
+          actorRole,
+          actorEmail
         });
 
         if (response.status === 200 && response.body && response.body.data) {
@@ -3622,7 +3687,8 @@
         return clone(response.body || { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.' });
       }
 
-      if (actorRole !== 'SystemAdmin') {
+      const effectiveRole = (session && session.role) || actorRole;
+      if (effectiveRole !== 'SystemAdmin' && effectiveRole !== 'ClubAdmin') {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 

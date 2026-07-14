@@ -27,7 +27,7 @@
         <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
         <button id="toggleAdvancedFilter" class="btn btn-secondary" type="button" data-testid="advanced-filter-toggle" hidden>Advanced Filter</button>
         <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
-        <a class="btn btn-secondary" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin">Admin Users</a>
+        <a class="btn btn-secondary" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin">Admin Users</a>
       </div>
 
       <div class="advanced-filter-panel" id="advancedFilterPanel" data-testid="advanced-filter-panel" hidden>
@@ -132,6 +132,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin" data-testid="nav-users" hidden>
+        <span class="nav-icon">🛡️</span>
+        <span>Users</span>
+      </a>
       <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
@@ -208,8 +212,9 @@
           state.actorEmail = String(currentUser.email).trim().toLowerCase();
         }
         state.isCoach = Boolean(currentUser && currentUser.role === 'Coach' && currentUser.status === 'active');
+        state.isClubAdmin = Boolean(currentUser && currentUser.role === 'ClubAdmin' && currentUser.status === 'active');
         const role = currentUser && currentUser.role;
-        state.canAdvancedFilter = role === 'Coach' || role === 'SystemAdmin';
+        state.canAdvancedFilter = role === 'Coach' || role === 'SystemAdmin' || role === 'ClubAdmin';
         if (toggleAdvancedFilter) {
           toggleAdvancedFilter.hidden = !state.canAdvancedFilter;
         }
@@ -220,6 +225,7 @@
           }
         }
         // Only My Players: visible only to active Coaches, default ON.
+        // ClubAdmin always sees all club teams (equivalent to Coach with toggle off).
         if (state.isCoach) {
           state.onlyMine = true;
           onlyMineWrap.hidden = false;
@@ -469,8 +475,8 @@
           return allTeams;
         }
 
-        if (currentUser.role === 'Coach') {
-          if (state.onlyMine) {
+        if (currentUser.role === 'Coach' || currentUser.role === 'ClubAdmin') {
+          if (currentUser.role === 'Coach' && state.onlyMine) {
             return allTeams.filter(function (team) {
               const teamCoachEmail = normalize(team.leadCoachEmail || '');
               const currentCoachEmail = normalize(currentUser.email || '');
@@ -484,7 +490,7 @@
             });
           }
 
-          const clubs = MockupApi.listClubs('Coach', currentUser.email, 'active') || [];
+          const clubs = MockupApi.listClubs(currentUser.role, currentUser.email, 'active') || [];
           const clubIds = {};
           clubs.forEach(function (club) {
             clubIds[String(club.id)] = true;
@@ -492,8 +498,8 @@
           const clubTeams = allTeams.filter(function (team) {
             return clubIds[String(team.clubId)];
           });
-          // Fallback when coach has no club rows: lead-coach teams only.
-          if (!clubTeams.length) {
+          // Fallback when coach_clubs is empty: lead-coach teams only (Coach).
+          if (!clubTeams.length && currentUser.role === 'Coach') {
             return allTeams.filter(function (team) {
               return normalize(team.leadCoachEmail || '') === normalize(currentUser.email || '');
             });
@@ -594,7 +600,7 @@
           playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players on teams you lead.';
           return;
         }
-        if (state.isCoach) {
+        if (state.isCoach || state.isClubAdmin) {
           playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players in your clubs.';
           return;
         }

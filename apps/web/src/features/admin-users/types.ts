@@ -1,4 +1,4 @@
-export type UserRole = 'SystemAdmin' | 'Coach';
+export type UserRole = 'SystemAdmin' | 'Coach' | 'ClubAdmin';
 export type UserStatus = 'active' | 'inactive';
 
 export type AdminUser = {
