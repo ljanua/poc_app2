@@ -6,15 +6,15 @@ const { logAuditEvent } = require('./audit-logger');
 function buildAssessmentPrompt({ sportType, situation, ageOfPlayer, skillFocusList }) {
   const skills = skillFocusList.length ? skillFocusList.join(', ') : 'General';
   return [
-    'Review this video for sport',
-    sportType,
-    'and considered the situation:',
-    situation,
-    'for a player at age',
-    String(ageOfPlayer),
+    'Review this video for sport:',
+    String(sportType).trim(),
+    'and consider the situation:',
+    String(situation).trim(),
+    'for a player at the age of:',
+    String(ageOfPlayer).trim(),
     'and provide me ratings from 0.00 to 0.99 for the following skills:',
-    skills + '.',
-    'Include a comments field with a brief comment about what you observed in the video.',
+    String(skills).trim() + '.',
+    'Include a comments field with a brief comments about what you observed in the video.',
     'Respond with JSON only in this shape:',
     '{"ratings":[{"skill":"Skill Name","rating":0.75}],"comments":"brief observation about the video"}'
   ].join(' ');

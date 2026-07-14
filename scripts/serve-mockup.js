@@ -4522,13 +4522,10 @@ async function handlePlayersApi(req, res, requestUrl) {
     return;
   }
 
+  // Catalog read — open like GET /positions (Feature 040 Advanced Filter Skill dropdown
+  // for Coach needs this; writes below remain SystemAdmin-gated).
   if (req.method === 'GET' && /^\/api\/v1\/positions\/[^/]+\/skills$/.test(requestUrl.pathname)) {
     const positionId = decodeURIComponent(requestUrl.pathname.split('/')[4]);
-    const actor = await resolveSystemAdminActor(requestUrl.searchParams.get('actorEmail'));
-    if (!assertSystemAdminActor(actor)) {
-      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
-      return;
-    }
     const positionRow = await pool.query(`SELECT id FROM positions WHERE id = $1`, [positionId]);
     if (!positionRow.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'Position not found.'));

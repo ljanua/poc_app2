@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Structured logging fields (functionality, timestamp, user)
-status: planned
+status: done
 created: 2026-07-10
 updated: 2026-07-10
 source: user
@@ -25,5 +25,5 @@ Makes audit and debug logs attributable and searchable across features, without 
 ## Notes
 
 - Plan: `docs/plans/2026-07-10-002-feat-structured-logging-fields-plan.md` (Feature 022)
-- Related existing work: video-processing audit log (`scripts/video-processing/audit-logger.js`, `backend_logging.txt`) and plan `docs/plans/2026-07-09-019-feat-video-processing-audit-logging-plan.md`
-- Resolved in plan: shared mockup-server logger; destination `log/`; curated mutations + lifecycle; background jobs leave userId unset in v1
+- Completed: shared structured logger (`scripts/logging/structured-logger.js`), video audit shim, curated mockup-server events, destination `log/backend_logging.txt`
+- Related existing work: video-processing audit log (`scripts/video-processing/audit-logger.js`) and plan `docs/plans/2026-07-09-019-feat-video-processing-audit-logging-plan.md`

@@ -360,6 +360,31 @@ test.describe('S1 Player List team filter and add-player flow', () => {
   });
 });
 
+test.describe('S1 Advanced Filter skill catalog against live backend', () => {
+  test('GET position skills returns catalog without SystemAdmin actorEmail', async ({ page }) => {
+    await loginAsCoach(page);
+    const result = await page.evaluate(async () => {
+      const response = await fetch('/api/v1/positions/pos_any/skills');
+      const body = await response.json();
+      return { status: response.status, count: Array.isArray(body.data) ? body.data.length : 0 };
+    });
+    expect(result.status, 'GET /positions/:id/skills should be a public catalog read').toBe(200);
+    expect(result.count).toBeGreaterThanOrEqual(5);
+  });
+
+  test('Coach Skill filter value dropdown unions sport-linked skills from API', async ({ page }) => {
+    await loginAsCoach(page);
+    await page.goto('/S1-player-list.html');
+    await page.getByTestId('advanced-filter-toggle').click();
+    await page.getByTestId('advanced-filter-by').selectOption('skill');
+    const optionCount = await page.getByTestId('advanced-filter-value').locator('option').count();
+    // Placeholder + many sport-linked skills (Any + role-unique across positions)
+    expect(optionCount).toBeGreaterThan(5);
+    await expect(page.getByTestId('advanced-filter-value').locator('option', { hasText: 'Ball Control' })).toHaveCount(1);
+    await expect(page.getByTestId('advanced-filter-value').locator('option', { hasText: 'Shot stopping' })).toHaveCount(1);
+  });
+});
+
 // Regression: avatar uploaded via the live backend PATCH must surface on the
 // S1 list rendered from GET /v1/players. Catches two regressions at once:
 //   1. toPlayerPayload dropping avatarUrl from the list response (U0).
