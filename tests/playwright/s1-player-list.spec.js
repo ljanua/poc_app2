@@ -38,11 +38,10 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(page.locator('#playerListStatus')).toContainText('U19 Prime');
     await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
 
-    // Switching back to "All Teams" keeps the coach-scoped roster (just U19 Prime's
-    // players), but the status banner switches to the "in your clubs" copy because
-    // Only My Players is on by default for Coach actors.
+    // Switching back to "All Teams" keeps Only My Players ON (default for coaches):
+    // lead teams only, with "teams you lead" status copy.
     await page.selectOption('#teamFilter', 'all');
-    await expect(page.locator('#playerListStatus')).toContainText('your clubs');
+    await expect(page.locator('#playerListStatus')).toContainText('teams you lead');
     await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
   });
 
@@ -62,13 +61,13 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await page.evaluate(() => window.localStorage.setItem('vantageiq_current_user_email', 'joao@vantageiq.club'));
     await page.reload();
 
-    // Floor: at least "All Teams" + one coach-owned team (U19 Prime). The
-    // total grows as new teams accumulate across runs, so we don't pin a
-    // hard count.
+    // Only My Players ON: lead teams only (U19 Prime). Club teammates' teams stay hidden.
+    await expect(page.getByTestId('only-mine-toggle')).toBeChecked();
     await expect(await page.locator('#teamFilter option').count()).toBeGreaterThanOrEqual(2);
     await expect(page.locator('#teamFilter')).toContainText('All Teams');
     await expect(page.locator('#teamFilter')).toContainText('U19 Prime');
     await expect(page.locator('#teamFilter')).not.toContainText('Senior Squad');
+    await expect(page.locator('#teamFilter')).not.toContainText('U17 Elite');
   });
 
   test('shows all available teams in the dropdown for system admin sessions', async ({ page }) => {
@@ -88,9 +87,58 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await page.goto('/S1-player-list.html?team=Unknown%20Team');
 
     await expect(page.locator('#teamFilter')).toHaveValue('all');
-    // Coach-scoped: Joao sees only his own team's player (Messi on U19 Prime).
+    // Coach-scoped: Joao with Only My Players ON sees only his led team's player.
     await expect(page.locator('.player-card .player-name')).toHaveCount(1);
     await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
+    await expect(page.locator('#playerListStatus')).toContainText('teams you lead');
+  });
+
+  test('Only My Players OFF expands to club teams but never outside clubs', async ({ page }) => {
+    await expect(page.getByTestId('only-mine-toggle')).toBeChecked();
+    await expect(page.locator('.player-card .player-name')).toHaveCount(1);
+    await expect(page.locator('#playerListStatus')).toContainText('teams you lead');
+
+    await page.getByTestId('only-mine-toggle').uncheck();
+    await expect(page.locator('#playerListStatus')).toContainText('your clubs');
+    // All four seeded players live on c_default teams Joao is assigned to.
+    await expect(page.locator('.player-card .player-name')).toHaveCount(4);
+    await expect(page.locator('.player-card .player-name', { hasText: 'Lionel Messi' })).toBeVisible();
+    await expect(page.locator('.player-card .player-name', { hasText: 'Neymar Jr' })).toBeVisible();
+    await expect(page.locator('.player-card .player-name', { hasText: 'Cristiano Ronaldo' })).toBeVisible();
+    await expect(page.locator('.player-card .player-name', { hasText: 'Kylian Mbappe' })).toBeVisible();
+    // Team dropdown expands to every team in Joao's clubs.
+    await expect(page.locator('#teamFilter')).toContainText('U17 Elite');
+    await expect(page.locator('#teamFilter')).toContainText('Senior Squad');
+
+    // Outside-club player stays hidden even with Only My Players OFF.
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clubs.push({ id: 'c_other', name: 'Other Club' });
+      store.teams.push({
+        id: 99,
+        name: 'Rival Academy',
+        ageGroup: 'U19',
+        leadCoach: 'Rival Coach',
+        leadCoachEmail: 'rival@other.club',
+        clubId: 'c_other',
+        sportId: 'sport_soccer',
+        status: 'active'
+      });
+      store.players.push({
+        id: 990,
+        name: 'Outside Oscar',
+        normalizedName: 'outside oscar',
+        teamName: 'Rival Academy',
+        position: 'CF – Centre Forward',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    await page.getByTestId('only-mine-toggle').uncheck();
+    await expect(page.locator('.player-card .player-name', { hasText: 'Outside Oscar' })).toHaveCount(0);
+    await expect(page.locator('#teamFilter')).not.toContainText('Rival Academy');
     await expect(page.locator('#playerListStatus')).toContainText('your clubs');
   });
 

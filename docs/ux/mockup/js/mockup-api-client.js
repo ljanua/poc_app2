@@ -2323,19 +2323,16 @@
       const teamName = filters.teamName || 'all';
       const query = normalizeComparable(filters.query || '');
 
-      // Coach scoping: when onlyMine is requested for a Coach actor, narrow
-      // to players on teams in the coach's clubs. SystemAdmin and unknown
-      // actors always see the full roster. The coach → clubs relationship is
-      // resolved in two passes so we tolerate the two seed shapes present in
-      // the codebase: (1) coach_clubs.userId matches actor.id/email directly,
-// (2) coachClubs is empty but team.leadCoachEmail === actor.email (used by
-// the seeded offline store and the regression S1 tests).
-      const actor = filters.onlyMine ? resolveActorContext(store, null, filters.actorEmail).actorUser : null;
+      // Coach actors are always club-scoped. When onlyMine is true, further
+      // narrow to teams the coach leads (leadCoachEmail / leadCoach name).
+      // SystemAdmin and unknown actors see the full roster.
+      const actor = resolveActorContext(store, null, filters.actorEmail).actorUser;
       const isCoachScoped = Boolean(actor && actor.role === 'Coach' && actor.status === 'active');
       let allowedTeamNames = null;
       if (isCoachScoped) {
         const actorEmail = String(actor.email || '').trim().toLowerCase();
         const actorId = actor.id;
+        const actorName = String(actor.name || '').trim().toLowerCase();
         const allowedClubIds = new Set(
           (store.coachClubs || [])
             .filter((entry) => {
@@ -2344,27 +2341,25 @@
             })
             .map((entry) => entry.clubId)
         );
-        const fromCoachClubs = new Set(
-          store.teams
-            .filter((team) => allowedClubIds.has(team.clubId))
-            .map((team) => team.name)
-        );
-        // Fallback: when coach_clubs is empty for this coach, use the
-        // leadCoachEmail match. This mirrors the getAvailableTeams logic the
-        // S1 dropdown already uses and keeps the seeded offline store
-        // working without a separate coach_clubs row per coach.
-        const fromLeadCoachEmail = new Set(
-          store.teams
-            .filter((team) => {
-              const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
-              return teamEmail && teamEmail === actorEmail;
-            })
-            .map((team) => team.name)
-        );
-        // Union both sets so an admin who already wired coach_clubs still
-        // sees every team they own, including ones whose leadCoachEmail has
-        // drifted from the seeded user record.
-        allowedTeamNames = new Set([...fromCoachClubs, ...fromLeadCoachEmail]);
+        let clubTeams = (store.teams || []).filter((team) => allowedClubIds.has(team.clubId));
+        // Fallback when coach_clubs is empty: teams this coach leads by email.
+        if (!clubTeams.length) {
+          clubTeams = (store.teams || []).filter((team) => {
+            const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+            return teamEmail && teamEmail === actorEmail;
+          });
+        }
+        if (filters.onlyMine) {
+          clubTeams = clubTeams.filter((team) => {
+            const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+            if (teamEmail && teamEmail === actorEmail) {
+              return true;
+            }
+            const teamCoachName = String(team.leadCoach || '').trim().toLowerCase();
+            return teamCoachName && actorName && teamCoachName === actorName;
+          });
+        }
+        allowedTeamNames = new Set(clubTeams.map((team) => team.name));
       }
 
       return clone(

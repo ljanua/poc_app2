@@ -1650,9 +1650,11 @@ async function ensureDatabase() {
   }
 }
 
-async function listPlayers(teamName, query, actor) {
+async function listPlayers(teamName, query, actor, options) {
   const values = [];
   const predicates = [];
+  const opts = options || {};
+  const onlyMine = Boolean(opts.onlyMine);
 
   if (teamName && teamName !== 'all') {
     values.push(teamName);
@@ -1664,12 +1666,15 @@ async function listPlayers(teamName, query, actor) {
     predicates.push(`(LOWER(p.name) LIKE LOWER($${values.length}) OR LOWER(p.position) LIKE LOWER($${values.length}))`);
   }
 
-  // Coach scoping: when the actor is an active Coach, narrow the result to
-  // players on teams whose club_id is in the coach's coach_clubs set. SystemAdmin
-  // and unknown actors always see the full roster (current behavior preserved).
+  // Coach actors are always club-scoped via coach_clubs. When onlyMine is true,
+  // further narrow to teams the coach leads. SystemAdmin / unknown: no scoping.
   if (actor && actor.role === 'Coach' && actor.status === 'active') {
     values.push(actor.id);
     predicates.push(`t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`);
+    if (onlyMine) {
+      values.push(actor.id);
+      predicates.push(`t.lead_coach_user_id = $${values.length}`);
+    }
   }
 
   const whereSql = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
@@ -3607,12 +3612,11 @@ async function handlePlayersApi(req, res, requestUrl) {
     const teamName = requestUrl.searchParams.get('teamName') || 'all';
     const query = normalizeComparable(requestUrl.searchParams.get('query') || '');
     const actorEmail = requestUrl.searchParams.get('actorEmail') || '';
-    // onlyMine is accepted for API completeness (the mockup never sends
-    // onlyMine=true for SystemAdmin, but the server should not 400 on it).
+    // onlyMine further narrows Coach results to teams they lead; club scoping
+    // always applies for active Coaches. SystemAdmin bypasses both.
     const onlyMine = String(requestUrl.searchParams.get('onlyMine') || '').toLowerCase() === 'true';
     const actor = await resolveActorForPlayersList(actorEmail);
-    const scopedActor = onlyMine ? actor : null;
-    const rows = await listPlayers(teamName, query, scopedActor);
+    const rows = await listPlayers(teamName, query, actor, { onlyMine });
     sendJson(res, 200, { data: rows });
     return;
   }

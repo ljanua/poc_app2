@@ -470,17 +470,35 @@
         }
 
         if (currentUser.role === 'Coach') {
-          return allTeams.filter(function (team) {
-            const teamCoachEmail = normalize(team.leadCoachEmail || '');
-            const currentCoachEmail = normalize(currentUser.email || '');
-            if (teamCoachEmail && currentCoachEmail && teamCoachEmail === currentCoachEmail) {
-              return true;
-            }
+          if (state.onlyMine) {
+            return allTeams.filter(function (team) {
+              const teamCoachEmail = normalize(team.leadCoachEmail || '');
+              const currentCoachEmail = normalize(currentUser.email || '');
+              if (teamCoachEmail && currentCoachEmail && teamCoachEmail === currentCoachEmail) {
+                return true;
+              }
 
-            const teamCoachName = normalize(team.leadCoach || '');
-            const currentCoachName = normalize(currentUser.name || '');
-            return teamCoachName && currentCoachName && teamCoachName === currentCoachName;
+              const teamCoachName = normalize(team.leadCoach || '');
+              const currentCoachName = normalize(currentUser.name || '');
+              return teamCoachName && currentCoachName && teamCoachName === currentCoachName;
+            });
+          }
+
+          const clubs = MockupApi.listClubs('Coach', currentUser.email, 'active') || [];
+          const clubIds = {};
+          clubs.forEach(function (club) {
+            clubIds[String(club.id)] = true;
           });
+          const clubTeams = allTeams.filter(function (team) {
+            return clubIds[String(team.clubId)];
+          });
+          // Fallback when coach has no club rows: lead-coach teams only.
+          if (!clubTeams.length) {
+            return allTeams.filter(function (team) {
+              return normalize(team.leadCoachEmail || '') === normalize(currentUser.email || '');
+            });
+          }
+          return clubTeams;
         }
 
         return allTeams;
@@ -573,6 +591,10 @@
           return;
         }
         if (state.isCoach && state.onlyMine) {
+          playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players on teams you lead.';
+          return;
+        }
+        if (state.isCoach) {
           playerListStatus.textContent = 'Showing ' + visiblePlayers.length + ' players in your clubs.';
           return;
         }
@@ -879,6 +901,8 @@
 
       onlyMineToggle.addEventListener('change', function () {
         state.onlyMine = Boolean(onlyMineToggle.checked);
+        const currentUser = MockupApi.getCurrentUser();
+        renderTeamFilterOptions(getAvailableTeams(currentUser));
         renderPlayers();
       });
 
@@ -980,11 +1004,13 @@
         executeAddPlayer(createConfirm.checked);
       });
 
+      // Hydrate actor (onlyMine / Coach flags) before team options — otherwise
+      // getAvailableTeams runs with onlyMine still false and lists club-wide teams.
+      hydrateActor();
       const currentUser = MockupApi.getCurrentUser();
       const initialTeams = getAvailableTeams(currentUser);
       state.selectedTeam = resolveInitialTeam(initialTeams);
       renderTeamFilterOptions(initialTeams);
-      hydrateActor();
       populateAdvancedFilterValues();
       renderPlayers();
       renderSuggestions();
