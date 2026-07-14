@@ -108,6 +108,13 @@ test.describe('S7 Per-User Club Assignment', () => {
       const response = await fetch('/api/v1/users/u_coach_joao/clubs?actorEmail=' + encodeURIComponent('maria@vantageiq.club'));
       return await response.json();
     });
-    expect(memberships.data).toEqual([]);
+    expect((memberships.data || []).some((row) => row.clubId === clubId)).toBe(false);
+  });
+
+  test('shows existing clubIds from GET /users on S7 without a fresh assign', async ({ page }) => {
+    await page.goto('/S7-admin-user-management.html');
+    const row = page.locator('tr', { hasText: 'Joao Lima' });
+    await expect(row.locator('.clubs-cell .muted-text')).toHaveCount(0);
+    await expect(row.locator('.team-chip.js-club-chip')).not.toHaveCount(0);
   });
 });

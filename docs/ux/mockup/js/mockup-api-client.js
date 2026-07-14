@@ -198,9 +198,9 @@
         { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility', skillFocus: ['Pace & Agility'], skillRatings: null }
       ],
       users: [
-        { id: 1, name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
-        { id: 2, name: 'Joao Lima', email: 'joao@vantageiq.club', role: 'Coach', status: 'active', password: 'SecurePass123', lastLogin: 'Yesterday' },
-        { id: 3, name: 'Ana Costa', email: 'ana@vantageiq.club', role: 'Coach', status: 'inactive', password: 'SecurePass123', lastLogin: '6 days ago' }
+        { id: 'u_admin_maria', name: 'Maria Alves', email: 'maria@vantageiq.club', role: 'SystemAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today, 08:31' },
+        { id: 'u_coach_joao', name: 'Joao Lima', email: 'joao@vantageiq.club', role: 'Coach', status: 'active', password: 'SecurePass123', lastLogin: 'Yesterday' },
+        { id: 'u_coach_ana', name: 'Ana Costa', email: 'ana@vantageiq.club', role: 'Coach', status: 'inactive', password: 'SecurePass123', lastLogin: '6 days ago' }
       ],
       sports: [
         { id: 'sport_soccer', name: 'Soccer', status: 'active', positionCount: 13 }
@@ -3443,7 +3443,8 @@
             role: user.role,
             status: user.status,
             password: user.password || '',
-            lastLogin: user.lastLogin || 'Unknown'
+            lastLogin: user.lastLogin || 'Unknown',
+            clubIds: Array.isArray(user.clubIds) ? user.clubIds : []
           })));
         }
 
@@ -3451,7 +3452,20 @@
         return [];
       }
 
-      return clone(loadStore().users);
+      const store = loadStore();
+      if (!Array.isArray(store.coachClubs)) {
+        store.coachClubs = [];
+      }
+      return clone((store.users || []).map(function (user) {
+        const clubIds = store.coachClubs
+          .filter(function (entry) {
+            return String(entry.userId) === String(user.id);
+          })
+          .map(function (entry) {
+            return entry.clubId;
+          });
+        return Object.assign({}, user, { clubIds: clubIds });
+      }));
     },
 
     createUser(payload, actorRole) {

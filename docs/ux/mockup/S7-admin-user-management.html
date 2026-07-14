@@ -315,8 +315,12 @@
           row.setAttribute('data-role', user.role);
           row.setAttribute('data-status', user.status);
           row.setAttribute('data-user-id', user.id);
-          const userClubIds = Array.isArray(user.clubIds) ? user.clubIds : [];
-          const userClubs = (clubs || []).filter(function (club) { return userClubIds.indexOf(club.id) !== -1; });
+          const userClubIds = Array.isArray(user.clubIds)
+            ? user.clubIds.map(function (id) { return String(id); })
+            : [];
+          const userClubs = (clubs || []).filter(function (club) {
+            return userClubIds.indexOf(String(club.id)) !== -1;
+          });
           const clubsCell =
             '<td class="clubs-cell">' +
               (userClubs.length
