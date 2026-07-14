@@ -31,7 +31,7 @@ Source plans:
 | S3-team-management.html | Create Team (Coach actor) | Create team (coach auto-assigned) | POST /v1/teams | 201 Created with lead coach set to actor | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Create Team (SystemAdmin actor) | Create team (selected active coach) | POST /v1/teams | 201 Created with selected coach as lead coach | 400 validation_error, 403 forbidden, 409 conflict |
 | S3-team-management.html | Change Coach (SystemAdmin only) | Reassign team coach | PATCH /v1/teams/{teamId}/coach | 200 OK with updated team coach | 400 validation_error, 403 forbidden, 404 not_found |
-| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query=&actorEmail=&onlyMine= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded; Feature 038 also includes `anySkillRatings` — Any Position skills with `abbreviation` + `rating` for the card strip). When `actorEmail` resolves to an active Coach and `onlyMine=true`, the list is scoped to players on teams belonging to that coach's clubs (joined via `coach_clubs`); SystemAdmin actors always see the full roster regardless of `onlyMine` | 400 validation_error |
+| S1-player-list.html | Team-scoped player list | List players | GET /v1/players?teamName=&query=&actorEmail=&onlyMine= | 200 OK with filtered players (each entry includes `avatarUrl`; null when no avatar uploaded; Feature 038 also includes `anySkillRatings` — Any Position skills with `abbreviation` + `rating` for the card strip; Feature 040 also includes `skillRatingsById` — sport-linked skill ratings map for Advanced Filter sort). When `actorEmail` resolves to an active Coach and `onlyMine=true`, the list is scoped to players on teams belonging to that coach's clubs (joined via `coach_clubs`); SystemAdmin actors always see the full roster regardless of `onlyMine` | 400 validation_error |
 | S1-player-list.html | Add player with explicit create confirm | Create player or assign existing | POST /v1/players | 201 created for confirmed no-match, 200 for strict move assign | 400 validation_error, 409 conflict |
 | S1-player-list.html | Preview create-on-no-match | Preview create | POST /v1/players/preview-create | 200 OK with normalized name preview and duplicate marker | 400 validation_error |
 | S1-player-list.html | Duplicate quick action | Assign existing player | POST /v1/players/{playerId}/assign | 200 OK with move/no-op state | 400 validation_error, 404 not_found |
@@ -129,6 +129,25 @@ Source plan: `docs/plans/2026-07-13-008-feat-s1-overall-any-rating-plan.md`.
 
 - On the team-chip row, far right: unlabeled bright yellow overall rating (`[data-testid="player-card-overall-rating"]`).
 - Value = `Math.round` average of `anySkillRatings` entries with numeric rating **> 0**; otherwise `—`. `aria-label`/`title` may say “Overall rating” without visible label text.
+
+### Test traceability
+
+- `tests/playwright/s1-player-list.spec.js`
+
+## S1 Advanced Filter (Feature 040)
+
+Source plan: `docs/plans/2026-07-13-009-feat-s1-advanced-filter-plan.md`.
+
+### UI
+
+- Coach / SystemAdmin only: toolbar **Advanced Filter** (`[data-testid="advanced-filter-toggle"]`) opens Filter by Position|Skill, value select, Sort by Highest|Lowest (default Highest).
+- Position mode: exact roster `position` match + sort by Feature 039 overall.
+- Skill mode: sort by `skillRatingsById[skillId]`; unrated (missing/null/non-finite) last for Highest / first for Lowest; `0` is a rated key.
+- Layers on team / search / Only Mine; Clear restores name ASC for the visibility set.
+
+### API
+
+- `GET /v1/players` also includes `skillRatingsById: { [skillId]: number|null }` for skills linked to any position of the player’s team sport (offline `listPlayers` mirrors).
 
 ### Test traceability
 

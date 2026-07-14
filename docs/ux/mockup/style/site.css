@@ -1237,6 +1237,30 @@ textarea::placeholder { color: var(--text-dim); }
   padding: 0.85rem;
 }
 
+.advanced-filter-panel {
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  padding: 0.85rem;
+}
+
+#toggleAdvancedFilter[hidden],
+.advanced-filter-panel[hidden] {
+  display: none !important;
+}
+
+.advanced-filter-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+}
+
+.advanced-filter-grid .inline-actions {
+  justify-content: flex-start;
+}
+
 .add-player-grid {
   display: grid;
   gap: 0.75rem;

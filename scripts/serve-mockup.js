@@ -108,8 +108,51 @@ function toPlayerPayload(row) {
     birthYear,
     age: computeAge(birthMonth, birthYear),
     updated: 'Updated just now',
-    anySkillRatings: Array.isArray(row.anySkillRatings) ? row.anySkillRatings : undefined
+    anySkillRatings: Array.isArray(row.anySkillRatings) ? row.anySkillRatings : undefined,
+    skillRatingsById: row.skillRatingsById && typeof row.skillRatingsById === 'object'
+      ? row.skillRatingsById
+      : undefined
   };
+}
+
+// Feature 040: ratings for every skill linked to any position of the player's team sport.
+async function listSportSkillRatingsByPlayerIds(playerIds) {
+  const ids = (playerIds || []).map((id) => String(id)).filter(Boolean);
+  const byPlayer = new Map();
+  ids.forEach((id) => { byPlayer.set(id, {}); });
+  if (!ids.length) {
+    return byPlayer;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        pl.id AS "playerId",
+        s.id AS "skillId",
+        psr.rating AS "rating"
+      FROM players pl
+      JOIN player_team_assignments a ON a.player_id = pl.id
+      JOIN teams t ON t.id = a.team_id
+      JOIN positions pos ON pos.sport_id = t.sport_id
+      JOIN position_skills ps ON ps.position_id = pos.id
+      JOIN skills s ON s.id = ps.skill_id
+      LEFT JOIN player_skill_ratings psr
+        ON psr.player_id = pl.id AND psr.skill_id = s.id
+      WHERE pl.id = ANY($1::text[])
+      GROUP BY pl.id, s.id, psr.rating
+    `,
+    [ids]
+  );
+
+  result.rows.forEach((row) => {
+    const key = String(row.playerId);
+    const map = byPlayer.get(key) || {};
+    map[String(row.skillId)] = row.rating === null || row.rating === undefined
+      ? null
+      : Number(row.rating);
+    byPlayer.set(key, map);
+  });
+  return byPlayer;
 }
 
 // Feature 038: batch Any-position skill ratings (+ abbreviations) for roster cards.
@@ -1651,9 +1694,12 @@ async function listPlayers(teamName, query, actor) {
   );
 
   const players = result.rows.map(toPlayerPayload);
-  const anyByPlayer = await listAnySkillRatingsByPlayerIds(players.map((player) => player.id));
+  const playerIds = players.map((player) => player.id);
+  const anyByPlayer = await listAnySkillRatingsByPlayerIds(playerIds);
+  const sportByPlayer = await listSportSkillRatingsByPlayerIds(playerIds);
   return players.map((player) => Object.assign({}, player, {
-    anySkillRatings: anyByPlayer.get(String(player.id)) || []
+    anySkillRatings: anyByPlayer.get(String(player.id)) || [],
+    skillRatingsById: sportByPlayer.get(String(player.id)) || {}
   }));
 }
 

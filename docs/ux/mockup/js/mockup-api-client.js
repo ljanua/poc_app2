@@ -185,10 +185,10 @@
         { id: 3, name: 'Senior Squad', ageGroup: '18+', leadCoach: 'Maria Alves', leadCoachEmail: 'maria@vantageiq.club', clubId: 'c_default', sportId: 'sport_soccer', status: 'active' }
       ],
       players: [
-        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'Forward - Left Wing', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 19 },
-        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 },
-        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'Forward - Right Wing', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 17 },
-        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'Forward - Center Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 }
+        { id: 10, name: 'Lionel Messi', normalizedName: 'lionel messi', teamName: 'U19 Prime', position: 'RW / LW – Winger', trend: 'improving', updated: 'Updated 2h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 19 },
+        { id: 11, name: 'Cristiano Ronaldo', normalizedName: 'cristiano ronaldo', teamName: 'Senior Squad', position: 'CF – Centre Forward', trend: 'plateau', updated: 'Updated 5h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 },
+        { id: 12, name: 'Neymar Jr', normalizedName: 'neymar jr', teamName: 'U17 Elite', position: 'RW / LW – Winger', trend: 'declining', updated: 'Updated 1d ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 17 },
+        { id: 13, name: 'Kylian Mbappe', normalizedName: 'kylian mbappe', teamName: 'Senior Squad', position: 'CF – Centre Forward', trend: 'improving', updated: 'Updated 3h ago', avatarUrl: null, birthMonth: null, birthYear: new Date().getFullYear() - 18 }
       ],
       playerAvatars: {},
       clips: [
@@ -337,7 +337,9 @@
         { playerId: 10, skillId: 's_passing', rating: 84 },
         { playerId: 10, skillId: 's_game_awareness', rating: 90 },
         { playerId: 10, skillId: 's_fitness', rating: null },
-        { playerId: 10, skillId: 's_speed', rating: 76 }
+        { playerId: 10, skillId: 's_speed', rating: 76 },
+        { playerId: 11, skillId: 's_ball_control', rating: 70 },
+        { playerId: 13, skillId: 's_ball_control', rating: 95 }
       ]
     };
   }
@@ -717,6 +719,48 @@
         pending: Number(stats.clipPendingCount || 0)
       }
     });
+  }
+
+  // Feature 040: compact skillId → rating map for skills linked to the player's team sport.
+  function listSportSkillRatingsByIdOffline(store, player) {
+    const map = {};
+    if (!player) {
+      return map;
+    }
+    const team = findTeamByName(store, player.teamName);
+    if (!team) {
+      return map;
+    }
+    const sportId = team.sportId || 'sport_soccer';
+    const sportPositionIds = {};
+    (store.positions || []).forEach(function (position) {
+      if (String(position.sportId) !== String(sportId)) {
+        return;
+      }
+      if (position.status && String(position.status) !== 'active') {
+        return;
+      }
+      sportPositionIds[String(position.id)] = true;
+    });
+    const sportSkillIds = {};
+    (store.positionSkills || []).forEach(function (entry) {
+      if (sportPositionIds[String(entry.positionId)]) {
+        sportSkillIds[String(entry.skillId)] = true;
+      }
+    });
+    (store.playerSkillRatings || []).forEach(function (entry) {
+      if (String(entry.playerId) !== String(player.id)) {
+        return;
+      }
+      if (!sportSkillIds[String(entry.skillId)]) {
+        return;
+      }
+      const rating = entry.rating === null || entry.rating === undefined
+        ? null
+        : Number(entry.rating);
+      map[String(entry.skillId)] = rating !== null && !Number.isFinite(rating) ? null : rating;
+    });
+    return map;
   }
 
   // Offline mirror of listSkillsForPlayer: Any Position skills for the sport,
@@ -2354,7 +2398,8 @@
               });
             return Object.assign({}, player, {
               avatarUrl: storedAvatar,
-              anySkillRatings: anySkillRatings
+              anySkillRatings: anySkillRatings,
+              skillRatingsById: listSportSkillRatingsByIdOffline(store, player)
             });
           })
       );

@@ -243,6 +243,121 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(card).toBeVisible();
     await expect(card.getByTestId('player-card-overall-rating')).toHaveText('—');
   });
+
+  test('shows Advanced Filter for Coach with Highest Rating default', async ({ page }) => {
+    await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
+    await page.getByTestId('advanced-filter-toggle').click();
+    await expect(page.getByTestId('advanced-filter-panel')).toBeVisible();
+    await expect(page.getByTestId('advanced-filter-sort')).toHaveValue('highest');
+    await expect(page.getByTestId('advanced-filter-by')).toHaveValue('position');
+    await expect(page.getByTestId('advanced-filter-value')
+      .locator('option', { hasText: 'RW / LW – Winger' })).toHaveCount(1);
+    await page.getByTestId('advanced-filter-by').selectOption('skill');
+    await expect(page.getByTestId('advanced-filter-value')
+      .locator('option', { hasText: 'Ball Control' })).toHaveCount(1);
+  });
+
+  test('hides Advanced Filter for non-editor roles', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.users.push({
+        id: 99,
+        name: 'Parent Pat',
+        email: 'parent@vantageiq.club',
+        role: 'Parent',
+        status: 'active',
+        password: 'SecurePass123',
+        lastLogin: 'Today'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+      window.localStorage.setItem('vantageiq_current_user_email', 'parent@vantageiq.club');
+    });
+    await page.reload();
+    await expect(page.getByTestId('advanced-filter-toggle')).toBeHidden();
+    await expect(page.getByTestId('advanced-filter-panel')).toBeHidden();
+  });
+
+  test('SystemAdmin can use Advanced Filter', async ({ page }) => {
+    await page.evaluate(() => {
+      window.localStorage.setItem('vantageiq_current_user_email', 'maria@vantageiq.club');
+    });
+    await page.reload();
+    await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
+  });
+
+  test('filters by Position and sorts by overall Highest then clears', async ({ page }) => {
+    await page.evaluate(() => {
+      window.localStorage.setItem('vantageiq_current_user_email', 'maria@vantageiq.club');
+    });
+    await page.reload();
+    await page.getByTestId('advanced-filter-toggle').click();
+    await page.getByTestId('advanced-filter-by').selectOption('position');
+    await page.getByTestId('advanced-filter-value').selectOption('RW / LW – Winger');
+    await page.getByTestId('advanced-filter-sort').selectOption('highest');
+    const names = page.locator('.player-card .player-name');
+    await expect(names).toHaveCount(2);
+    await expect(names.nth(0)).toHaveText('Lionel Messi');
+    await expect(names.nth(1)).toHaveText('Neymar Jr');
+    await page.getByTestId('advanced-filter-clear').click();
+    await expect(page.getByTestId('advanced-filter-value')).toHaveValue('');
+    await expect(page.locator('.player-card')).toHaveCount(4);
+  });
+
+  test('sorts by Skill Ball Control Highest and Lowest with unrated last or first', async ({ page }) => {
+    await page.evaluate(() => {
+      window.localStorage.setItem('vantageiq_current_user_email', 'maria@vantageiq.club');
+    });
+    await page.reload();
+    await page.selectOption('#teamFilter', 'Senior Squad');
+    await page.getByTestId('advanced-filter-toggle').click();
+    await page.getByTestId('advanced-filter-by').selectOption('skill');
+    await page.getByTestId('advanced-filter-value').selectOption('s_ball_control');
+    await page.getByTestId('advanced-filter-sort').selectOption('highest');
+    let names = page.locator('.player-card .player-name');
+    await expect(names.nth(0)).toHaveText('Kylian Mbappe');
+    await expect(names.nth(1)).toHaveText('Cristiano Ronaldo');
+
+    await page.getByTestId('advanced-filter-sort').selectOption('lowest');
+    names = page.locator('.player-card .player-name');
+    await expect(names.nth(0)).toHaveText('Cristiano Ronaldo');
+    await expect(names.nth(1)).toHaveText('Kylian Mbappe');
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.players.push({
+        id: 994,
+        name: 'Unrated Uma',
+        normalizedName: 'unrated uma',
+        teamName: 'Senior Squad',
+        position: 'CF – Centre Forward',
+        trend: 'plateau',
+        updated: 'Updated just now'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    await page.selectOption('#teamFilter', 'Senior Squad');
+    await page.getByTestId('advanced-filter-toggle').click();
+    await page.getByTestId('advanced-filter-by').selectOption('skill');
+    await page.getByTestId('advanced-filter-value').selectOption('s_ball_control');
+    await page.getByTestId('advanced-filter-sort').selectOption('highest');
+    names = page.locator('.player-card .player-name');
+    await expect(names).toHaveCount(3);
+    await expect(names.nth(2)).toHaveText('Unrated Uma');
+    await page.getByTestId('advanced-filter-sort').selectOption('lowest');
+    names = page.locator('.player-card .player-name');
+    await expect(names.nth(0)).toHaveText('Unrated Uma');
+  });
+
+  test('listPlayers includes skillRatingsById for sport skill sort', async ({ page }) => {
+    const payload = await page.evaluate(() => {
+      const players = window.MockupApi.listPlayers({ teamName: 'U19 Prime' }) || [];
+      const messi = players.find((player) => String(player.id) === '10');
+      return messi && messi.skillRatingsById;
+    });
+    expect(payload).toBeTruthy();
+    expect(payload.s_ball_control).toBe(88);
+  });
 });
 
 // Regression: avatar uploaded via the live backend PATCH must surface on the

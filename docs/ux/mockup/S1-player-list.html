@@ -25,8 +25,37 @@
           <span>Only My Players</span>
         </label>
         <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
+        <button id="toggleAdvancedFilter" class="btn btn-secondary" type="button" data-testid="advanced-filter-toggle" hidden>Advanced Filter</button>
         <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
         <a class="btn btn-secondary" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin">Admin Users</a>
+      </div>
+
+      <div class="advanced-filter-panel" id="advancedFilterPanel" data-testid="advanced-filter-panel" hidden>
+        <div class="advanced-filter-grid">
+          <div>
+            <label class="form-label" for="advancedFilterBy">Filter by</label>
+            <select id="advancedFilterBy" data-testid="advanced-filter-by" aria-label="Filter by">
+              <option value="position">Position</option>
+              <option value="skill">Skill</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="advancedFilterValue">Value</label>
+            <select id="advancedFilterValue" data-testid="advanced-filter-value" aria-label="Filter value">
+              <option value="">Select…</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="advancedFilterSort">Sort by</label>
+            <select id="advancedFilterSort" data-testid="advanced-filter-sort" aria-label="Sort by">
+              <option value="highest" selected>Highest Rating</option>
+              <option value="lowest">Lowest Rating</option>
+            </select>
+          </div>
+          <div class="inline-actions">
+            <button id="advancedFilterClear" class="btn btn-secondary" type="button" data-testid="advanced-filter-clear">Clear</button>
+          </div>
+        </div>
       </div>
 
       <div class="add-player-panel" id="addPlayerPanel" hidden>
@@ -130,7 +159,12 @@
         confirmCreate: true,
         actorEmail: null,
         onlyMine: false,
-        isCoach: false
+        isCoach: false,
+        canAdvancedFilter: false,
+        advancedFilterOpen: false,
+        advancedFilterBy: 'position',
+        advancedFilterValue: '',
+        advancedFilterSort: 'highest'
       };
 
       const playerGrid = document.getElementById('playerGrid');
@@ -141,6 +175,12 @@
       const roleBadge = document.getElementById('roleBadge');
       const onlyMineWrap = document.getElementById('onlyMineWrap');
       const onlyMineToggle = document.getElementById('onlyMineToggle');
+      const toggleAdvancedFilter = document.getElementById('toggleAdvancedFilter');
+      const advancedFilterPanel = document.getElementById('advancedFilterPanel');
+      const advancedFilterBy = document.getElementById('advancedFilterBy');
+      const advancedFilterValue = document.getElementById('advancedFilterValue');
+      const advancedFilterSort = document.getElementById('advancedFilterSort');
+      const advancedFilterClear = document.getElementById('advancedFilterClear');
 
       const addPlayerPanel = document.getElementById('addPlayerPanel');
       const toggleAddPlayer = document.getElementById('toggleAddPlayer');
@@ -168,6 +208,17 @@
           state.actorEmail = String(currentUser.email).trim().toLowerCase();
         }
         state.isCoach = Boolean(currentUser && currentUser.role === 'Coach' && currentUser.status === 'active');
+        const role = currentUser && currentUser.role;
+        state.canAdvancedFilter = role === 'Coach' || role === 'SystemAdmin';
+        if (toggleAdvancedFilter) {
+          toggleAdvancedFilter.hidden = !state.canAdvancedFilter;
+        }
+        if (!state.canAdvancedFilter) {
+          state.advancedFilterOpen = false;
+          if (advancedFilterPanel) {
+            advancedFilterPanel.hidden = true;
+          }
+        }
         // Only My Players: visible only to active Coaches, default ON.
         if (state.isCoach) {
           state.onlyMine = true;
@@ -239,6 +290,130 @@
           return '—';
         }
         return String(overall) + '%';
+      }
+
+      function resolveSelectedSportId() {
+        if (state.selectedTeam === 'all') {
+          return 'sport_soccer';
+        }
+        const teamEntry = (MockupApi.listTeams() || []).find(function (team) {
+          return team.name === state.selectedTeam;
+        });
+        return teamEntry ? (teamEntry.sportId || 'sport_soccer') : 'sport_soccer';
+      }
+
+      function listSportSkillsForFilter(sportId) {
+        const positions = MockupApi.listPositions(null, null, sportId, 'active') || [];
+        const byId = {};
+        positions.forEach(function (position) {
+          const links = MockupApi.listPositionSkills(position.id) || [];
+          links.forEach(function (link) {
+            const skillId = String(link.skillId || '');
+            if (!skillId || byId[skillId]) {
+              return;
+            }
+            byId[skillId] = {
+              skillId: skillId,
+              skillName: link.skillName || skillId
+            };
+          });
+        });
+        return Object.keys(byId).map(function (key) { return byId[key]; })
+          .sort(function (a, b) {
+            return String(a.skillName).localeCompare(String(b.skillName));
+          });
+      }
+
+      function populateAdvancedFilterValues() {
+        if (!advancedFilterValue) {
+          return;
+        }
+        const sportId = resolveSelectedSportId();
+        const previous = state.advancedFilterValue;
+        advancedFilterValue.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select…';
+        advancedFilterValue.appendChild(placeholder);
+
+        if (state.advancedFilterBy === 'skill') {
+          listSportSkillsForFilter(sportId).forEach(function (skill) {
+            const option = document.createElement('option');
+            option.value = skill.skillId;
+            option.textContent = skill.skillName;
+            advancedFilterValue.appendChild(option);
+          });
+        } else {
+          const positions = MockupApi.listPositions(null, null, sportId, 'active') || [];
+          positions.forEach(function (position) {
+            const option = document.createElement('option');
+            option.value = position.name;
+            option.textContent = position.name;
+            advancedFilterValue.appendChild(option);
+          });
+        }
+
+        const stillValid = Array.prototype.some.call(advancedFilterValue.options, function (option) {
+          return option.value === previous;
+        });
+        state.advancedFilterValue = stillValid ? previous : '';
+        advancedFilterValue.value = state.advancedFilterValue;
+      }
+
+      function skillSortKey(player, skillId) {
+        const map = player && player.skillRatingsById;
+        if (!map || typeof map !== 'object') {
+          return null;
+        }
+        if (!Object.prototype.hasOwnProperty.call(map, String(skillId))) {
+          return null;
+        }
+        const raw = map[String(skillId)];
+        if (raw === null || raw === undefined || raw === '') {
+          return null;
+        }
+        const num = Number(raw);
+        return Number.isFinite(num) ? num : null;
+      }
+
+      function playerSortKey(player) {
+        if (state.advancedFilterBy === 'skill') {
+          return skillSortKey(player, state.advancedFilterValue);
+        }
+        return computeOverallAnyRating(player.anySkillRatings);
+      }
+
+      function applyAdvancedFilterAndSort(players) {
+        const rows = Array.isArray(players) ? players.slice() : [];
+        if (!state.canAdvancedFilter || !state.advancedFilterValue) {
+          return rows;
+        }
+
+        let filtered = rows;
+        if (state.advancedFilterBy === 'position') {
+          filtered = rows.filter(function (player) {
+            return String(player.position || '') === String(state.advancedFilterValue);
+          });
+        }
+
+        const highest = state.advancedFilterSort !== 'lowest';
+        filtered.sort(function (a, b) {
+          const keyA = playerSortKey(a);
+          const keyB = playerSortKey(b);
+          const ratedA = keyA !== null;
+          const ratedB = keyB !== null;
+          if (ratedA && !ratedB) {
+            return highest ? -1 : 1;
+          }
+          if (!ratedA && ratedB) {
+            return highest ? 1 : -1;
+          }
+          if (ratedA && ratedB && keyA !== keyB) {
+            return highest ? (keyB - keyA) : (keyA - keyB);
+          }
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+        return filtered;
       }
 
       function buildAnySkillsMarkup(player) {
@@ -405,7 +580,7 @@
       }
 
       function renderPlayers() {
-        const visiblePlayers = getVisiblePlayers();
+        const visiblePlayers = applyAdvancedFilterAndSort(getVisiblePlayers());
         const playerIdsWithClips = getPlayerIdsWithClips();
         playerGrid.innerHTML = '';
 
@@ -695,6 +870,7 @@
 
       teamFilter.addEventListener('change', function () {
         state.selectedTeam = teamFilter.value;
+        populateAdvancedFilterValues();
         renderPlayers();
         renderSuggestions();
         renderAddPlayerPositions();
@@ -705,6 +881,61 @@
         state.onlyMine = Boolean(onlyMineToggle.checked);
         renderPlayers();
       });
+
+      if (toggleAdvancedFilter) {
+        toggleAdvancedFilter.addEventListener('click', function () {
+          state.advancedFilterOpen = !state.advancedFilterOpen;
+          advancedFilterPanel.hidden = !state.advancedFilterOpen;
+          if (state.advancedFilterOpen) {
+            populateAdvancedFilterValues();
+            if (advancedFilterBy) {
+              advancedFilterBy.value = state.advancedFilterBy;
+            }
+            if (advancedFilterSort) {
+              advancedFilterSort.value = state.advancedFilterSort;
+            }
+          }
+        });
+      }
+
+      if (advancedFilterBy) {
+        advancedFilterBy.addEventListener('change', function () {
+          state.advancedFilterBy = advancedFilterBy.value === 'skill' ? 'skill' : 'position';
+          state.advancedFilterValue = '';
+          populateAdvancedFilterValues();
+          renderPlayers();
+        });
+      }
+
+      if (advancedFilterValue) {
+        advancedFilterValue.addEventListener('change', function () {
+          state.advancedFilterValue = advancedFilterValue.value || '';
+          renderPlayers();
+        });
+      }
+
+      if (advancedFilterSort) {
+        advancedFilterSort.addEventListener('change', function () {
+          state.advancedFilterSort = advancedFilterSort.value === 'lowest' ? 'lowest' : 'highest';
+          renderPlayers();
+        });
+      }
+
+      if (advancedFilterClear) {
+        advancedFilterClear.addEventListener('click', function () {
+          state.advancedFilterValue = '';
+          state.advancedFilterSort = 'highest';
+          state.advancedFilterBy = 'position';
+          if (advancedFilterBy) {
+            advancedFilterBy.value = 'position';
+          }
+          if (advancedFilterSort) {
+            advancedFilterSort.value = 'highest';
+          }
+          populateAdvancedFilterValues();
+          renderPlayers();
+        });
+      }
 
       toggleAddPlayer.addEventListener('click', function () {
         toggleAddPlayerPanel(addPlayerPanel.hidden);
@@ -754,6 +985,7 @@
       state.selectedTeam = resolveInitialTeam(initialTeams);
       renderTeamFilterOptions(initialTeams);
       hydrateActor();
+      populateAdvancedFilterValues();
       renderPlayers();
       renderSuggestions();
       renderAddPlayerPositions();
