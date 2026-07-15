@@ -177,4 +177,66 @@ test.describe('Club Admin role', () => {
     await expect(page.getByRole('cell', { name: 'U19 Prime' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Other Club United' })).toHaveCount(0);
   });
+
+  test('S6 Club Admin hides foreign-club clips and team options', async ({ page }) => {
+    await loginAsRita(page);
+    await page.evaluate(() => {
+      const key = 'vantageiq_mockup_v2';
+      const store = JSON.parse(window.localStorage.getItem(key) || '{}');
+      if (!Array.isArray(store.clubs)) store.clubs = [];
+      if (!store.clubs.some((club) => club.id === 'c_other')) {
+        store.clubs.push({ id: 'c_other', name: 'Other Football Club', status: 'active' });
+      }
+      if (!Array.isArray(store.teams)) store.teams = [];
+      if (!store.teams.some((team) => team.id === 99)) {
+        store.teams.push({
+          id: 99,
+          name: 'Other Club United',
+          ageGroup: 'U15',
+          leadCoach: 'Outside Coach',
+          leadCoachEmail: 'outside@example.com',
+          clubId: 'c_other',
+          sportId: 'sport_soccer',
+          status: 'active'
+        });
+      }
+      if (!Array.isArray(store.players)) store.players = [];
+      if (!store.players.some((player) => player.id === 991)) {
+        store.players.push({
+          id: 991,
+          name: 'Foreign Club Striker',
+          normalizedName: 'foreign club striker',
+          teamName: 'Other Club United',
+          position: 'ST – Striker',
+          trend: 'improving',
+          updated: 'Updated 1h ago',
+          avatarUrl: null,
+          birthMonth: null,
+          birthYear: 2008
+        });
+      }
+      if (!Array.isArray(store.clips)) store.clips = [];
+      store.clips.push({
+        id: 'clip_foreign_rita_1',
+        playerId: 991,
+        situation: 'Foreign club chance',
+        status: 'complete',
+        score: 0.5,
+        summary: 'Outside club clip',
+        comments: 'Outside club clip',
+        submittedAt: '1 hour ago',
+        skill: 'Finishing',
+        skillFocus: ['Finishing'],
+        skillRatings: { Finishing: 0.5 }
+      });
+      window.localStorage.setItem(key, JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+    await expect(page.getByText('Lionel Messi')).toBeVisible();
+    await expect(page.getByText('Foreign Club Striker')).toHaveCount(0);
+    await expect(page.locator('#teamFilter option', { hasText: 'Other Club United' })).toHaveCount(0);
+    await expect(page.locator('#teamFilter option', { hasText: 'U19 Prime' })).toHaveCount(1);
+  });
 });

@@ -3323,6 +3323,10 @@
       const status = options.status || 'all';
       const playerId = options.playerId != null && options.playerId !== '' ? String(options.playerId) : '';
       const playerName = normalizeLookup(options.playerName || '');
+      const session = this.getCurrentUser();
+      const actorEmail = String(
+        options.actorEmail || (session && session.email) || ''
+      ).trim().toLowerCase();
 
       if (shouldUseBackendPlayersMode()) {
         const params = new URLSearchParams();
@@ -3337,6 +3341,9 @@
         } else if (playerName) {
           params.set('playerName', playerName);
         }
+        if (actorEmail) {
+          params.set('actorEmail', actorEmail);
+        }
         const query = params.toString();
         const response = backendRequest('GET', '/clips' + (query ? '?' + query : ''));
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -3347,6 +3354,29 @@
       }
 
       const store = loadStore();
+      let allowedClubIds = null;
+      if (actorEmail) {
+        const actor = store.users.find(function (user) {
+          return String(user.email || '').toLowerCase() === actorEmail;
+        });
+        if (
+          actor &&
+          actor.status === 'active' &&
+          (actor.role === 'Coach' || actor.role === 'ClubAdmin')
+        ) {
+          allowedClubIds = new Set(
+            (store.coachClubs || [])
+              .filter(function (entry) {
+                return String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email);
+              })
+              .map(function (entry) {
+                return entry.clubId;
+              })
+          );
+        } else if (!actor || actor.role !== 'SystemAdmin' || actor.status !== 'active') {
+          return [];
+        }
+      }
 
       const rows = store.clips
         .map((clip) => {
@@ -3369,6 +3399,13 @@
             path: clip.path || null,
             segments: Array.isArray(clip.segments) ? clone(clip.segments) : []
           };
+        })
+        .filter((clip) => {
+          if (!allowedClubIds) return true;
+          const team = (store.teams || []).find(function (entry) {
+            return entry.name === clip.teamName;
+          });
+          return team && allowedClubIds.has(team.clubId);
         })
         .filter((clip) => (teamName === 'all' ? true : clip.teamName === teamName))
         .filter((clip) => {

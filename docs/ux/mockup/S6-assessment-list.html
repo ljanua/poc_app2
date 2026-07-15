@@ -418,6 +418,9 @@
           teamName: teamFilter.value || 'all',
           status: statusOverride || selectedStatus
         };
+        if (currentUser && currentUser.email) {
+          filters.actorEmail = currentUser.email;
+        }
         if (hasPlayerContext && preselectedCheckbox.checked) {
           if (contextPlayerId) {
             filters.playerId = contextPlayerId;
@@ -495,10 +498,11 @@
       }
 
       if (!isGuest) {
-        const teamQuery = currentUser && currentUser.email
-          ? (currentUser.role === 'Coach'
-            ? 'actorEmail=' + encodeURIComponent(currentUser.email) + '&status=active'
-            : 'status=active')
+        const isClubScoped =
+          currentUser &&
+          (currentUser.role === 'Coach' || currentUser.role === 'ClubAdmin');
+        const teamQuery = currentUser && currentUser.email && isClubScoped
+          ? 'actorEmail=' + encodeURIComponent(currentUser.email) + '&status=active'
           : 'status=active';
         MockupApi.listTeams(teamQuery).forEach(function (team) {
           const option = document.createElement('option');

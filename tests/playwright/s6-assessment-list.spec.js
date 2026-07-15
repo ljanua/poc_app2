@@ -295,4 +295,144 @@ test.describe('S6 Assessment Results list', () => {
     await expect.poll(async () => page.getByTestId('clip-thumbnail').count()).toBe(0);
     await expect(page.locator('.result-thumbnail-fallback').first()).toBeVisible();
   });
+
+  test('Coach All Teams hides foreign-club clips and team options', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const key = 'vantageiq_mockup_v2';
+      const store = JSON.parse(window.localStorage.getItem(key) || '{}');
+      if (!Array.isArray(store.clubs)) store.clubs = [];
+      if (!store.clubs.some((club) => club.id === 'c_other')) {
+        store.clubs.push({ id: 'c_other', name: 'Other Football Club', status: 'active' });
+      }
+      if (!Array.isArray(store.teams)) store.teams = [];
+      if (!store.teams.some((team) => team.id === 99)) {
+        store.teams.push({
+          id: 99,
+          name: 'Other Club United',
+          ageGroup: 'U15',
+          leadCoach: 'Outside Coach',
+          leadCoachEmail: 'outside@example.com',
+          clubId: 'c_other',
+          sportId: 'sport_soccer',
+          status: 'active'
+        });
+      }
+      if (!Array.isArray(store.players)) store.players = [];
+      if (!store.players.some((player) => player.id === 991)) {
+        store.players.push({
+          id: 991,
+          name: 'Foreign Club Striker',
+          normalizedName: 'foreign club striker',
+          teamName: 'Other Club United',
+          position: 'ST – Striker',
+          trend: 'improving',
+          updated: 'Updated 1h ago',
+          avatarUrl: null,
+          birthMonth: null,
+          birthYear: 2008
+        });
+      }
+      if (!Array.isArray(store.clips)) store.clips = [];
+      store.clips.push({
+        id: 'clip_foreign_1',
+        playerId: 991,
+        situation: 'Foreign club chance',
+        status: 'complete',
+        score: 0.5,
+        summary: 'Outside club clip',
+        comments: 'Outside club clip',
+        submittedAt: '1 hour ago',
+        skill: 'Finishing',
+        skillFocus: ['Finishing'],
+        skillRatings: { Finishing: 0.5 }
+      });
+      window.localStorage.setItem(key, JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Lionel Messi')).toBeVisible();
+    await expect(page.getByText('Foreign Club Striker')).toHaveCount(0);
+    await expect(page.locator('#teamFilter option', { hasText: 'Other Club United' })).toHaveCount(0);
+    await expect(page.locator('#teamFilter option', { hasText: 'U19 Prime' })).toHaveCount(1);
+  });
+
+  test('SystemAdmin All Teams still shows foreign-club clips', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'maria@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management/);
+
+    await page.evaluate(() => {
+      const key = 'vantageiq_mockup_v2';
+      const store = JSON.parse(window.localStorage.getItem(key) || '{}');
+      if (!Array.isArray(store.clubs)) store.clubs = [];
+      if (!store.clubs.some((club) => club.id === 'c_other')) {
+        store.clubs.push({ id: 'c_other', name: 'Other Football Club', status: 'active' });
+      }
+      if (!Array.isArray(store.teams)) store.teams = [];
+      if (!store.teams.some((team) => team.id === 99)) {
+        store.teams.push({
+          id: 99,
+          name: 'Other Club United',
+          ageGroup: 'U15',
+          leadCoach: 'Outside Coach',
+          leadCoachEmail: 'outside@example.com',
+          clubId: 'c_other',
+          sportId: 'sport_soccer',
+          status: 'active'
+        });
+      }
+      if (!Array.isArray(store.players)) store.players = [];
+      if (!store.players.some((player) => player.id === 991)) {
+        store.players.push({
+          id: 991,
+          name: 'Foreign Club Striker',
+          normalizedName: 'foreign club striker',
+          teamName: 'Other Club United',
+          position: 'ST – Striker',
+          trend: 'improving',
+          updated: 'Updated 1h ago',
+          avatarUrl: null,
+          birthMonth: null,
+          birthYear: 2008
+        });
+      }
+      if (!Array.isArray(store.clips)) store.clips = [];
+      store.clips.push({
+        id: 'clip_foreign_admin_1',
+        playerId: 991,
+        situation: 'Foreign club chance',
+        status: 'complete',
+        score: 0.5,
+        summary: 'Outside club clip',
+        comments: 'Outside club clip',
+        submittedAt: '1 hour ago',
+        skill: 'Finishing',
+        skillFocus: ['Finishing'],
+        skillRatings: { Finishing: 0.5 }
+      });
+      window.localStorage.setItem(key, JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Foreign Club Striker')).toBeVisible();
+    await expect(page.locator('#teamFilter option', { hasText: 'Other Club United' })).toHaveCount(1);
+  });
 });

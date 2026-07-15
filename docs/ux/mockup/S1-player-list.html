@@ -563,6 +563,9 @@
         if (state.selectedTeam && state.selectedTeam !== 'all') {
           filters.teamName = state.selectedTeam;
         }
+        if (state.actorEmail) {
+          filters.actorEmail = state.actorEmail;
+        }
         const clips = MockupApi.listClips(filters) || [];
         const ids = new Set();
         clips.forEach(function (clip) {

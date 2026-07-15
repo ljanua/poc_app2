@@ -3791,6 +3791,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     const status = normalizeLookup(requestUrl.searchParams.get('status') || 'all');
     const playerId = String(requestUrl.searchParams.get('playerId') || '').trim();
     const playerName = normalizeLookup(requestUrl.searchParams.get('playerName') || '');
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
     const where = [];
     const values = [];
     if (teamName !== 'all') {
@@ -3807,6 +3808,21 @@ async function handlePlayersApi(req, res, requestUrl) {
     } else if (playerName) {
       values.push(playerName);
       where.push(`LOWER(p.name) = LOWER($${values.length})`);
+    }
+    if (actorEmail) {
+      const actorResult = await pool.query(
+        `SELECT id, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+        [actorEmail]
+      );
+      const actor = actorResult.rows[0] || null;
+      if (isClubScopedActor(actor)) {
+        values.push(actor.id);
+        where.push(
+          `t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`
+        );
+      } else if (!actor || actor.role !== 'SystemAdmin' || actor.status !== 'active') {
+        where.push('FALSE');
+      }
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const query = `
