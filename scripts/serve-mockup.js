@@ -3382,8 +3382,9 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     // Omitted name/ageGroup preserve current values (compat for callers mid-rollout).
-    const nameProvided = Object.prototype.hasOwnProperty.call(payload, 'name') && payload.name != null;
-    const ageProvided = Object.prototype.hasOwnProperty.call(payload, 'ageGroup') && payload.ageGroup != null;
+    // A present key (including null) is validated; only true key omission preserves.
+    const nameProvided = Object.prototype.hasOwnProperty.call(payload, 'name');
+    const ageProvided = Object.prototype.hasOwnProperty.call(payload, 'ageGroup');
     let nextName = existing.rows[0].name;
     let nextAgeGroup = existing.rows[0].ageGroup;
     if (nameProvided) {

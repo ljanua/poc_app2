@@ -2303,16 +2303,16 @@
         }
       }
 
-      // Omitted name/ageGroup preserve current values.
+      // Omitted name/ageGroup preserve current values. Present key (including null) is validated.
       let nextName = team.name;
       let nextAgeGroup = team.ageGroup;
-      if (Object.prototype.hasOwnProperty.call(body, 'name') && body.name != null) {
+      if (Object.prototype.hasOwnProperty.call(body, 'name')) {
         nextName = toTitleCase(body.name);
         if (!nextName || nextName.length < 2) {
           return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
         }
       }
-      if (Object.prototype.hasOwnProperty.call(body, 'ageGroup') && body.ageGroup != null) {
+      if (Object.prototype.hasOwnProperty.call(body, 'ageGroup')) {
         nextAgeGroup = normalizeLookup(body.ageGroup);
         if (!nextAgeGroup) {
           return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
