@@ -44,4 +44,36 @@ test.describe('Club Admin role', () => {
       page.locator('#usersTableBody tr', { hasText: 'club.coach@vantageiq.club' })
     )).toBeVisible({ timeout: 5000 });
   });
+
+  test('S3 Club Admin only sees teams in assigned clubs', async ({ page }) => {
+    await loginAsRita(page);
+    await page.evaluate(() => {
+      const key = 'vantageiq_mockup_v2';
+      const store = JSON.parse(window.localStorage.getItem(key) || '{}');
+      if (!Array.isArray(store.clubs)) store.clubs = [];
+      if (!store.clubs.some((club) => club.id === 'c_other')) {
+        store.clubs.push({ id: 'c_other', name: 'Other Football Club', status: 'active' });
+      }
+      if (!Array.isArray(store.teams)) store.teams = [];
+      if (!store.teams.some((team) => team.id === 99)) {
+        store.teams.push({
+          id: 99,
+          name: 'Other Club United',
+          ageGroup: 'U15',
+          leadCoach: 'Outside Coach',
+          leadCoachEmail: 'outside@example.com',
+          clubId: 'c_other',
+          sportId: 'sport_soccer',
+          status: 'active'
+        });
+      }
+      window.localStorage.setItem(key, JSON.stringify(store));
+    });
+
+    await page.goto('/S3-team-management.html');
+    await expect(page.locator('#roleBadge')).toContainText('ClubAdmin');
+    await expect(page.getByRole('cell', { name: 'Senior Squad' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'U19 Prime' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Other Club United' })).toHaveCount(0);
+  });
 });

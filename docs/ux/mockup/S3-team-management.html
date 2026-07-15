@@ -337,11 +337,20 @@
 
         const selectedClubId = clubFilter ? clubFilter.value : '';
         const onlyMine = onlyMyClubsToggle ? onlyMyClubsToggle.checked : false;
+        // ClubAdmin is always club-scoped (toggle is Coach-only). Coaches use "Only My Clubs".
+        const enforceClubScope =
+          state.actorRole === 'ClubAdmin' ||
+          (onlyMine && state.actorRole === 'Coach');
         const visibleTeams = teams.filter(function (team) {
           if (selectedClubId && team.clubId !== selectedClubId) {
             return false;
           }
-          if (onlyMine && state.actorRole === 'Coach' && !state.assignedClubIds.includes(team.clubId)) {
+          if (
+            enforceClubScope &&
+            Array.isArray(state.assignedClubIds) &&
+            state.assignedClubIds.length &&
+            !state.assignedClubIds.includes(team.clubId)
+          ) {
             return false;
           }
           if (showActiveOnly && team.status === 'inactive') {

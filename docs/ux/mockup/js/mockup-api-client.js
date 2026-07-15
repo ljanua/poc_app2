@@ -1123,8 +1123,15 @@
     },
 
     listTeams(queryString) {
+      const params = new URLSearchParams(String(queryString || '').replace(/^\?/, ''));
+      if (!params.get('actorEmail')) {
+        const sessionEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        if (sessionEmail) params.set('actorEmail', sessionEmail);
+      }
+
       if (shouldUseBackendPlayersMode()) {
-        const path = '/teams' + (queryString ? '?' + queryString : '');
+        const qs = params.toString();
+        const path = '/teams' + (qs ? '?' + qs : '');
         const response = backendRequest('GET', path);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
           return clone(response.body.data);
@@ -1136,7 +1143,6 @@
 
       const store = loadStore();
       let teams = store.teams.slice();
-      const params = new URLSearchParams(String(queryString || '').replace(/^\?/, ''));
       const actorEmail = String(params.get('actorEmail') || '').trim().toLowerCase();
       const clubId = String(params.get('clubId') || '').trim();
       const statusFilter = String(params.get('status') || 'active').trim().toLowerCase();
@@ -1149,7 +1155,11 @@
       }
       if (actorEmail) {
         const actor = store.users.find((user) => String(user.email || '').toLowerCase() === actorEmail);
-        if (actor && actor.role === 'Coach' && actor.status === 'active') {
+        if (
+          actor &&
+          actor.status === 'active' &&
+          (actor.role === 'Coach' || actor.role === 'ClubAdmin')
+        ) {
           const allowedClubIds = new Set(
             store.coachClubs
               .filter((entry) => String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email))
@@ -1161,7 +1171,26 @@
         }
       }
 
-      return clone(teams);
+      return clone(
+        teams.map((team) => {
+          const club = (store.clubs || []).find((entry) => entry.id === team.clubId);
+          const sport = (store.sports || []).find((entry) => entry.id === team.sportId);
+          const playerCount = (store.players || []).filter((player) => player.teamName === team.name).length;
+          return {
+            id: team.id,
+            name: team.name,
+            ageGroup: team.ageGroup,
+            leadCoach: team.leadCoach,
+            leadCoachEmail: team.leadCoachEmail || null,
+            clubId: team.clubId || null,
+            clubName: club ? club.name : null,
+            sportId: team.sportId || null,
+            sportName: sport ? sport.name : null,
+            status: team.status || 'active',
+            playerCount
+          };
+        })
+      );
     },
 
     listActiveCoaches() {
@@ -2613,47 +2642,24 @@
 
     listTeamSummary(options) {
       const filters = options || {};
-      if (shouldUseBackendPlayersMode()) {
-        const params = new URLSearchParams();
-        if (filters.status) params.set('status', filters.status);
-        const teams = this.listTeams(filters.status ? params.toString() : '');
-        return clone(
-          teams.map((team) => ({
-            id: team.id,
-            name: team.name,
-            ageGroup: team.ageGroup,
-            leadCoach: team.leadCoach,
-            leadCoachEmail: team.leadCoachEmail || null,
-            clubId: team.clubId || null,
-            clubName: team.clubName || null,
-            sportId: team.sportId || null,
-            sportName: team.sportName || null,
-            status: team.status || 'active',
-            playerCount: Number(team.playerCount || 0)
-          }))
-        );
-      }
-
-      const store = loadStore();
+      const params = new URLSearchParams();
+      if (filters.status) params.set('status', filters.status);
+      // listTeams attaches session actorEmail and club-scopes Coach/ClubAdmin (live + offline).
+      const teams = this.listTeams(params.toString());
       return clone(
-        store.teams.map((team) => {
-          const playerCount = store.players.filter((player) => player.teamName === team.name).length;
-          const club = store.clubs.find((entry) => entry.id === team.clubId);
-          const sport = (store.sports || []).find((entry) => entry.id === team.sportId);
-          return {
-            id: team.id,
-            name: team.name,
-            ageGroup: team.ageGroup,
-            leadCoach: team.leadCoach,
-            leadCoachEmail: team.leadCoachEmail || null,
-            clubId: team.clubId || null,
-            clubName: club ? club.name : null,
-            sportId: team.sportId || null,
-            sportName: sport ? sport.name : null,
-            status: team.status || 'active',
-            playerCount
-          };
-        })
+        teams.map((team) => ({
+          id: team.id,
+          name: team.name,
+          ageGroup: team.ageGroup,
+          leadCoach: team.leadCoach,
+          leadCoachEmail: team.leadCoachEmail || null,
+          clubId: team.clubId || null,
+          clubName: team.clubName || null,
+          sportId: team.sportId || null,
+          sportName: team.sportName || null,
+          status: team.status || 'active',
+          playerCount: Number(team.playerCount || 0)
+        }))
       );
     },
 
