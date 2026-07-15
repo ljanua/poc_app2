@@ -294,7 +294,7 @@
           const select = document.getElementById(id);
           if (!select) return;
           Array.from(select.options).forEach(function (option) {
-            if (option.value !== 'Coach') {
+            if (option.value === 'SystemAdmin') {
               option.remove();
             }
           });

@@ -297,7 +297,7 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 - Third role `ClubAdmin` (seed `rita@vantageiq.club`) on `coach_clubs` like Coach.
 - Club-scoped players/teams/clubs lists; no Only My Players lead narrowing.
 - Users nav: `data-role-visible-to="SystemAdmin,ClubAdmin"`; Clubs/Skills remain SystemAdmin-only.
-- User writes resolve `actorEmail`; Club Admin may manage Coach users in shared clubs only.
+- User writes resolve `actorEmail`; Club Admin may manage Coach and ClubAdmin users in shared clubs only (not self, not SystemAdmin). ClubAdmin create/change-role allowlist is Coach + ClubAdmin.
 - Team create/update allow `ClubAdmin` with club membership checks.
 
 ## S1 Coach Scoping + Clubs Main Menu (2026-07-06-009)

@@ -1870,7 +1870,13 @@ async function resolveUserAdminActor(payload) {
 }
 
 async function clubAdminMayManageUser(actor, targetUser) {
-  if (!actor || !targetUser || targetUser.role !== 'Coach') {
+  if (!actor || !targetUser) {
+    return false;
+  }
+  if (String(actor.id) === String(targetUser.id)) {
+    return false;
+  }
+  if (targetUser.role !== 'Coach' && targetUser.role !== 'ClubAdmin') {
     return false;
   }
   return usersShareClub(actor.id, targetUser.id);
@@ -3562,7 +3568,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     const role = String(payload.role || '').trim();
     const password = String(payload.password || '').trim();
     const hasNumber = /\d/.test(password);
-    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach'];
+    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach', 'ClubAdmin'];
 
     if (!name || !email.includes('@') || !allowedRoles.includes(role) || password.length < 10 || !hasNumber) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
@@ -3640,7 +3646,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const role = String(payload.role || '').trim();
-    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach'];
+    const allowedRoles = isSystemAdmin ? ALL_ROLES : ['Coach', 'ClubAdmin'];
     if (!allowedRoles.includes(role)) {
       sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
       return;

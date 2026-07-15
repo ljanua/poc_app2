@@ -410,6 +410,29 @@
     return { actorUser, role };
   }
 
+  function offlineClubAdminMayManageUser(store, actorUser, targetUser) {
+    if (!actorUser || !targetUser) return false;
+    if (String(actorUser.id) === String(targetUser.id)) return false;
+    if (
+      String(actorUser.email || '').toLowerCase() === String(targetUser.email || '').toLowerCase()
+    ) {
+      return false;
+    }
+    if (targetUser.role !== 'Coach' && targetUser.role !== 'ClubAdmin') return false;
+    const actorClubIds = new Set(
+      (store.coachClubs || [])
+        .filter(function (entry) {
+          return String(entry.userId) === String(actorUser.id);
+        })
+        .map(function (entry) {
+          return entry.clubId;
+        })
+    );
+    return (store.coachClubs || []).some(function (entry) {
+      return String(entry.userId) === String(targetUser.id) && actorClubIds.has(entry.clubId);
+    });
+  }
+
   function shouldForceLocalMode() {
     return window.__USE_MOCK_LOCAL__ === true;
   }
@@ -3572,7 +3595,7 @@
       const hasNumber = /\d/.test(password);
       const allowedRoles = effectiveRole === 'SystemAdmin'
         ? ['SystemAdmin', 'Coach', 'ClubAdmin']
-        : ['Coach'];
+        : ['Coach', 'ClubAdmin'];
 
       if (!name || !email.includes('@') || !allowedRoles.includes(role) || password.length < 10 || !hasNumber) {
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
@@ -3671,11 +3694,11 @@
       }
       const allowedRoles = effectiveRole === 'SystemAdmin'
         ? ['SystemAdmin', 'Coach', 'ClubAdmin']
-        : ['Coach'];
+        : ['Coach', 'ClubAdmin'];
       if (!allowedRoles.includes(role)) {
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
       }
-      if (effectiveRole === 'ClubAdmin' && user.role !== 'Coach') {
+      if (effectiveRole === 'ClubAdmin' && !offlineClubAdminMayManageUser(store, session, user)) {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
@@ -3711,6 +3734,9 @@
       const user = store.users.find((entry) => entry.email.toLowerCase() === String(email || '').trim().toLowerCase());
       if (!user) {
         return { status: 404, code: 'not_found', message: 'The selected user was not found anymore. Refresh and try again.' };
+      }
+      if (effectiveRole === 'ClubAdmin' && !offlineClubAdminMayManageUser(store, session, user)) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
       const hasNumber = /\d/.test(String(password || ''));
@@ -3749,6 +3775,9 @@
       if (!user) {
         return { status: 404, code: 'not_found', message: 'The selected user was not found anymore. Refresh and try again.' };
       }
+      if (effectiveRole === 'ClubAdmin' && !offlineClubAdminMayManageUser(store, session, user)) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
 
       user.status = 'inactive';
       saveStore(store);
@@ -3780,6 +3809,9 @@
       const user = store.users.find((entry) => entry.email.toLowerCase() === String(email || '').trim().toLowerCase());
       if (!user) {
         return { status: 404, code: 'not_found', message: 'The selected user was not found anymore. Refresh and try again.' };
+      }
+      if (effectiveRole === 'ClubAdmin' && !offlineClubAdminMayManageUser(store, session, user)) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
 
       user.status = 'active';

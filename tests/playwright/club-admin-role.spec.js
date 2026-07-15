@@ -28,26 +28,74 @@ test.describe('Club Admin role', () => {
     await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
   });
 
-  test('S7 allows Club Admin to create Coach and denies SystemAdmin role option', async ({ page }) => {
+  test('S7 allows Club Admin to create Coach or ClubAdmin and denies SystemAdmin', async ({ page }) => {
     await loginAsRita(page);
     await page.getByTestId('nav-users').click();
     await expect(page).toHaveURL(/S7-admin-user-management/);
     await expect(page.getByTestId('open-clubs-page')).toBeHidden();
     await expect(page.locator('#createRole option', { hasText: 'SystemAdmin' })).toHaveCount(0);
     await expect(page.locator('#createRole option', { hasText: 'Coach' })).toHaveCount(1);
+    await expect(page.locator('#createRole option', { hasText: 'ClubAdmin' })).toHaveCount(1);
 
-    const email = uniqueEmail('club.coach', 'vantageiq.club');
+    const coachEmail = uniqueEmail('club.coach', 'vantageiq.club');
     await page.locator('#openCreateUser').click();
     await expect(page.getByTestId('create-club-select')).toHaveValue('c_default');
     await expect(page.getByTestId('create-club-select')).toBeDisabled();
     await page.fill('#createName', 'Club Coach');
-    await page.fill('#createEmail', email);
+    await page.fill('#createEmail', coachEmail);
+    await page.selectOption('#createRole', 'Coach');
     await page.fill('#createPassword', 'SecurePass123');
     await page.locator('#createUserForm button[type="submit"]').click();
 
-    const newRow = page.locator('#usersTableBody tr', { hasText: email });
-    await expect(newRow).toBeVisible({ timeout: 5000 });
-    await expect(newRow.locator('.team-chip.js-club-chip', { hasText: 'VantageIQ Club' })).toHaveCount(1);
+    const coachRow = page.locator('#usersTableBody tr', { hasText: coachEmail });
+    await expect(coachRow).toBeVisible({ timeout: 5000 });
+    await expect(coachRow.locator('.team-chip.js-club-chip', { hasText: 'VantageIQ Club' })).toHaveCount(1);
+
+    const adminEmail = uniqueEmail('club.admin', 'vantageiq.club');
+    await page.locator('#openCreateUser').click();
+    await page.fill('#createName', 'Peer Club Admin');
+    await page.fill('#createEmail', adminEmail);
+    await page.selectOption('#createRole', 'ClubAdmin');
+    await page.fill('#createPassword', 'SecurePass123');
+    await page.locator('#createUserForm button[type="submit"]').click();
+
+    const adminRow = page.locator('#usersTableBody tr', { hasText: adminEmail });
+    await expect(adminRow).toBeVisible({ timeout: 5000 });
+    await expect(adminRow).toContainText('ClubAdmin');
+    await expect(adminRow.locator('.team-chip.js-club-chip', { hasText: 'VantageIQ Club' })).toHaveCount(1);
+  });
+
+  test('S7 Club Admin can change Coach to ClubAdmin and demote back', async ({ page }) => {
+    await loginAsRita(page);
+    await page.getByTestId('nav-users').click();
+
+    const joaoRow = page.locator('#usersTableBody tr[data-email="joao@vantageiq.club"]');
+    await expect(joaoRow).toBeVisible();
+    await joaoRow.getByRole('button', { name: 'Change Role' }).click();
+    await expect(page.locator('#updatedRole option', { hasText: 'SystemAdmin' })).toHaveCount(0);
+    await page.selectOption('#updatedRole', 'ClubAdmin');
+    await page.getByRole('button', { name: 'Update Role' }).click();
+    await expect(page.locator('#changeRoleModal')).toBeHidden();
+    await expect(joaoRow).toContainText('ClubAdmin');
+
+    await joaoRow.getByRole('button', { name: 'Change Role' }).click();
+    await page.selectOption('#updatedRole', 'Coach');
+    await page.getByRole('button', { name: 'Update Role' }).click();
+    await expect(joaoRow).toContainText('Coach');
+  });
+
+  test('S7 Club Admin cannot change own role', async ({ page }) => {
+    await loginAsRita(page);
+    await page.getByTestId('nav-users').click();
+
+    const ritaRow = page.locator('#usersTableBody tr[data-email="rita@vantageiq.club"]');
+    await expect(ritaRow).toBeVisible();
+    await ritaRow.getByRole('button', { name: 'Change Role' }).click();
+    await page.selectOption('#updatedRole', 'Coach');
+    await page.getByRole('button', { name: 'Update Role' }).click();
+    await expect(page.locator('#changeRoleModal')).toBeVisible();
+    await expect(page.locator('#toast')).toContainText(/permission|forbidden/i);
+    await expect(ritaRow).toContainText('ClubAdmin');
   });
 
   test('S7 Club Admin with multiple clubs only offers owned clubs', async ({ page }) => {
