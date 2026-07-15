@@ -212,22 +212,24 @@ A new `teams.status` column (`active` / `inactive`) lands via migration `apps/ap
 ### Endpoints
 
 - `GET /v1/teams?status=active|inactive|all` (default `active`). Admin sees the requested status; Coach actor (with `?actorEmail=<coach>`) sees their filtered set.
-- `POST /v1/teams/:teamId/update` body `{ coachEmail, clubId, status, actorRole, actorEmail }`. Atomic transaction (BEGIN/UPDATE teams/UPSERT coach_clubs/COMMIT). Returns the refreshed `Team` payload with `status`.
-    - Coach actor: must hold a `coach_clubs` row for the team's current club AND the new club. Violation → `403 forbidden_scope`.
+- `POST /v1/teams/:teamId/update` body `{ name?, ageGroup?, coachEmail, clubId, status, sportId?, actorRole, actorEmail }`. Atomic transaction (BEGIN/UPDATE teams/UPSERT coach_clubs/COMMIT). Returns the refreshed `Team` payload with `status`.
+    - Optional `name` / `ageGroup`: when omitted, current values are preserved (compat). When sent, name is title-cased (min length 2) and age group is required non-empty; duplicate team name → `409 conflict` (`A team with this name already exists.`).
+    - Coach / ClubAdmin: must hold a `coach_clubs` row for the team's current club AND the new club. Violation → `403 forbidden_scope`.
     - `status` must be `active` or `inactive`. Unknown team → `404 not_found`. Unknown coach/club → `400 validation_error`.
 
 ### Client
 
-- `MockupApi.updateTeamCoachAndClub(teamId, payload)` — online wraps `POST /v1/teams/:teamId/update`; offline/local writes through to `vantageiq_mockup_v2` with the same role-scoping guard.
+- `MockupApi.updateTeamCoachAndClub(teamId, payload)` — online wraps `POST /v1/teams/:teamId/update`; offline/local writes through to `vantageiq_mockup_v2` with the same role-scoping guard. Offline rename cascades `player.teamName` for players on the previous name.
 - `MockupApi.listTeamSummary` and `MockupApi.getTeamById(teamId)` expose `status`.
 - Seeded offline teams carry `status: 'active'` from `createSeed()`; older local stores fall back to `active` on read (`team.status || 'active'`).
+- S3a Edit form (`#updateNameInput`, `#updateAgeGroupInput`) always submits name and age group alongside coach/club/status/sport.
 
 ### Roles
 
-- **SystemAdmin** can edit any team's coach, club, and status. Club dropdown lists every club.
-- **Coach** can edit teams in their own clubs (`coach_clubs`). Club dropdown is pre-narrowed; the server enforces the same guard.
+- **SystemAdmin** can edit any team's coach, club, status, sport, name, and age group. Club dropdown lists every club.
+- **Coach** / **ClubAdmin** can edit teams in their own clubs (`coach_clubs`). Club dropdown is pre-narrowed; the server enforces the same guard.
 
-See `docs/plans/2026-07-06-007-feat-team-update-screen-plan.md` for full requirements, schema design, and test scenarios.
+See `docs/plans/2026-07-06-007-feat-team-update-screen-plan.md` and `docs/plans/2026-07-14-002-feat-s3a-full-team-update-fields-plan.md`.
 
 ## Test traceability
 

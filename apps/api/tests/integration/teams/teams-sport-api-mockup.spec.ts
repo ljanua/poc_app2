@@ -44,6 +44,9 @@ describe('feature 012 — teams.sportId handler coverage', () => {
     expect(block!).toMatch(/payload\.sportId \|\| ''/);
     expect(block!).toMatch(/SELECT id FROM sports WHERE id = \$1 AND status = 'active'/);
     expect(block!).toMatch(/UPDATE teams\s+SET[\s\S]*?sport_id = \$/);
+    expect(block!).toMatch(/SET\s+name = \$1/);
+    expect(block!).toMatch(/age_group = \$2/);
+    expect(block!).toContain('A team with this name already exists.');
   });
 
   it('GET /api/v1/teams includes sportId and sportName in the SELECT projection', () => {

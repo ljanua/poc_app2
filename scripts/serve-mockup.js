@@ -3373,12 +3373,42 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const existing = await pool.query(
-      `SELECT id, name, club_id AS "clubId" FROM teams WHERE id = $1 LIMIT 1`,
+      `SELECT id, name, age_group AS "ageGroup", club_id AS "clubId" FROM teams WHERE id = $1 LIMIT 1`,
       [teamId]
     );
     if (!existing.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected team was not found anymore. Refresh and try again.'));
       return;
+    }
+
+    // Omitted name/ageGroup preserve current values (compat for callers mid-rollout).
+    const nameProvided = Object.prototype.hasOwnProperty.call(payload, 'name') && payload.name != null;
+    const ageProvided = Object.prototype.hasOwnProperty.call(payload, 'ageGroup') && payload.ageGroup != null;
+    let nextName = existing.rows[0].name;
+    let nextAgeGroup = existing.rows[0].ageGroup;
+    if (nameProvided) {
+      nextName = toTitleCase(payload.name);
+      if (!nextName || nextName.length < 2) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+        return;
+      }
+    }
+    if (ageProvided) {
+      nextAgeGroup = normalizeLookup(payload.ageGroup);
+      if (!nextAgeGroup) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+        return;
+      }
+    }
+    if (String(nextName).toLowerCase() !== String(existing.rows[0].name).toLowerCase()) {
+      const duplicate = await pool.query(
+        `SELECT id FROM teams WHERE LOWER(name) = LOWER($1) AND id <> $2 LIMIT 1`,
+        [nextName, teamId]
+      );
+      if (duplicate.rows[0]) {
+        sendJson(res, 409, appError(409, 'conflict', 'A team with this name already exists.'));
+        return;
+      }
     }
 
     // Club-scoped editors: team must stay within the actor's clubs.
@@ -3414,13 +3444,15 @@ async function handlePlayersApi(req, res, requestUrl) {
       await client.query('BEGIN');
       await client.query(
         `UPDATE teams
-            SET lead_coach_user_id = $1,
-                club_id = $2,
-                status = $3,
-                sport_id = $4,
+            SET name = $1,
+                age_group = $2,
+                lead_coach_user_id = $3,
+                club_id = $4,
+                status = $5,
+                sport_id = $6,
                 updated_at = NOW()
-          WHERE id = $5`,
-        [coach.rows[0].id, newClubId, newStatus, newSportId, teamId]
+          WHERE id = $7`,
+        [nextName, nextAgeGroup, coach.rows[0].id, newClubId, newStatus, newSportId, teamId]
       );
       await client.query(
         `INSERT INTO coach_clubs (user_id, club_id)
@@ -3431,6 +3463,10 @@ async function handlePlayersApi(req, res, requestUrl) {
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
+      if (err && err.code === '23505') {
+        sendJson(res, 409, appError(409, 'conflict', 'A team with this name already exists.'));
+        return;
+      }
       throw err;
     } finally {
       client.release();

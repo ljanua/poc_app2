@@ -36,6 +36,12 @@
       <section class="form-card" id="updateCard" aria-labelledby="updateHeading" hidden>
         <h2 id="updateHeading" class="card-heading">Edit</h2>
         <form id="updateTeamForm" class="modal-form">
+          <label class="form-label" for="updateNameInput">Team Name <span class="required">*</span></label>
+          <input id="updateNameInput" type="text" data-testid="update-name-input" required>
+
+          <label class="form-label" for="updateAgeGroupInput">Age Group <span class="required">*</span></label>
+          <input id="updateAgeGroupInput" type="text" data-testid="update-age-group-input" required>
+
           <label class="form-label" for="updateCoachSelect">Lead Coach <span class="required">*</span></label>
           <select id="updateCoachSelect" data-testid="update-coach-select" required></select>
 
@@ -106,6 +112,8 @@
       const updateCard = document.getElementById('updateCard');
       const missingNotice = document.getElementById('missingNotice');
       const updateForm = document.getElementById('updateTeamForm');
+      const updateNameInput = document.getElementById('updateNameInput');
+      const updateAgeGroupInput = document.getElementById('updateAgeGroupInput');
       const updateCoachSelect = document.getElementById('updateCoachSelect');
       const updateClubSelect = document.getElementById('updateClubSelect');
       const updateStatusSelect = document.getElementById('updateStatusSelect');
@@ -243,6 +251,8 @@
         snapshotSport.textContent = state.team.sportName || '—';
         snapshotPlayerCount.textContent = String(state.team.playerCount || 0);
 
+        updateNameInput.value = state.team.name || '';
+        updateAgeGroupInput.value = state.team.ageGroup || '';
         fillCoachSelect(updateCoachSelect, state.team.leadCoachEmail);
         const clubsForForm = visibleClubIds.has(state.team.clubId)
           ? state.availableClubs
@@ -262,6 +272,8 @@
         hideError(updateFormError);
 
         const response = MockupApi.updateTeamCoachAndClub(state.teamId, {
+          name: updateNameInput.value,
+          ageGroup: updateAgeGroupInput.value,
           coachEmail: updateCoachSelect.value,
           clubId: updateClubSelect.value,
           status: updateStatusSelect.value,
@@ -271,7 +283,8 @@
         });
 
         if (response.status === 200) {
-          window.localStorage.setItem('vantageiq_toast', state.team.name + ' updated.');
+          const savedName = (response.team && response.team.name) || updateNameInput.value || state.team.name;
+          window.localStorage.setItem('vantageiq_toast', savedName + ' updated.');
           window.location.href = './S3-team-management.html';
           return;
         }

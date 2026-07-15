@@ -2253,14 +2253,17 @@
     updateTeamCoachAndClub(teamId, payload) {
       const body = payload || {};
       if (shouldUseBackendPlayersMode()) {
-        const response = backendRequest('POST', '/teams/' + encodeURIComponent(teamId) + '/update', {
+        const requestBody = {
           coachEmail: body.coachEmail,
           clubId: body.clubId,
           status: body.status,
           sportId: body.sportId,
           actorRole: body.actorRole,
           actorEmail: body.actorEmail
-        });
+        };
+        if (Object.prototype.hasOwnProperty.call(body, 'name')) requestBody.name = body.name;
+        if (Object.prototype.hasOwnProperty.call(body, 'ageGroup')) requestBody.ageGroup = body.ageGroup;
+        const response = backendRequest('POST', '/teams/' + encodeURIComponent(teamId) + '/update', requestBody);
         if (response.status === 200 && response.body && response.body.data) {
           return { status: 200, code: 'ok', team: clone(response.body.data) };
         }
@@ -2287,13 +2290,41 @@
       if (!sessionUser || sessionUser.status !== 'active' || !['SystemAdmin', 'Coach', 'ClubAdmin'].includes(actor.role)) {
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
-      if (actor.role === 'Coach') {
+      if (actor.role === 'Coach' || actor.role === 'ClubAdmin') {
         const allowedClubIds = (store.coachClubs || [])
           .filter((entry) => entry.userId === sessionUser.id || entry.userId === sessionUser.email)
           .map((entry) => entry.clubId);
         if (!allowedClubIds.includes(team.clubId) || !allowedClubIds.includes(newClubId)) {
-          return { status: 403, code: 'forbidden_scope', message: 'Coaches can only update teams in clubs they belong to.' };
+          return {
+            status: 403,
+            code: 'forbidden_scope',
+            message: 'You can only update teams in clubs you belong to.'
+          };
         }
+      }
+
+      // Omitted name/ageGroup preserve current values.
+      let nextName = team.name;
+      let nextAgeGroup = team.ageGroup;
+      if (Object.prototype.hasOwnProperty.call(body, 'name') && body.name != null) {
+        nextName = toTitleCase(body.name);
+        if (!nextName || nextName.length < 2) {
+          return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(body, 'ageGroup') && body.ageGroup != null) {
+        nextAgeGroup = normalizeLookup(body.ageGroup);
+        if (!nextAgeGroup) {
+          return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+        }
+      }
+      const renameClash = (store.teams || []).find(
+        (entry) =>
+          String(entry.id) !== String(teamId) &&
+          normalizeTeamName(entry.name) === normalizeTeamName(nextName)
+      );
+      if (renameClash) {
+        return { status: 409, code: 'conflict', message: 'A team with this name already exists.' };
       }
 
       const club = store.clubs.find((entry) => entry.id === newClubId);
@@ -2305,6 +2336,9 @@
         return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
       }
 
+      const previousName = team.name;
+      team.name = nextName;
+      team.ageGroup = nextAgeGroup;
       team.leadCoach = newCoach.name;
       team.leadCoachEmail = newCoach.email;
       team.clubId = newClubId;
@@ -2321,6 +2355,13 @@
       } else if (!team.sportId) {
         team.sportId = 'sport_soccer';
         team.sportName = 'Soccer';
+      }
+      if (normalizeTeamName(previousName) !== normalizeTeamName(nextName)) {
+        (store.players || []).forEach((player) => {
+          if (normalizeTeamName(player.teamName) === normalizeTeamName(previousName)) {
+            player.teamName = nextName;
+          }
+        });
       }
       const assignedId = newCoach.id || newCoach.email;
       if (!Array.isArray(store.coachClubs)) store.coachClubs = [];

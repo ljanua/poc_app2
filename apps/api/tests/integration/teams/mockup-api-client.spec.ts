@@ -32,8 +32,16 @@ describe('mockup-api-client.js — feature 012 teams.sportId', () => {
     expect(block).toContain('sportId: body.sportId');
   });
 
+  it('updateTeamCoachAndClub forwards name and ageGroup when provided', () => {
+    const block = blockAfter('updateTeamCoachAndClub(teamId, payload) {', 8000);
+    expect(block).toContain("requestBody.name = body.name");
+    expect(block).toContain("requestBody.ageGroup = body.ageGroup");
+    expect(block).toContain('A team with this name already exists.');
+    expect(block).toMatch(/player\.teamName = nextName/);
+  });
+
   it('updateTeamCoachAndClub offline branch assigns sportId/sportName when provided', () => {
-    const block = blockAfter('updateTeamCoachAndClub(teamId, payload) {');
+    const block = blockAfter('updateTeamCoachAndClub(teamId, payload) {', 8000);
     expect(block).toMatch(/team\.sportId = newSport\.id/);
     expect(block).toMatch(/team\.sportName = newSport\.name/);
     expect(block).toContain("The selected sport could not be found.");
@@ -43,8 +51,9 @@ describe('mockup-api-client.js — feature 012 teams.sportId', () => {
     const block = blockAfter('listTeamSummary(options) {');
     expect(block).toContain('sportId: team.sportId || null');
     expect(block).toContain('sportName: team.sportName || null');
-    // Offline branch
-    expect(block).toContain('store.sports || []');
+    // Enrichment lives in listTeams (called by listTeamSummary).
+    const teamsBlock = blockAfter('listTeams(queryString) {', 6000);
+    expect(teamsBlock).toContain('store.sports || []');
   });
 
   it('createSeed marks every seeded team with sport_soccer', () => {
