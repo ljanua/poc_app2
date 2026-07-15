@@ -8,6 +8,12 @@ test.describe('S0 Login role entry points', () => {
   });
 
   test('shows login shell without SystemAdmin quick sign-in', async ({ page }) => {
+    const logo = page.getByTestId('brand-logo');
+    await expect(logo).toBeVisible();
+    await expect(logo).toHaveAttribute('alt', 'VantageIQ');
+    await expect(logo).toHaveAttribute('src', /VantagIQ_transp_300\.png$/);
+    await expect(page.locator('.auth-logo')).not.toContainText('⚡ VantageIQ');
+
     await expect(page.getByText('Internal access for SystemAdmin and Coach roles.')).toBeVisible();
     await expect(page.getByLabel('Work Email')).toBeVisible();
     await expect(page.getByLabel('Password')).toBeVisible();

@@ -136,6 +136,31 @@ header {
   gap: 0.5rem;
 }
 
+.header-title:has(.brand-logo) {
+  background: none;
+  -webkit-text-fill-color: var(--text);
+}
+
+.brand-logo {
+  display: block;
+  height: clamp(28px, 4.5vw, 40px);
+  width: auto;
+  object-fit: contain;
+}
+
+.auth-logo .brand-logo {
+  height: clamp(40px, 8vw, 56px);
+  margin-bottom: 0.15rem;
+}
+
+.header-title .brand-flow-label {
+  font-size: clamp(0.95rem, 2.2vw, 1.15rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+}
+
 .header-meta {
   margin-left: auto;
   font-size: 0.8rem;
@@ -1308,6 +1333,11 @@ textarea::placeholder { color: var(--text-dim); }
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+.auth-logo:has(.brand-logo) {
+  background: none;
+  -webkit-text-fill-color: unset;
 }
 
 .auth-subtitle {

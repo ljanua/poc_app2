@@ -17,6 +17,7 @@ require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 const host = process.env.MOCKUP_HOST || '0.0.0.0';
 const port = Number(process.env.MOCKUP_PORT || 5500);
 const root = path.join(process.cwd(), 'docs', 'ux', 'mockup');
+const dataImgRoot = path.join(process.cwd(), 'data', 'img');
 const apiPrefix = '/api/v1';
 const databaseUrl = process.env.DATABASE_URL || '';
 const seedDatabase = process.env.MOCKUP_DB_SEED !== 'false';
@@ -1277,6 +1278,11 @@ function resolveTarget(urlPath) {
   const cleanPath = decodeURIComponent(urlPath.split('?')[0]);
   const normalized = cleanPath.replace(/^\/+/, '');
 
+  if (normalized === 'data/img' || normalized.startsWith('data/img/')) {
+    const underImg = normalized.slice('data/img'.length).replace(/^\/+/, '');
+    return path.join(dataImgRoot, underImg);
+  }
+
   if (!path.extname(normalized)) {
     const htmlCandidate = path.join(root, `${normalized}.html`);
     if (fs.existsSync(htmlCandidate) && fs.statSync(htmlCandidate).isFile()) {
@@ -1292,9 +1298,17 @@ function resolveTarget(urlPath) {
   return filePath;
 }
 
+function isInsideDir(filePath, dir) {
+  const rel = path.relative(dir, filePath);
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
 function isInsideRoot(filePath) {
-  const rel = path.relative(root, filePath);
-  return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+  return isInsideDir(filePath, root);
+}
+
+function isAllowedStaticTarget(filePath) {
+  return isInsideRoot(filePath) || isInsideDir(filePath, dataImgRoot) || filePath === path.join(root, 'index.html');
 }
 
 function readJsonBody(req) {
@@ -4974,7 +4988,7 @@ const server = http.createServer(async (req, res) => {
 
     const target = resolveTarget(requestUrl.pathname || '/');
 
-    if (!isInsideRoot(target) && target !== path.join(root, 'index.html')) {
+    if (!isAllowedStaticTarget(target)) {
       send(res, 403, 'Forbidden');
       return;
     }
