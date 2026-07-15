@@ -172,6 +172,12 @@
           <option value="ClubAdmin">ClubAdmin</option>
         </select>
 
+        <label class="form-label" for="createClubSelect">Club <span class="required" id="createClubRequired">*</span></label>
+        <select id="createClubSelect" data-testid="create-club-select">
+          <option value="">-- Select a club --</option>
+        </select>
+        <p class="muted-text" id="createClubHint" hidden>Club is optional for SystemAdmin users.</p>
+
         <label class="form-label" for="createPassword">Initial Password <span class="required">*</span></label>
         <input id="createPassword" type="text" required>
 
@@ -454,8 +460,72 @@
         });
       });
 
+      function clubRequiredForCreateRole(role) {
+        return role !== 'SystemAdmin';
+      }
+
+      function syncCreateClubRequirement() {
+        const role = document.getElementById('createRole').value;
+        const select = document.getElementById('createClubSelect');
+        const requiredMark = document.getElementById('createClubRequired');
+        const hint = document.getElementById('createClubHint');
+        const required = clubRequiredForCreateRole(role);
+        if (requiredMark) requiredMark.hidden = !required;
+        if (hint) hint.hidden = required;
+        if (!select.disabled) {
+          select.required = required;
+        }
+        if (!required && select.value === '') {
+          // keep empty optional
+        }
+      }
+
+      function populateCreateClubSelect() {
+        const select = document.getElementById('createClubSelect');
+        const previous = select.value;
+        const clubs = MockupApi.listClubs(state.viewRole, state.selectedActorEmail, 'active') || [];
+        const role = document.getElementById('createRole').value;
+        const required = clubRequiredForCreateRole(role);
+        const isClubAdmin = state.viewRole === 'ClubAdmin';
+
+        select.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = required ? '-- Select a club --' : 'No club';
+        select.appendChild(placeholder);
+
+        clubs.forEach(function (club) {
+          const opt = document.createElement('option');
+          opt.value = club.id;
+          opt.textContent = club.name;
+          select.appendChild(opt);
+        });
+
+        if (isClubAdmin && clubs.length === 1) {
+          select.value = clubs[0].id;
+          select.disabled = true;
+          select.required = false;
+        } else {
+          select.disabled = false;
+          if (previous && clubs.some(function (club) { return club.id === previous; })) {
+            select.value = previous;
+          } else {
+            select.value = '';
+          }
+          syncCreateClubRequirement();
+        }
+      }
+
       document.getElementById('openCreateUser').addEventListener('click', function () {
+        document.getElementById('createUserForm').reset();
+        populateCreateClubSelect();
+        syncCreateClubRequirement();
         openModal('createUserModal');
+      });
+
+      document.getElementById('createRole').addEventListener('change', function () {
+        populateCreateClubSelect();
+        syncCreateClubRequirement();
       });
 
       toggleRoleViewBtn.addEventListener('click', function () {
@@ -550,8 +620,20 @@
         const email = document.getElementById('createEmail').value.trim();
         const role = document.getElementById('createRole').value;
         const password = document.getElementById('createPassword').value.trim();
+        const clubSelect = document.getElementById('createClubSelect');
+        const clubId = (clubSelect.value || '').trim();
 
-        const response = MockupApi.createUser({ name: name, email: email, role: role, password: password }, state.viewRole);
+        if (clubRequiredForCreateRole(role) && !clubId) {
+          showToast('Please assign a club before creating this user.');
+          return;
+        }
+
+        const payload = { name: name, email: email, role: role, password: password };
+        if (clubId) {
+          payload.clubId = clubId;
+        }
+
+        const response = MockupApi.createUser(payload, state.viewRole);
         if (response.status >= 400) {
           showToast(response.message);
           return;
@@ -559,6 +641,8 @@
 
         closeModal('createUserModal');
         event.target.reset();
+        clubSelect.disabled = false;
+        populateCreateClubSelect();
         renderUsers();
         applyFilters();
         setAdminActionState();

@@ -1,10 +1,21 @@
 const { test, expect } = require('@playwright/test');
 const { uniqueEmail, restoreCoachRole } = require('./_fixture-utils');
 
+async function loginAsMaria(page) {
+  await page.goto('/S0-login.html');
+  await page.evaluate(() => {
+    window.localStorage.removeItem('vantageiq_mockup_v2');
+    window.localStorage.removeItem('vantageiq_current_user_email');
+  });
+  await page.fill('#email', 'maria@vantageiq.club');
+  await page.fill('#password', 'SecurePass123');
+  await page.locator('#loginForm button[type="submit"]').click();
+  await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management\.html|S7-admin-user-management$/);
+}
+
 test.describe('S7 Admin User Management', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/S0-login.html');
-    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await loginAsMaria(page);
     await page.goto('/S7-admin-user-management.html');
     await expect(page.getByText('User & Role Management')).toBeVisible();
   });
@@ -21,6 +32,7 @@ test.describe('S7 Admin User Management', () => {
     await page.fill('#createName', name);
     await page.fill('#createEmail', email);
     await page.selectOption('#createRole', 'Coach');
+    await page.selectOption('[data-testid="create-club-select"]', 'c_default');
     await page.fill('#createPassword', 'SecurePass123');
     await page.getByRole('button', { name: 'Save User' }).click();
 
@@ -28,6 +40,7 @@ test.describe('S7 Admin User Management', () => {
     const newRow = page.locator('tr', { hasText: name }).filter({ hasText: email });
     await expect(newRow).toBeVisible();
     await expect(newRow).toContainText('Coach');
+    await expect(newRow.locator('.team-chip.js-club-chip', { hasText: 'VantageIQ Club' })).toHaveCount(1);
 
     // KPI delta is the only count we trust: starting state drifts as users
     // accumulate, but +1 after a successful create is always true.
@@ -88,5 +101,36 @@ test.describe('S7 Admin User Management', () => {
     // Joao Lima is a Coach, so he must NOT match the SystemAdmin filter.
     const joaoRow = page.locator('tbody tr[data-name="Joao Lima"]');
     await expect(joaoRow).toBeHidden();
+  });
+
+  test('Create Coach without club stays on modal with browser required validation', async ({ page }) => {
+    await page.getByRole('button', { name: 'Create User' }).click();
+    await page.fill('#createName', 'No Club Coach');
+    await page.fill('#createEmail', uniqueEmail('noclub', 'vantageiq.club'));
+    await page.selectOption('#createRole', 'Coach');
+    await page.selectOption('[data-testid="create-club-select"]', '');
+    await page.fill('#createPassword', 'SecurePass123');
+    await page.getByRole('button', { name: 'Save User' }).click();
+
+    await expect(page.locator('#createUserModal')).toBeVisible();
+    await expect(page.getByTestId('create-club-select')).toHaveJSProperty('validity.valueMissing', true);
+  });
+
+  test('creates a SystemAdmin without club membership', async ({ page }) => {
+    const email = uniqueEmail('sysadmin.create', 'vantageiq.club');
+    const name = `Sys Admin ${Date.now()}`;
+
+    await page.getByRole('button', { name: 'Create User' }).click();
+    await page.fill('#createName', name);
+    await page.fill('#createEmail', email);
+    await page.selectOption('#createRole', 'SystemAdmin');
+    await expect(page.getByTestId('create-club-select')).toHaveValue('');
+    await page.fill('#createPassword', 'SecurePass123');
+    await page.getByRole('button', { name: 'Save User' }).click();
+
+    const newRow = page.locator('tr', { hasText: name }).filter({ hasText: email });
+    await expect(newRow).toBeVisible();
+    await expect(newRow).toContainText('SystemAdmin');
+    await expect(newRow.locator('.team-chip.js-club-chip')).toHaveCount(0);
   });
 });

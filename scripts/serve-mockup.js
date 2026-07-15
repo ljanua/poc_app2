@@ -3575,34 +3575,57 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    const clubRequired = role !== 'SystemAdmin';
+    let clubId = String(payload.clubId || '').trim();
+    const actorClubIds = await listActorClubIds(actor.id);
+
+    if (!isSystemAdmin) {
+      // ClubAdmin: club must be one they own; sole club may default when omitted.
+      if (!clubId) {
+        if (actorClubIds.length === 1) {
+          clubId = actorClubIds[0];
+        }
+      }
+      if (!clubId || !actorClubIds.includes(clubId)) {
+        if (!clubId) {
+          sendJson(res, 400, appError(400, 'validation_error', 'Please assign a club before creating this user.'));
+          return;
+        }
+        sendJson(res, 403, appError(403, 'forbidden_scope', 'You can only assign clubs you belong to.'));
+        return;
+      }
+    } else if (clubRequired && !clubId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please assign a club before creating this user.'));
+      return;
+    }
+
+    if (clubId) {
+      const clubRow = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+      if (!clubRow.rows[0]) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+        return;
+      }
+    }
+
     const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(`
       INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
       VALUES ($1, $2, $3, $4, 'active', $5, 'Just now')
     `, [userId, name, email, role, password]);
 
-    if (!isSystemAdmin && role === 'Coach') {
-      let clubId = String(payload.clubId || '').trim();
-      if (!clubId) {
-        const clubs = await listActorClubIds(actor.id);
-        clubId = clubs[0] || '';
-      }
-      if (clubId) {
-        const membership = await pool.query(
-          `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
-          [actor.id, clubId]
-        );
-        if (membership.rows[0]) {
-          await pool.query(
-            `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
-            [userId, clubId]
-          );
-        }
-      }
+    if (clubId) {
+      await pool.query(
+        `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
+        [userId, clubId]
+      );
     }
 
     const created = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE id = $1 LIMIT 1`, [userId]);
-    sendJson(res, 201, { data: toUserPayload(created.rows[0]) });
+    const payloadUser = toUserPayload(created.rows[0]);
+    if (clubId) {
+      payloadUser.clubIds = [clubId];
+    }
+    sendJson(res, 201, { data: payloadUser });
     return;
   }
 

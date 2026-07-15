@@ -3592,17 +3592,54 @@
         password,
         lastLogin: 'Just now'
       };
-      store.users.push(created);
-      if (effectiveRole === 'ClubAdmin' && role === 'Coach' && session) {
-        const adminClubs = (store.coachClubs || []).filter(function (entry) {
-          return String(entry.userId) === String(session.id);
+
+      const clubRequired = role !== 'SystemAdmin';
+      let clubId = String((payload && payload.clubId) || '').trim();
+      const adminClubs = session
+        ? (store.coachClubs || []).filter(function (entry) {
+            return String(entry.userId) === String(session.id);
+          })
+        : [];
+      const adminClubIds = adminClubs.map(function (entry) {
+        return entry.clubId;
+      });
+
+      if (effectiveRole === 'ClubAdmin') {
+        if (!clubId && adminClubIds.length === 1) {
+          clubId = adminClubIds[0];
+        }
+        if (!clubId) {
+          return { status: 400, code: 'validation_error', message: 'Please assign a club before creating this user.' };
+        }
+        if (adminClubIds.indexOf(clubId) === -1) {
+          return { status: 403, code: 'forbidden_scope', message: 'You can only assign clubs you belong to.' };
+        }
+      } else if (clubRequired && !clubId) {
+        return { status: 400, code: 'validation_error', message: 'Please assign a club before creating this user.' };
+      }
+
+      if (clubId) {
+        const club = (store.clubs || []).find(function (entry) {
+          return entry.id === clubId;
         });
-        if (adminClubs[0]) {
-          store.coachClubs.push({ userId: nextId, clubId: adminClubs[0].clubId });
+        if (!club) {
+          return { status: 400, code: 'validation_error', message: 'Please review the form fields and try again.' };
+        }
+      }
+
+      store.users.push(created);
+      if (clubId) {
+        if (!Array.isArray(store.coachClubs)) store.coachClubs = [];
+        if (!store.coachClubs.some(function (entry) {
+          return String(entry.userId) === String(nextId) && entry.clubId === clubId;
+        })) {
+          store.coachClubs.push({ userId: nextId, clubId: clubId });
         }
       }
       saveStore(store);
-      return { status: 201, code: 'created', user: clone(created) };
+      const result = clone(created);
+      result.clubIds = clubId ? [clubId] : [];
+      return { status: 201, code: 'created', user: result };
     },
 
     changeRole(email, role, actorRole) {

@@ -17,12 +17,18 @@ function uniqueEmail(localPart, domain) {
 
 async function restoreCoachRole(page, email) {
   const result = await page.evaluate(async ({ email }) => {
+    const actorEmail =
+      window.localStorage.getItem('vantageiq_current_user_email') || 'maria@vantageiq.club';
     const response = await fetch(
       '/api/v1/users/' + encodeURIComponent(email) + '/role',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ role: 'Coach', actorRole: 'SystemAdmin' })
+        body: JSON.stringify({
+          role: 'Coach',
+          actorRole: 'SystemAdmin',
+          actorEmail
+        })
       }
     );
     let body = null;
