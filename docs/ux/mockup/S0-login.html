@@ -29,7 +29,6 @@
         </div>
 
         <button class="btn btn-primary" type="submit">Sign In</button>
-        <button class="btn btn-secondary" type="button" id="quickAdminSignIn">Quick Sign-In as SystemAdmin</button>
       </form>
 
       <p class="error-msg" id="loginError" style="margin-top:0.7rem;">You do not have permission to perform this action.</p>
@@ -45,7 +44,6 @@
     (function () {
       const form = document.getElementById('loginForm');
       const loginError = document.getElementById('loginError');
-      const quickAdminSignIn = document.getElementById('quickAdminSignIn');
 
       form.addEventListener('submit', function (event) {
         event.preventDefault();
@@ -67,17 +65,6 @@
         }
 
         window.location.href = './S1-player-list.html';
-      });
-
-      quickAdminSignIn.addEventListener('click', function () {
-        loginError.classList.remove('show');
-        const response = MockupApi.login('maria@vantageiq.club', 'SecurePass123');
-        if (response.status !== 200 || response.role !== 'SystemAdmin') {
-          loginError.textContent = 'You do not have permission to perform this action.';
-          loginError.classList.add('show');
-          return;
-        }
-        window.location.href = './S7-admin-user-management.html';
       });
     })();
   </script>
