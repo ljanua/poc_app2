@@ -87,10 +87,9 @@ test.describe('S3 / S3a team sport assignment', () => {
 
     const sportSelect = page.locator('[data-testid="update-sport-select"]');
     await expect(sportSelect).toBeVisible();
-    // Sport snapshot reflects the existing seeded sport.
-    await expect(page.locator('#snapshotSport')).toHaveText('Soccer');
-    // Preselect matches the team's current sport.
+    // Preselect matches the team's current sport (form-only S3a; no Snapshot panel).
     await expect(sportSelect).toHaveValue('sport_soccer');
+    await expect(page.getByText('Current Snapshot')).toHaveCount(0);
 
     // Save without changing the sport — the round-trip should still carry the
     // value back through the offline store.

@@ -20,19 +20,6 @@
         No team selected. Return to <a href="./S3-team-management.html">Team Management</a> to pick a team.
       </div>
 
-      <section class="snapshot-card" id="snapshotCard" aria-labelledby="snapshotHeading">
-        <h2 id="snapshotHeading" class="card-heading">Current Snapshot</h2>
-        <dl class="snapshot-list">
-          <div class="snapshot-row"><dt>Team name</dt><dd id="snapshotName">—</dd></div>
-          <div class="snapshot-row"><dt>Age group</dt><dd id="snapshotAgeGroup">—</dd></div>
-          <div class="snapshot-row"><dt>Lead coach</dt><dd id="snapshotCoach">—</dd></div>
-          <div class="snapshot-row"><dt>Club</dt><dd id="snapshotClub">—</dd></div>
-          <div class="snapshot-row"><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
-          <div class="snapshot-row"><dt>Sport</dt><dd id="snapshotSport">—</dd></div>
-          <div class="snapshot-row"><dt>Players</dt><dd id="snapshotPlayerCount">—</dd></div>
-        </dl>
-      </section>
-
       <section class="form-card" id="updateCard" aria-labelledby="updateHeading" hidden>
         <h2 id="updateHeading" class="card-heading">Edit</h2>
         <form id="updateTeamForm" class="modal-form">
@@ -103,12 +90,6 @@
 
     (function () {
       const roleBadge = document.getElementById('roleBadge');
-      const snapshotName = document.getElementById('snapshotName');
-      const snapshotAgeGroup = document.getElementById('snapshotAgeGroup');
-      const snapshotCoach = document.getElementById('snapshotCoach');
-      const snapshotClub = document.getElementById('snapshotClub');
-      const snapshotStatus = document.getElementById('snapshotStatus');
-      const snapshotPlayerCount = document.getElementById('snapshotPlayerCount');
       const updateCard = document.getElementById('updateCard');
       const missingNotice = document.getElementById('missingNotice');
       const updateForm = document.getElementById('updateTeamForm');
@@ -118,7 +99,6 @@
       const updateClubSelect = document.getElementById('updateClubSelect');
       const updateStatusSelect = document.getElementById('updateStatusSelect');
       const updateSportSelect = document.getElementById('updateSportSelect');
-      const snapshotSport = document.getElementById('snapshotSport');
       const updateFormError = document.getElementById('updateFormError');
       const cancelUpdate = document.getElementById('cancelUpdate');
       const toast = document.getElementById('toast');
@@ -242,14 +222,6 @@
         const visibleClubIds = new Set(state.availableClubs.map(function (c) { return c.id; }));
 
         pageTitle.textContent = 'Update ' + state.team.name;
-
-        snapshotName.textContent = state.team.name;
-        snapshotAgeGroup.textContent = state.team.ageGroup || '—';
-        snapshotCoach.textContent = state.team.leadCoach + (state.team.leadCoachEmail ? ' (' + state.team.leadCoachEmail + ')' : '');
-        snapshotClub.textContent = state.team.clubName || '—';
-        snapshotStatus.textContent = (state.team.status || 'active');
-        snapshotSport.textContent = state.team.sportName || '—';
-        snapshotPlayerCount.textContent = String(state.team.playerCount || 0);
 
         updateNameInput.value = state.team.name || '';
         updateAgeGroupInput.value = state.team.ageGroup || '';

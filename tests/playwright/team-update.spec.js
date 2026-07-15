@@ -91,6 +91,9 @@ test.describe('S3a Team Update + status filter', () => {
   test('coach happy path: S3a save flips coach and toggles status active->inactive', async ({ page }) => {
     await page.goto('/S3a-team-update.html?teamId=t_u19');
     await expect(page.locator('#pageTitle')).toContainText('Update U19 Prime');
+    await expect(page.getByText('Current Snapshot')).toHaveCount(0);
+    await expect(page.getByTestId('update-name-input')).toBeVisible();
+    await expect(page.getByTestId('update-name-input')).toHaveValue('U19 Prime');
 
     await page.selectOption('#updateCoachSelect', 'ana@vantageiq.club');
     await page.selectOption('#updateStatusSelect', 'inactive');
