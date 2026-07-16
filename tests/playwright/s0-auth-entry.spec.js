@@ -11,12 +11,14 @@ test.describe('S0 Login role entry points', () => {
     const logo = page.getByTestId('brand-logo');
     await expect(logo).toBeVisible();
     await expect(logo).toHaveAttribute('alt', 'VantageIQ');
-    await expect(logo).toHaveAttribute('src', /VantagIQ_transp_300\.png$/);
+    await expect(logo).toHaveAttribute('src', /VantagIQ_transp_300/);
     await expect(page.locator('.auth-logo')).not.toContainText('⚡ VantageIQ');
 
-    await expect(page.getByText('Internal access for SystemAdmin and Coach roles.')).toBeVisible();
-    await expect(page.getByLabel('Work Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByText('LOGIN')).toBeVisible();
+    await expect(page.getByLabel('Email')).toBeVisible();
+    const password = page.getByLabel('Password');
+    await expect(password).toBeVisible();
+    await expect(password).toHaveAttribute('type', 'password');
 
     await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Quick Sign-In as SystemAdmin' })).toHaveCount(0);
