@@ -825,7 +825,8 @@ header {
 /* Inputs */
 select,
 textarea,
-input[type="text"]:not(.search-bar) {
+input[type="text"]:not(.search-bar),
+input[type="password"] {
   width: 100%;
   font-family: var(--font-body);
   font-size: 0.95rem;
@@ -850,7 +851,8 @@ textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
 
 select:focus,
 textarea:focus,
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="password"]:focus {
   outline: none;
   border-color: rgba(198, 255, 58, 0.5);
   box-shadow: 0 0 0 4px rgba(198, 255, 58, 0.12);

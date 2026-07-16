@@ -19,6 +19,15 @@ test.describe('S0 Login role entry points', () => {
     const password = page.getByLabel('Password');
     await expect(password).toBeVisible();
     await expect(password).toHaveAttribute('type', 'password');
+    const emailStyles = await page.locator('#email').evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { padding: s.padding, borderRadius: s.borderRadius, backgroundColor: s.backgroundColor };
+    });
+    const passwordStyles = await page.locator('#password').evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { padding: s.padding, borderRadius: s.borderRadius, backgroundColor: s.backgroundColor };
+    });
+    expect(passwordStyles).toEqual(emailStyles);
 
     await expect(page.getByRole('button', { name: 'Sign In' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Quick Sign-In as SystemAdmin' })).toHaveCount(0);
