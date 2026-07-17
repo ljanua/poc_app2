@@ -17,14 +17,10 @@
     </header>
 
     <div class="content">
-      <div class="toolbar">
-        <select id="dashboardTeamSelect" class="pill-select" data-testid="team-select" aria-label="Player's current team" disabled>
-          <option value="">Team: —</option>
-        </select>
-        <a class="btn btn-secondary" id="editPlayerLink" href="./S1-player-list.html" hidden>Edit Player</a>
-        <button type="button" class="btn btn-secondary" id="shareLinkButton" data-testid="share-link-button" hidden>Share link</button>
-        <button type="button" class="btn btn-secondary" id="revokeShareButton" data-testid="revoke-share-button" hidden>Revoke share</button>
-        <a class="btn btn-secondary" id="backToListLink" href="./S1-player-list.html">Back to Player List</a>
+      <div class="toolbar toolbar-icon-actions">
+        <a class="btn btn-secondary btn-icon" id="editPlayerLink" href="./S1-player-list.html" title="Edit Player" aria-label="Edit Player" hidden><span class="btn-icon-glyph" aria-hidden="true">✏️</span></a>
+        <button type="button" class="btn btn-secondary btn-icon" id="shareLinkButton" data-testid="share-link-button" title="Share link" aria-label="Share link" hidden><span class="btn-icon-glyph" aria-hidden="true">🔗</span></button>
+        <button type="button" class="btn btn-secondary btn-icon" id="revokeShareButton" data-testid="revoke-share-button" title="Revoke share" aria-label="Revoke share" hidden><span class="btn-icon-glyph" aria-hidden="true">🚫</span></button>
       </div>
 
       <div class="notice" id="shareNotice" data-testid="share-notice" hidden></div>
@@ -55,18 +51,20 @@
 
       <div class="notice" id="noStatsNotice" hidden style="margin-top: 1rem;"></div>
 
-      <div class="section stats-section is-collapsed" data-testid="skill-ratings-section" data-section="skill-ratings">
-        <button type="button" class="section-title section-toggle" id="toggle-skill-ratings"
-          aria-expanded="false" aria-controls="body-skill-ratings"
-          data-testid="dashboard-section-toggle-skill-ratings">
-          Skill Ratings
-        </button>
+      <div class="section stats-section" data-testid="skill-ratings-section" data-section="skill-ratings">
+        <div class="section-title">Skill Ratings</div>
         <div class="section-body" id="body-skill-ratings">
         <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
           No skills are tracked for this player yet — pick a position in Edit Player (S5).
         </div>
-        <div id="skillRatingsAnyBlock" data-testid="skill-ratings-any-section" hidden style="margin-top: 0.75rem;">
-          <div class="section-title" style="font-size: 0.95rem;">Any Position</div>
+        <div id="skillRatingsAnyBlock" class="skill-position-group" data-group-slug="skill-any" data-testid="skill-ratings-any-section" hidden style="margin-top: 0.75rem;">
+          <button type="button" class="position-toggle" id="toggle-skill-any"
+            aria-expanded="false" aria-controls="body-skill-any"
+            data-testid="skill-ratings-any-toggle">
+            <span class="position-group-title">Any Position</span>
+            <span class="position-group-average" data-testid="skill-ratings-any-average"></span>
+          </button>
+          <div class="position-body" id="body-skill-any">
           <div class="table-wrap">
             <table class="data-table" data-testid="skill-ratings-any-table" style="min-width: 0;">
               <thead>
@@ -78,9 +76,16 @@
               <tbody id="skillRatingsAnyBody"></tbody>
             </table>
           </div>
+          </div>
         </div>
-        <div id="skillRatingsRoleBlock" data-testid="skill-ratings-role-section" hidden style="margin-top: 1rem;">
-          <div class="section-title" id="skillRatingsRoleTitle" style="font-size: 0.95rem;">Position</div>
+        <div id="skillRatingsRoleBlock" class="skill-position-group" data-group-slug="skill-role" data-testid="skill-ratings-role-section" hidden style="margin-top: 1rem;">
+          <button type="button" class="position-toggle" id="toggle-skill-role"
+            aria-expanded="false" aria-controls="body-skill-role"
+            data-testid="skill-ratings-role-toggle">
+            <span class="position-group-title" id="skillRatingsRoleTitle">Position</span>
+            <span class="position-group-average" data-testid="skill-ratings-role-average"></span>
+          </button>
+          <div class="position-body" id="body-skill-role">
           <div class="table-wrap">
             <table class="data-table" data-testid="skill-ratings-role-table" style="min-width: 0;">
               <thead>
@@ -92,33 +97,8 @@
               <tbody id="skillRatingsRoleBody"></tbody>
             </table>
           </div>
-        </div>
-        </div>
-      </div>
-
-      <div class="section stats-section is-collapsed" data-testid="change-history-section" data-section="change-history">
-        <button type="button" class="section-title section-toggle" id="toggle-change-history"
-          aria-expanded="false" aria-controls="body-change-history"
-          data-testid="dashboard-section-toggle-change-history">
-          Change History
-        </button>
-        <div class="section-body" id="body-change-history">
-          <div id="changeHistoryEmpty" class="muted" data-testid="change-history-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
-            No profile, team, or skill changes recorded yet.
           </div>
-          <div class="table-wrap" id="changeHistoryTableWrap" data-testid="change-history-table-wrap" hidden>
-            <table class="data-table" data-testid="change-history-table" style="min-width: 0;">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Who</th>
-                  <th>Change</th>
-                  <th>From → To</th>
-                </tr>
-              </thead>
-              <tbody id="changeHistoryBody"></tbody>
-            </table>
-          </div>
+        </div>
         </div>
       </div>
 
@@ -233,6 +213,32 @@
         </div>
       </div>
 
+      <div class="section stats-section is-collapsed" data-testid="change-history-section" data-section="change-history">
+        <button type="button" class="section-title section-toggle" id="toggle-change-history"
+          aria-expanded="false" aria-controls="body-change-history"
+          data-testid="dashboard-section-toggle-change-history">
+          Change History
+        </button>
+        <div class="section-body" id="body-change-history">
+          <div id="changeHistoryEmpty" class="muted" data-testid="change-history-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+            No profile, team, or skill changes recorded yet.
+          </div>
+          <div class="table-wrap" id="changeHistoryTableWrap" data-testid="change-history-table-wrap" hidden>
+            <table class="data-table" data-testid="change-history-table" style="min-width: 0;">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Who</th>
+                  <th>Change</th>
+                  <th>From → To</th>
+                </tr>
+              </thead>
+              <tbody id="changeHistoryBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
       <div class="cta-buttons">
         <button class="btn btn-secondary">Compare Player</button>
         <a class="btn btn-primary" id="submitClipLink" data-testid="submit-clip-link" href="./S4-video-capture.html">Submit a Clip</a>
@@ -329,16 +335,6 @@
       document.getElementById('dashboardPlayerMeta').textContent = player.position + ageSuffix;
       document.getElementById('dashboardTeamChip').textContent = player.teamName;
 
-      const teamSelect = document.getElementById('dashboardTeamSelect');
-      if (teamSelect) {
-        const teamOption = teamSelect.querySelector('option');
-        if (teamOption) {
-          teamOption.value = String(player.teamName || '');
-          teamOption.textContent = 'Team: ' + (player.teamName || '—');
-        }
-        teamSelect.value = String(player.teamName || '');
-      }
-
       const trendBadge = document.getElementById('dashboardTrendBadge');
       trendBadge.className = 'badge ' + trendClass;
       trendBadge.textContent = trendArrow + ' ' + trendText;
@@ -393,7 +389,10 @@
       });
 
       if (missingStats) {
-        noStatsNotice.textContent = dashboard.performance.missingDataMessage;
+        const hasPartialContent = hasRatedSkills || liveClips.length > 0;
+        noStatsNotice.textContent = hasPartialContent
+          ? 'Some of the performance metrics are not available yet.'
+          : dashboard.performance.missingDataMessage;
         noStatsNotice.hidden = false;
         statsSections.forEach(function (element) {
           const section = element.getAttribute('data-section');
@@ -620,6 +619,30 @@
           return String(row.positionName || '').toLowerCase() === 'any position';
         }
 
+        // Matches S1 computeOverallAnyRating: mean of numeric ratings > 0, rounded.
+        function computeGroupAverage(list) {
+          const values = [];
+          list.forEach(function (row) {
+            const num = Number(row && row.rating);
+            if (Number.isFinite(num) && num > 0) {
+              values.push(num);
+            }
+          });
+          if (!values.length) {
+            return null;
+          }
+          const sum = values.reduce(function (acc, value) { return acc + value; }, 0);
+          return Math.round(sum / values.length);
+        }
+
+        function setGroupAverage(el, list) {
+          if (!el) {
+            return;
+          }
+          const avg = computeGroupAverage(list);
+          el.textContent = avg === null ? '—' : String(avg) + '%';
+        }
+
         function appendRatingRows(bodyEl, list) {
           bodyEl.innerHTML = '';
           list.forEach(function (row) {
@@ -657,6 +680,7 @@
         anyBlock.hidden = anyRows.length === 0;
         if (anyRows.length) {
           appendRatingRows(anyBody, anyRows);
+          setGroupAverage(document.querySelector('[data-testid="skill-ratings-any-average"]'), anyRows);
         }
         roleBlock.hidden = roleRows.length === 0;
         if (roleRows.length) {
@@ -664,7 +688,79 @@
             roleTitle.textContent = roleRows[0].positionName || 'Position';
           }
           appendRatingRows(roleBody, roleRows);
+          setGroupAverage(document.querySelector('[data-testid="skill-ratings-role-average"]'), roleRows);
         }
+
+        // Each position group collapses independently. Groups default to
+        // collapsed and remember the user's per-player choice, reusing the same
+        // localStorage object as initDashboardSectionToggles.
+        const groupStorageKey = 'vantageiq_s2_dashboard_sections';
+        const groupPlayerId = player.id;
+
+        function readGroupPlayerState() {
+          if (groupPlayerId === undefined || groupPlayerId === null) {
+            return {};
+          }
+          try {
+            const raw = window.localStorage.getItem(groupStorageKey);
+            const all = raw ? JSON.parse(raw) : {};
+            return all[String(groupPlayerId)] || {};
+          } catch (error) {
+            return {};
+          }
+        }
+
+        function saveGroupExpanded(slug, expanded) {
+          if (groupPlayerId === undefined || groupPlayerId === null || !slug) {
+            return;
+          }
+          try {
+            const raw = window.localStorage.getItem(groupStorageKey);
+            const all = raw ? JSON.parse(raw) : {};
+            const playerKey = String(groupPlayerId);
+            const playerState = all[playerKey] || {};
+            playerState[slug] = expanded;
+            all[playerKey] = playerState;
+            window.localStorage.setItem(groupStorageKey, JSON.stringify(all));
+          } catch (error) {
+            // Ignore quota or parse errors; collapse still works for this visit.
+          }
+        }
+
+        function applyGroupCollapsed(group, collapsed) {
+          group.classList.toggle('is-collapsed', collapsed);
+          const toggle = group.querySelector('.position-toggle');
+          if (toggle) {
+            toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          }
+        }
+
+        const savedGroups = readGroupPlayerState();
+        document.querySelectorAll('.skill-position-group').forEach(function (group) {
+          const slug = group.getAttribute('data-group-slug');
+          if (!slug) {
+            return;
+          }
+          // Default collapsed unless the user has previously expanded it.
+          applyGroupCollapsed(group, savedGroups[slug] !== true);
+        });
+
+        document.querySelectorAll('.skill-position-group .position-toggle').forEach(function (toggle) {
+          if (toggle.dataset.toggleBound === 'true') {
+            return;
+          }
+          toggle.dataset.toggleBound = 'true';
+          toggle.addEventListener('click', function () {
+            const group = toggle.closest('.skill-position-group');
+            if (!group) {
+              return;
+            }
+            const collapsed = group.classList.toggle('is-collapsed');
+            const expanded = !collapsed;
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            saveGroupExpanded(group.getAttribute('data-group-slug'), expanded);
+          });
+        });
       })();
       }
 
@@ -753,7 +849,6 @@
         makeInert(submitNewClipLink);
         makeInert(submitClipLink);
         // View Results stays active and carries share= (Feature 035).
-        makeInert(document.getElementById('backToListLink'));
         makeInert(document.getElementById('shareLinkButton'));
         makeInert(document.getElementById('revokeShareButton'));
         document.querySelectorAll('.bottom-nav a.nav-item').forEach(makeInert);
@@ -796,7 +891,9 @@
           const status = MockupApi.getPlayerShareStatus(player.id);
           if (shareBtn) {
             shareBtn.hidden = false;
-            shareBtn.textContent = status.active ? 'New share link' : 'Share link';
+            const shareLabel = status.active ? 'New share link' : 'Share link';
+            shareBtn.title = shareLabel;
+            shareBtn.setAttribute('aria-label', shareLabel);
           }
           if (revokeBtn) {
             revokeBtn.hidden = !status.active;
@@ -919,6 +1016,11 @@
         document.querySelectorAll('.stats-section').forEach(function (section) {
           const sectionSlug = section.getAttribute('data-section');
           if (!sectionSlug) {
+            return;
+          }
+          // Skill Ratings is not section-collapsible; its position groups collapse individually.
+          if (sectionSlug === 'skill-ratings') {
+            section.classList.remove('is-collapsed');
             return;
           }
           const expanded = saved[sectionSlug] === true;

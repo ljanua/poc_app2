@@ -62,20 +62,99 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.locator('#metricCurrentLevel')).toBeHidden();
   });
 
-  test('collapses the entire Skill Ratings section including sub-tables', async ({ page }) => {
-    const skillToggle = page.getByTestId('dashboard-section-toggle-skill-ratings');
-    const skillBody = page.locator('#body-skill-ratings');
+  test('defaults each Skill Ratings position group to collapsed and toggles independently', async ({ page }) => {
+    // Skill Ratings is no longer collapsed as a whole; the section body stays
+    // visible and each position group starts collapsed, toggling on its own.
+    await expect(page.getByText('Skill Ratings')).toBeVisible();
+    await expect(page.locator('#body-skill-ratings')).toBeVisible();
 
-    await expect(skillToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(skillBody).toBeHidden();
+    const anyToggle = page.getByTestId('skill-ratings-any-toggle');
+    const anyBody = page.locator('#body-skill-any');
+    // Default collapsed on first visit (cleared storage in beforeEach).
+    await expect(anyToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(anyBody).toBeHidden();
 
-    await skillToggle.click();
-    await expect(skillToggle).toHaveAttribute('aria-expanded', 'true');
-    await expect(skillBody).toBeVisible();
+    await anyToggle.click();
+    await expect(anyToggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(anyBody).toBeVisible();
 
-    await skillToggle.click();
-    await expect(skillToggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(skillBody).toBeHidden();
+    await anyToggle.click();
+    await expect(anyToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(anyBody).toBeHidden();
+  });
+
+  test('remembers per-player Skill Ratings group expand state across reloads', async ({ page }) => {
+    const anyToggle = page.getByTestId('skill-ratings-any-toggle');
+    const anyBody = page.locator('#body-skill-any');
+
+    // Both groups default collapsed.
+    await expect(anyToggle).toHaveAttribute('aria-expanded', 'false');
+
+    // Expand "Any Position" and confirm it persists across a reload.
+    await anyToggle.click();
+    await expect(anyBody).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByTestId('skill-ratings-any-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#body-skill-any')).toBeVisible();
+
+    // The stored state records the group slug under the player's entry in the
+    // shared dashboard-sections object.
+    const stored = await page.evaluate(() => {
+      return window.localStorage.getItem('vantageiq_s2_dashboard_sections') || '{}';
+    });
+    expect(stored).toContain('skill-any');
+
+    // A different player defaults collapsed (per-player independence), then the
+    // original player restores the expanded choice.
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Cristiano Ronaldo'));
+    await page.goto('/S2-player-dashboard.html');
+    await expect(page.getByTestId('skill-ratings-any-toggle')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('renders Change History as the last section, just above the action buttons', async ({ page }) => {
+    // Change History is the final .section on the dashboard.
+    const lastSectionId = await page.evaluate(() => {
+      const sections = Array.from(document.querySelectorAll('.section'));
+      const last = sections[sections.length - 1];
+      return last ? last.getAttribute('data-section') : null;
+    });
+    expect(lastSectionId).toBe('change-history');
+
+    // The action row with "Compare Player" comes immediately after it.
+    const nextIsActions = await page.evaluate(() => {
+      const history = document.querySelector('[data-section="change-history"]');
+      let el = history ? history.nextElementSibling : null;
+      while (el && !el.classList.contains('cta-buttons')) {
+        el = el.nextElementSibling;
+      }
+      return Boolean(el && /Compare Player/.test(el.textContent || ''));
+    });
+    expect(nextIsActions).toBe(true);
+
+    // Development Progress now immediately follows Skill Ratings (Change
+    // History no longer sits between them).
+    const afterSkills = await page.evaluate(() => {
+      const skills = document.querySelector('[data-section="skill-ratings"]');
+      let el = skills ? skills.nextElementSibling : null;
+      while (el && !el.classList.contains('section')) {
+        el = el.nextElementSibling;
+      }
+      return el ? el.getAttribute('data-section') : null;
+    });
+    expect(afterSkills).toBe('development-progress');
+  });
+
+  test('shows a right-aligned bright-yellow average for each position group', async ({ page }) => {
+    // Default Messi (id 10) has Any Position ratings 88, 84, 90, null, 76.
+    // Mean of the numeric > 0 values = round(338 / 4) = 85 (matches S1 logic).
+    const anyAverage = page.getByTestId('skill-ratings-any-average');
+    await expect(anyAverage).toBeVisible();
+    await expect(anyAverage).toHaveText('85%');
+
+    const color = await anyAverage.evaluate((el) => getComputedStyle(el).color);
+    // #facc15 -> rgb(250, 204, 21)
+    expect(color).toBe('rgb(250, 204, 21)');
   });
 
   test('persists expanded section state per player in localStorage', async ({ page }) => {
@@ -241,6 +320,10 @@ test.describe('S2 Player Development Dashboard', () => {
     await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Clip Rookie'));
 
     await expect(page.locator('#noStatsNotice')).toBeVisible();
+    // Player has clips but no performance stats -> partial notice.
+    await expect(page.locator('#noStatsNotice')).toContainText(
+      'Some of the performance metrics are not available yet.'
+    );
     await expect(page.getByText('Development Progress')).toBeHidden();
     await expect(page.getByText('Skill Ratings')).toBeHidden();
     await expect(page.getByText('Video Assessments')).toBeVisible();
@@ -279,10 +362,18 @@ test.describe('S2 Player Development Dashboard', () => {
     await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Rated Rookie'));
 
     await expect(page.locator('#noStatsNotice')).toBeVisible();
+    // Player has a recorded skill rating but no performance stats -> partial notice.
+    await expect(page.locator('#noStatsNotice')).toContainText(
+      'Some of the performance metrics are not available yet.'
+    );
     await expect(page.getByText('Development Progress')).toBeHidden();
     await expect(page.getByText('Skill Ratings')).toBeVisible();
 
-    await page.getByTestId('dashboard-section-toggle-skill-ratings').click();
+    // The average shows on the always-visible group title row even while collapsed.
+    await expect(page.getByTestId('skill-ratings-any-average')).toHaveText('84%');
+
+    // The group defaults collapsed; expand to reveal the rating value cell.
+    await page.getByTestId('skill-ratings-any-toggle').click();
     await expect(page.getByTestId('skill-rating-value-s_ball_control')).toHaveText('84%');
   });
 
@@ -301,27 +392,31 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(editLink).toHaveAttribute('href', /S5-player-edit\.html\?playerId=10/);
   });
 
-  test('locks the team dropdown to the viewed player\u2019s current team', async ({ page }) => {
-    // Default player (Lionel Messi) is on U19 Prime in the seeded offline store.
-    const teamSelect = page.locator('#dashboardTeamSelect');
-    await expect(teamSelect).toBeVisible();
-    await expect(teamSelect).toBeDisabled();
-
-    // Exactly one option, locked to the player\u2019s team, and matching the chip.
-    const options = teamSelect.locator('option');
-    await expect(options).toHaveCount(1);
-    await expect(teamSelect).toHaveValue('U19 Prime');
-    await expect(options.first()).toHaveText('Team: U19 Prime');
+  test('removes the team dropdown and the redundant back-to-list button', async ({ page }) => {
+    // The team dropdown and "Back to Player List" button were removed; the team
+    // chip still shows the player's team and the header back arrow handles nav.
+    await expect(page.locator('#dashboardTeamSelect')).toHaveCount(0);
+    await expect(page.locator('#backToListLink')).toHaveCount(0);
     await expect(page.locator('#dashboardTeamChip')).toHaveText('U19 Prime');
+  });
 
-    // Switching to a different player must rebind the dropdown to that
-    // player\u2019s teamName, not retain the previous one. Cristiano Ronaldo
-    // is on Senior Squad in the offline store.
-    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Cristiano Ronaldo'));
-    await expect(teamSelect).toBeDisabled();
-    await expect(teamSelect).toHaveValue('Senior Squad');
-    await expect(options.first()).toHaveText('Team: Senior Squad');
-    await expect(page.locator('#dashboardTeamChip')).toHaveText('Senior Squad');
+  test('renders Edit / Share / Revoke as icon buttons with tooltip labels on one line', async ({ page }) => {
+    const editLink = page.locator('#editPlayerLink');
+    await expect(editLink).toBeVisible();
+    await expect(editLink).toHaveAttribute('title', 'Edit Player');
+    await expect(editLink).toHaveAttribute('aria-label', 'Edit Player');
+
+    const shareButton = page.getByTestId('share-link-button');
+    await expect(shareButton).toBeVisible();
+    await expect(shareButton).toHaveAttribute('title', /Share link|New share link/);
+    await expect(shareButton).toHaveAttribute('aria-label', /Share link|New share link/);
+
+    // Action row stays on a single line (all controls share the same top edge).
+    const editBox = await editLink.boundingBox();
+    const shareBox = await shareButton.boundingBox();
+    expect(editBox).not.toBeNull();
+    expect(shareBox).not.toBeNull();
+    expect(Math.abs(editBox.y - shareBox.y)).toBeLessThan(4);
   });
 
   test('shows emoji avatar for a player with no uploaded photo', async ({ page }) => {

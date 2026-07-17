@@ -2268,7 +2268,11 @@ function parseUpdateProfilePayload(payload) {
   const skillProgress = toNullableString(payload.skillProgress);
   const hasRating = [currentLevel, fitness, skillProgress].some(function (v) { return v !== null; });
 
-  const avatarUrl = (payload && payload.avatarUrl !== undefined) ? String(payload.avatarUrl || '').trim() || null : null;
+  // Distinguish "avatar omitted" (preserve existing) from "avatar explicitly
+  // provided". A full-profile PATCH that omits avatarUrl must not null the
+  // stored photo (e.g. S5 saving position skills).
+  const avatarUrlProvided = Boolean(payload && payload.avatarUrl !== undefined);
+  const avatarUrl = avatarUrlProvided ? String(payload.avatarUrl || '').trim() || null : null;
 
   return {
     identity: {
@@ -2278,6 +2282,7 @@ function parseUpdateProfilePayload(payload) {
       position,
       trend,
       avatarUrl,
+      avatarUrlProvided,
       birthMonth: birth.birthMonth,
       birthYear: birth.birthYear
     },
@@ -4436,11 +4441,16 @@ async function handlePlayersApi(req, res, requestUrl) {
       );
       const previousTeamId = assignment.rows[0] ? assignment.rows[0].teamId : null;
 
+      // When avatarUrl is omitted from the payload, keep the stored photo.
+      const effectiveAvatarUrl = parsed.identity.avatarUrlProvided
+        ? parsed.identity.avatarUrl
+        : (existing.avatarUrl || null);
+
       const profileFields = [
         { key: 'name', oldValue: existing.name, newValue: parsed.identity.name },
         { key: 'position', oldValue: existing.position, newValue: parsed.identity.position },
         { key: 'trend', oldValue: existing.trend, newValue: parsed.identity.trend },
-        { key: 'avatarUrl', oldValue: existing.avatarUrl, newValue: parsed.identity.avatarUrl },
+        { key: 'avatarUrl', oldValue: existing.avatarUrl, newValue: effectiveAvatarUrl },
         { key: 'birthMonth', oldValue: existing.birthMonth, newValue: parsed.identity.birthMonth },
         { key: 'birthYear', oldValue: existing.birthYear, newValue: parsed.identity.birthYear }
       ];
@@ -4480,7 +4490,7 @@ async function handlePlayersApi(req, res, requestUrl) {
           parsed.identity.normalizedName,
           parsed.identity.position,
           parsed.identity.trend,
-          parsed.identity.avatarUrl,
+          effectiveAvatarUrl,
           parsed.identity.birthMonth,
           parsed.identity.birthYear,
           playerId

@@ -827,11 +827,23 @@
         renderSkillRatings(profile.skillRatings || []);
       }
 
+      function currentAvatarUrl() {
+        // Read the avatar from the live preview so a full-profile save preserves
+        // the existing (or just-uploaded) photo. Omitting it makes the backend
+        // PATCH null out player_avatar_url and the image disappears on S2.
+        const imgEl = document.getElementById('s5AvatarImg');
+        if (imgEl && imgEl.style.display !== 'none' && imgEl.getAttribute('src')) {
+          return imgEl.getAttribute('src');
+        }
+        return null;
+      }
+
       function buildPayload() {
         return {
           name: value('fieldName'),
           teamName: value('fieldTeam'),
           position: value('fieldPosition'),
+          avatarUrl: currentAvatarUrl(),
           // Birth date pair: parseBirthFields in mockup-api-client enforces the
           // strict-pair rule (both set or both blank) and surfaces a clear error.
           birthMonth: value('fieldBirthMonth'),
