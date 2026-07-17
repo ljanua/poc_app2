@@ -155,4 +155,57 @@ test.describe('S4 Video Capture and Submission', () => {
     await expect(page.getByLabel('Ball Control')).toBeVisible();
     await expect(page.getByLabel('Shot stopping')).toHaveCount(0);
   });
+
+  test('link mode defaults duration to 01:00 and rejects over 02:00', async ({ page }) => {
+    await page.getByTestId('source-mode-link').click();
+    await expect(page.getByTestId('link-source-panel')).toBeVisible();
+    await expect(page.getByTestId('upload-source-panel')).toBeHidden();
+    await expect(page.getByTestId('duration-mmss')).toHaveValue('01:00');
+
+    await page.fill('#videoUrl', 'https://example.com/clip.mp4');
+    await page.fill('#startMmSs', '00:10');
+    await page.fill('#durationMmSs', '02:01');
+    await page.selectOption('#player', { label: 'Lionel Messi' });
+    await page.fill('#situation', 'Counter attack');
+    await page.getByRole('button', { name: 'Submit for Assessment' }).click();
+    await expect(page.locator('#videoError')).toHaveClass(/show/);
+    await expect(page.locator('#videoError')).toContainText('02:00');
+  });
+
+  test('Find player is off and disabled when the player has no photo', async ({ page }) => {
+    await page.selectOption('#player', { label: 'Lionel Messi' });
+    await expect(page.getByTestId('find-player-toggle')).toBeDisabled();
+    await expect(page.getByTestId('find-player-toggle')).not.toBeChecked();
+  });
+
+  test('Find player defaults on when the selected player has an avatar', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => {
+      window.localStorage.removeItem('vantageiq_mockup_v2');
+    });
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list/);
+    await page.evaluate(() => {
+      const raw = window.localStorage.getItem('vantageiq_mockup_v2');
+      const store = raw ? JSON.parse(raw) : null;
+      if (!store) return;
+      const messi = store.players.find((p) => p.id === 10 || p.id === '10');
+      if (messi) {
+        messi.avatarUrl = 'data:image/png;base64,aaa';
+      }
+      store.playerAvatars = store.playerAvatars || {};
+      store.playerAvatars['10'] = 'data:image/png;base64,aaa';
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.goto('/S4-video-capture.html');
+    await page.selectOption('#player', { label: 'Lionel Messi' });
+    await expect(page.getByTestId('find-player-toggle')).toBeEnabled();
+    await expect(page.getByTestId('find-player-toggle')).toBeChecked();
+  });
 });

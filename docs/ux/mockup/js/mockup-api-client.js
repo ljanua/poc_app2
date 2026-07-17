@@ -2488,7 +2488,7 @@
                 };
               });
             return Object.assign({}, player, {
-              avatarUrl: storedAvatar,
+              avatarUrl: storedAvatar || player.avatarUrl || null,
               anySkillRatings: anySkillRatings,
               skillRatingsById: listSportSkillRatingsByIdOffline(store, player)
             });
@@ -3475,13 +3475,15 @@
         ? payload.skillFocus.map((entry) => normalizeLookup(entry)).filter(Boolean)
         : [];
       const primarySkill = skillFocus[0] || normalizeLookup(payload.skill || 'General') || 'General';
+      const videoUrl = payload.videoUrl ? String(payload.videoUrl).trim() : '';
+      const isLinkMode = Boolean(videoUrl);
 
       if (shouldUseBackendPlayersMode()) {
-        if (!payload.videoFile) {
+        if (!isLinkMode && !payload.videoFile) {
           return {
             status: 400,
             code: 'validation_error',
-            message: 'A video file is required before submitting for assessment.'
+            message: 'A video file or video URL is required before submitting for assessment.'
           };
         }
 
@@ -3495,7 +3497,14 @@
         formData.append('situation', situation);
         formData.append('skillFocus', JSON.stringify(skillFocus.length ? skillFocus : [primarySkill]));
         formData.append('skill', primarySkill);
-        formData.append('video', payload.videoFile, payload.videoFile.name || 'clip.mp4');
+        formData.append('findPlayer', payload.findPlayer ? 'true' : 'false');
+        if (isLinkMode) {
+          formData.append('videoUrl', videoUrl);
+          formData.append('startMmSs', String(payload.startMmSs || '00:00'));
+          formData.append('durationMmSs', String(payload.durationMmSs || '01:00'));
+        } else {
+          formData.append('video', payload.videoFile, payload.videoFile.name || 'clip.mp4');
+        }
 
         const response = backendMultipartRequest('/clips', formData);
         if (response.status >= 200 && response.status < 300) {
@@ -3512,6 +3521,14 @@
           status: response.status || 500,
           code: errorBody.code || 'unknown',
           message: errorBody.message || 'Clip submission failed. Please try again.'
+        };
+      }
+
+      if (isLinkMode) {
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Video link ingest requires backend mode (DATABASE_URL). Use Upload File in offline mock mode.'
         };
       }
 

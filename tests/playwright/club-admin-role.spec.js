@@ -28,6 +28,19 @@ test.describe('Club Admin role', () => {
     await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
   });
 
+  test('Users bottom-nav is visible on S3 and S4 and opens S7', async ({ page }) => {
+    await loginAsRita(page);
+
+    await page.goto('/S3-team-management.html');
+    await expect(page.getByTestId('nav-users')).toBeVisible();
+    await page.getByTestId('nav-users').click();
+    await expect(page).toHaveURL(/S7-admin-user-management/);
+
+    await page.goto('/S4-video-capture.html');
+    await expect(page.getByTestId('nav-users')).toBeVisible();
+    await expect(page.getByTestId('nav-clubs')).toBeHidden();
+  });
+
   test('S7 allows Club Admin to create Coach or ClubAdmin and denies SystemAdmin', async ({ page }) => {
     await loginAsRita(page);
     await page.getByTestId('nav-users').click();

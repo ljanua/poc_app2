@@ -100,4 +100,8 @@ test.describe('S3 Team Management', () => {
     await expect(page.locator('#roleBadge')).toContainText('Coach');
     await expect(page.getByRole('button', { name: 'Change Coach' })).toHaveCount(0);
   });
+
+  test('hides Users bottom-nav for coaches', async ({ page }) => {
+    await expect(page.getByTestId('nav-users')).toBeHidden();
+  });
 });

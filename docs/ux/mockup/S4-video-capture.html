@@ -27,19 +27,40 @@
           <!-- Video Input Section -->
           <div class="form-section">
             <label class="form-label">Video Clip <span class="required">*</span></label>
-            <div class="video-input-section">
-              <button type="button" class="input-btn" onclick="alert('Camera capture would open on mobile')">
-                <span class="input-icon">📷</span>
-                <span>Record a Clip</span>
-              </button>
-              <button type="button" class="input-btn" onclick="document.getElementById('fileInput').click()">
-                <span class="input-icon">📂</span>
-                <span>Upload File</span>
-              </button>
+            <div class="toolbar" style="margin-bottom: 0.75rem; gap: 0.5rem;">
+              <button type="button" class="btn btn-secondary" id="sourceModeUpload" data-testid="source-mode-upload" aria-pressed="true">Upload File</button>
+              <button type="button" class="btn btn-secondary" id="sourceModeLink" data-testid="source-mode-link" aria-pressed="false">From Link</button>
             </div>
-            <input type="file" id="fileInput" class="file-input" accept="video/mp4,video/quicktime" onchange="updatePreview()">
-            <div class="video-preview" id="videoPreview">No video selected</div>
-            <div class="validation-hint">MP4 or MOV • Max 50MB • Max 60 seconds</div>
+            <div id="uploadSourcePanel" data-testid="upload-source-panel">
+              <div class="video-input-section">
+                <button type="button" class="input-btn" onclick="alert('Camera capture would open on mobile')">
+                  <span class="input-icon">📷</span>
+                  <span>Record a Clip</span>
+                </button>
+                <button type="button" class="input-btn" onclick="document.getElementById('fileInput').click()">
+                  <span class="input-icon">📂</span>
+                  <span>Upload File</span>
+                </button>
+              </div>
+              <input type="file" id="fileInput" class="file-input" accept="video/mp4,video/quicktime" onchange="updatePreview()">
+              <div class="video-preview" id="videoPreview">No video selected</div>
+              <div class="validation-hint">MP4 or MOV • Max 50MB • Max 60 seconds</div>
+            </div>
+            <div id="linkSourcePanel" data-testid="link-source-panel" hidden>
+              <label class="form-label" for="videoUrl">Video URL <span class="required">*</span></label>
+              <input id="videoUrl" type="url" data-testid="video-url" placeholder="https://… (YouTube, hosted, or direct .mp4)" autocomplete="off">
+              <div class="toolbar" style="margin-top: 0.75rem; gap: 0.75rem; flex-wrap: wrap;">
+                <div>
+                  <label class="form-label" for="startMmSs">Start (mm:ss) <span class="required">*</span></label>
+                  <input id="startMmSs" type="text" data-testid="start-mmss" placeholder="00:00" value="00:00" inputmode="numeric">
+                </div>
+                <div>
+                  <label class="form-label" for="durationMmSs">Duration (mm:ss) <span class="required">*</span></label>
+                  <input id="durationMmSs" type="text" data-testid="duration-mmss" placeholder="01:00" value="01:00" inputmode="numeric">
+                </div>
+              </div>
+              <div class="validation-hint">Duration default 01:00 • Max 02:00 • Direct file URLs or YouTube/hosted links</div>
+            </div>
             <div class="error-msg" id="videoError">Video clip is required</div>
           </div>
           <div class="form-section">
@@ -48,6 +69,11 @@
               <option value="">Select a player…</option>
             </select>
             <div class="error-msg" id="playerError">Player is required</div>
+            <label class="checkbox-label" style="margin-top: 0.75rem;" id="findPlayerWrap" data-testid="find-player-wrap">
+              <input id="findPlayerToggle" type="checkbox" data-testid="find-player-toggle" disabled>
+              <span>Find player</span>
+            </label>
+            <div class="validation-hint" id="findPlayerHint" data-testid="find-player-hint">Uses the player's current photo. Enabled when a photo is assigned.</div>
           </div>
 
           <!-- Situation Description -->
@@ -91,6 +117,10 @@
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin" data-testid="nav-users" hidden>
+        <span class="nav-icon">🛡️</span>
+        <span>Users</span>
+      </a>
       <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
@@ -105,6 +135,48 @@
   <script src="./js/mockup-api-client.js"></script>
 
   <script>
+    let sourceMode = 'upload'; // 'upload' | 'link'
+
+    function parseMmSs(value) {
+      const raw = String(value || '').trim();
+      const match = /^(\d{1,3}):([0-5]\d)$/.exec(raw);
+      if (!match) {
+        return null;
+      }
+      return (Number(match[1]) * 60) + Number(match[2]);
+    }
+
+    function setSourceMode(mode) {
+      sourceMode = mode === 'link' ? 'link' : 'upload';
+      const uploadPanel = document.getElementById('uploadSourcePanel');
+      const linkPanel = document.getElementById('linkSourcePanel');
+      const uploadBtn = document.getElementById('sourceModeUpload');
+      const linkBtn = document.getElementById('sourceModeLink');
+      if (uploadPanel) uploadPanel.hidden = sourceMode !== 'upload';
+      if (linkPanel) linkPanel.hidden = sourceMode !== 'link';
+      if (uploadBtn) uploadBtn.setAttribute('aria-pressed', sourceMode === 'upload' ? 'true' : 'false');
+      if (linkBtn) linkBtn.setAttribute('aria-pressed', sourceMode === 'link' ? 'true' : 'false');
+      document.getElementById('videoError').classList.remove('show');
+    }
+
+    function syncFindPlayerToggle() {
+      const playerSelect = document.getElementById('player');
+      const toggle = document.getElementById('findPlayerToggle');
+      const hint = document.getElementById('findPlayerHint');
+      if (!toggle || !playerSelect) {
+        return;
+      }
+      const option = playerSelect.options[playerSelect.selectedIndex];
+      const hasAvatar = Boolean(option && option.dataset && option.dataset.avatarUrl);
+      toggle.disabled = !hasAvatar;
+      toggle.checked = hasAvatar;
+      if (hint) {
+        hint.textContent = hasAvatar
+          ? 'ON by default — extract starts only after this player is found (uses current photo).'
+          : 'Assign a player photo first to enable Find player.';
+      }
+    }
+
     function updatePreview() {
       const fileInput = document.getElementById('fileInput');
       const preview = document.getElementById('videoPreview');
@@ -126,6 +198,10 @@
       const player = document.getElementById('player').value;
       const situation = document.getElementById('situation').value;
       const fileInput = document.getElementById('fileInput');
+      const videoUrl = document.getElementById('videoUrl').value.trim();
+      const startMmSs = document.getElementById('startMmSs').value.trim();
+      const durationMmSs = document.getElementById('durationMmSs').value.trim() || '01:00';
+      const findPlayer = document.getElementById('findPlayerToggle').checked;
 
       let valid = true;
       if (!player) {
@@ -142,25 +218,54 @@
         document.getElementById('situationError').classList.remove('show');
       }
 
-      if (!fileInput.files || !fileInput.files.length) {
-        document.getElementById('videoError').classList.add('show');
-        valid = false;
+      if (sourceMode === 'upload') {
+        if (!fileInput.files || !fileInput.files.length) {
+          document.getElementById('videoError').textContent = 'Video clip is required';
+          document.getElementById('videoError').classList.add('show');
+          valid = false;
+        } else {
+          document.getElementById('videoError').classList.remove('show');
+        }
       } else {
-        document.getElementById('videoError').classList.remove('show');
+        const startSec = parseMmSs(startMmSs);
+        const durationSec = parseMmSs(durationMmSs);
+        if (!videoUrl) {
+          document.getElementById('videoError').textContent = 'Video URL is required';
+          document.getElementById('videoError').classList.add('show');
+          valid = false;
+        } else if (startSec == null) {
+          document.getElementById('videoError').textContent = 'Start must be mm:ss (e.g. 01:30)';
+          document.getElementById('videoError').classList.add('show');
+          valid = false;
+        } else if (durationSec == null || durationSec < 1 || durationSec > 120) {
+          document.getElementById('videoError').textContent = 'Duration must be mm:ss between 00:01 and 02:00';
+          document.getElementById('videoError').classList.add('show');
+          valid = false;
+        } else {
+          document.getElementById('videoError').classList.remove('show');
+        }
       }
 
       if (valid) {
         const selectedPlayer = document.getElementById('player').options[document.getElementById('player').selectedIndex].text;
         const skillFocus = Array.from(document.querySelectorAll('input[name="skill"]:checked'))
           .map(function (checkbox) { return checkbox.nextElementSibling.textContent; });
-        const response = MockupApi.submitClip({
+        const payload = {
           playerId: player,
           playerName: selectedPlayer,
           situation: situation,
           skillFocus: skillFocus,
           skill: skillFocus[0] || 'General',
-          videoFile: fileInput.files[0]
-        });
+          findPlayer: findPlayer
+        };
+        if (sourceMode === 'upload') {
+          payload.videoFile = fileInput.files[0];
+        } else {
+          payload.videoUrl = videoUrl;
+          payload.startMmSs = startMmSs;
+          payload.durationMmSs = durationMmSs;
+        }
+        const response = MockupApi.submitClip(payload);
 
         if (response.status >= 400) {
           alert(response.message);
@@ -169,8 +274,12 @@
 
         alert(response.message);
         document.getElementById('clipForm').reset();
+        document.getElementById('durationMmSs').value = '01:00';
+        document.getElementById('startMmSs').value = '00:00';
         document.getElementById('videoPreview').textContent = 'No video selected';
         document.getElementById('videoPreview').classList.remove('active');
+        setSourceMode('upload');
+        syncFindPlayerToggle();
       }
     });
 
@@ -231,6 +340,9 @@
         option.value = String(player.id);
         option.textContent = player.name;
         option.dataset.teamName = String(player.teamName || '');
+        if (player.avatarUrl) {
+          option.dataset.avatarUrl = String(player.avatarUrl);
+        }
         playerSelect.appendChild(option);
       });
     }
@@ -335,6 +447,7 @@
         populatePlayerSelect(playerSelect, players);
         applyPlayerIdFromQuery(playerSelect);
         renderSkillFocus(playerSelect.value || '');
+        syncFindPlayerToggle();
       }
 
       const availableTeams = getAvailableTeamsForActor(currentUser);
@@ -347,7 +460,16 @@
 
       playerSelect.addEventListener('change', function () {
         renderSkillFocus(playerSelect.value || '');
+        syncFindPlayerToggle();
       });
+
+      document.getElementById('sourceModeUpload').addEventListener('click', function () {
+        setSourceMode('upload');
+      });
+      document.getElementById('sourceModeLink').addEventListener('click', function () {
+        setSourceMode('link');
+      });
+      setSourceMode('upload');
 
       refreshPlayers();
 

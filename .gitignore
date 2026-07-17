@@ -3,3 +3,8 @@ test-results/
 data/clip-videos/
 backend_logging.txt
 log/
+.env
+.env.production
+.env.staging
+.env.local
+.env.development

@@ -123,6 +123,17 @@ async function getFfmpegPath(pool) {
   return 'ffmpeg';
 }
 
+async function getYtdlpPath(pool) {
+  const configured = await getProcessingConfig(pool, 'ytdlp_path', '');
+  if (configured) {
+    return configured;
+  }
+  if (process.env.YTDLP_PATH) {
+    return process.env.YTDLP_PATH;
+  }
+  return 'yt-dlp';
+}
+
 module.exports = {
   DEFAULT_VIDEO_ROOT,
   getVideoRoot,
@@ -137,5 +148,6 @@ module.exports = {
   getMaxParallelProcesses,
   getOllamaBaseUrl,
   getOllamaVideoModel,
-  getFfmpegPath
+  getFfmpegPath,
+  getYtdlpPath
 };

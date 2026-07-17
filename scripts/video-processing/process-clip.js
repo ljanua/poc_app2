@@ -12,7 +12,7 @@ const {
   ensureFfmpegAvailable,
   setFfmpegPath
 } = require('./ffmpeg-utils');
-const { getFfmpegPath, ensureSegmentsDirForClip, ensureThumbnailPathForClip } = require('./config');
+const { getFfmpegPath, ensureSegmentsDirForClip, ensureThumbnailPathForClip, getYtdlpPath, originalsDir } = require('./config');
 const { reviewSegment } = require('./ollama-client');
 const {
   shouldStopAssessing,
@@ -23,6 +23,12 @@ const {
 const { logAuditEvent } = require('./audit-logger');
 const { reconcilePlayerClipStats } = require('./reconcile-player-clip-stats');
 const { syncPlayerSkillRatingsFromClip } = require('./sync-player-skill-ratings-from-clip');
+const {
+  downloadSourceVideo,
+  probeDurationSeconds,
+  trimVideoWindow
+} = require('./link-ingest');
+const { findPlayerInVideo } = require('./find-player');
 
 function computeAge(birthMonth, birthYear) {
   if (!birthYear) {
@@ -47,10 +53,16 @@ async function loadClipContext(pool, clipId) {
         c.status,
         c.video_storage_path AS "videoStoragePath",
         c.skill_focus AS "skillFocus",
+        c.source_url AS "sourceUrl",
+        c.source_start_ms AS "sourceStartMs",
+        c.source_duration_ms AS "sourceDurationMs",
+        c.find_player AS "findPlayer",
+        c.find_player_matched_ms AS "findPlayerMatchedMs",
         p.name AS "playerName",
         p.position AS "position",
         p.birth_month AS "birthMonth",
         p.birth_year AS "birthYear",
+        p.player_avatar_url AS "avatarUrl",
         COALESCE(s.name, 'Unknown Sport') AS "sportType"
       FROM clips c
       JOIN players p ON p.id = c.player_id
@@ -121,19 +133,95 @@ async function saveClipSegment(pool, clipId, segmentIndex, segmentPath) {
   );
 }
 
+/**
+ * For link-sourced clips: download, optionally find player, trim window,
+ * and point video_storage_path at the trimmed extract.
+ */
+async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
+  if (!clip.sourceUrl) {
+    return clip.videoStoragePath;
+  }
+
+  const startSec = Math.max(0, Math.floor((Number(clip.sourceStartMs) || 0) / 1000));
+  const durationSec = Math.max(1, Math.floor((Number(clip.sourceDurationMs) || 60000) / 1000));
+  const ytdlpPath = await getYtdlpPath(pool);
+
+  const sourcePath = await downloadSourceVideo({
+    url: clip.sourceUrl,
+    clipId: clip.id,
+    ytdlpPath
+  });
+
+  let extractStartSec = startSec;
+  if (clip.findPlayer) {
+    if (!clip.avatarUrl) {
+      throw new Error('Find player requires the selected player to have a photo assigned.');
+    }
+    const mediaDuration = await probeDurationSeconds(sourcePath);
+    if (startSec >= mediaDuration) {
+      throw new Error('Start time is beyond the end of the downloaded video.');
+    }
+    const matchedSec = await findPlayerInVideo(pool, {
+      clipId: clip.id,
+      videoPath: sourcePath,
+      startSec,
+      mediaEndSec: mediaDuration,
+      avatarUrl: clip.avatarUrl,
+      framesDir,
+      fetchBaseUrl: process.env.MOCKUP_PUBLIC_BASE_URL || 'http://127.0.0.1:4173'
+    });
+    if (matchedSec == null) {
+      throw new Error('Player was not found in the video after the requested start time.');
+    }
+    extractStartSec = matchedSec;
+    await pool.query(
+      `
+        UPDATE clips
+        SET find_player_matched_ms = $2,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [clip.id, Math.round(matchedSec * 1000)]
+    );
+  }
+
+  const remaining = await probeDurationSeconds(sourcePath).then((d) => d - extractStartSec).catch(() => durationSec);
+  if (remaining < durationSec) {
+    throw new Error(
+      `Not enough video remains after the extract start to fulfill duration ${durationSec}s (only ${Math.max(0, Math.floor(remaining))}s left).`
+    );
+  }
+
+  const trimmedPath = path.join(originalsDir(), `${clip.id}_extract.mp4`);
+  await trimVideoWindow(sourcePath, trimmedPath, extractStartSec, durationSec);
+  await pool.query(
+    `
+      UPDATE clips
+      SET video_storage_path = $2,
+          original_filename = COALESCE(original_filename, 'link-extract.mp4'),
+          file_size_bytes = $3,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [clip.id, trimmedPath, fs.statSync(trimmedPath).size]
+  );
+  logAuditEvent('clip.link.extract.ready', {
+    clipId: clip.id,
+    sourcePath,
+    trimmedPath,
+    extractStartSec,
+    durationSec,
+    findPlayer: Boolean(clip.findPlayer)
+  });
+  return trimmedPath;
+}
+
 async function processClip(pool, clipId) {
   const clip = await loadClipContext(pool, clipId);
   if (!clip) {
     return;
   }
   if (clip.status !== 'in_progress') {
-    return;
-  }
-  if (!clip.videoStoragePath) {
-    logAuditEvent('clip.processing.no_video', { clipId });
-    await markClipFailed(pool, clipId, 'No video file is attached to this clip.');
-    logAuditEvent('clip.failed', { clipId, error: 'No video file is attached to this clip.' });
-    await reconcilePlayerClipStats(pool, clip.playerId);
     return;
   }
 
@@ -148,7 +236,8 @@ async function processClip(pool, clipId) {
     ageOfPlayer: computeAge(clip.birthMonth, clip.birthYear),
     situation: clip.situation,
     skillFocusCount: skillFocusList.length,
-    path: clip.videoStoragePath
+    path: clip.videoStoragePath,
+    sourceUrl: clip.sourceUrl || null
   });
   const assessmentContext = {
     sportType: clip.sportType,
@@ -166,10 +255,23 @@ async function processClip(pool, clipId) {
   let lastComments = '';
 
   try {
-    await clearClipSegments(pool, clipId);
     setFfmpegPath(await getFfmpegPath(pool));
     await ensureFfmpegAvailable();
-    const segmentPaths = await segmentVideo(clip.videoStoragePath, durableSegmentsDir);
+
+    let videoPath = clip.videoStoragePath;
+    if (clip.sourceUrl) {
+      videoPath = await prepareLinkSourceIfNeeded(pool, clip, framesDir);
+    }
+    if (!videoPath) {
+      logAuditEvent('clip.processing.no_video', { clipId });
+      await markClipFailed(pool, clipId, 'No video file is attached to this clip.');
+      logAuditEvent('clip.failed', { clipId, error: 'No video file is attached to this clip.' });
+      await reconcilePlayerClipStats(pool, clip.playerId);
+      return;
+    }
+
+    await clearClipSegments(pool, clipId);
+    const segmentPaths = await segmentVideo(videoPath, durableSegmentsDir);
 
     for (let index = 0; index < segmentPaths.length; index += 1) {
       const segmentPath = segmentPaths[index];
@@ -199,7 +301,7 @@ async function processClip(pool, clipId) {
     const score = computeOverallScore(ratingsBySkill);
     const summary = buildSummary(ratingsBySkill, lastComments);
     try {
-      const posterSource = segmentPaths[0] || clip.videoStoragePath;
+      const posterSource = segmentPaths[0] || videoPath;
       if (posterSource) {
         const thumbPath = ensureThumbnailPathForClip(clipId);
         await extractPosterFrame(posterSource, thumbPath);
@@ -253,5 +355,6 @@ module.exports = {
   processClip,
   markClipFailed,
   saveClipSegment,
-  clearClipSegments
+  clearClipSegments,
+  prepareLinkSourceIfNeeded
 };

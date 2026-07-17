@@ -1475,6 +1475,11 @@ async function ensureDatabase() {
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS processing_completed_at TIMESTAMPTZ;`);
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS error_message TEXT;`);
   await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS comments TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS source_url TEXT;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS source_start_ms INTEGER;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS source_duration_ms INTEGER;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS find_player BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE clips ADD COLUMN IF NOT EXISTS find_player_matched_ms INTEGER;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS clip_segments (
       id TEXT PRIMARY KEY,
@@ -1522,7 +1527,8 @@ async function ensureDatabase() {
       ('max_parallel_video_processes', '1', 'Maximum concurrent clip assessments'),
       ('ollama_base_url', 'http://macmini.lan:11434', 'Ollama server base URL'),
       ('ollama_video_model', 'gemma4:12b-mlx', 'Ollama model for clip assessment'),
-      ('ffmpeg_path', '', 'Full path to ffmpeg binary; empty uses PATH or FFMPEG_PATH env')
+      ('ffmpeg_path', '', 'Full path to ffmpeg binary; empty uses PATH or FFMPEG_PATH env'),
+      ('ytdlp_path', 'yt-dlp', 'Path to yt-dlp binary for YouTube/hosted video downloads')
     ON CONFLICT (key) DO NOTHING;
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_clips_player_id ON clips(player_id);`);
