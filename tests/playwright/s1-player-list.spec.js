@@ -30,6 +30,23 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(page).toHaveURL(/S6-assessment-list\.html|S6-assessment-list$/);
   });
 
+  test('toolbar keeps only Advanced Filter and Add Player; Only My Players moves into the filter panel', async ({ page }) => {
+    const toolbar = page.locator('.toolbar');
+    // Manage Teams / Admin Users links are gone from the toolbar (still reachable via bottom nav).
+    await expect(toolbar.locator('a[href="./S3-team-management.html"]')).toHaveCount(0);
+    await expect(toolbar.locator('a[href="./S7-admin-user-management.html"]')).toHaveCount(0);
+
+    // Only the two intended buttons remain visible.
+    await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add Player' })).toBeVisible();
+
+    // Only My Players is hidden until the Advanced Filter panel is opened.
+    await expect(page.getByTestId('only-mine-toggle')).toBeHidden();
+    await page.getByTestId('advanced-filter-toggle').click();
+    await expect(page.getByTestId('advanced-filter-panel')).toBeVisible();
+    await expect(page.getByTestId('only-mine-toggle')).toBeVisible();
+  });
+
   test('shows only players assigned to selected team', async ({ page }) => {
     // Coach Joao only leads U19 Prime. His dropdown contains only [All Teams, U19 Prime],
     // so the only meaningful team filter is U19 Prime itself. Verify the status
@@ -98,6 +115,8 @@ test.describe('S1 Player List team filter and add-player flow', () => {
     await expect(page.locator('.player-card .player-name')).toHaveCount(1);
     await expect(page.locator('#playerListStatus')).toContainText('teams you lead');
 
+    // Only My Players now lives inside the Advanced Filter panel.
+    await page.getByTestId('advanced-filter-toggle').click();
     await page.getByTestId('only-mine-toggle').uncheck();
     await expect(page.locator('#playerListStatus')).toContainText('your clubs');
     // All four seeded players live on c_default teams Joao is assigned to.
@@ -136,6 +155,7 @@ test.describe('S1 Player List team filter and add-player flow', () => {
       window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
     });
     await page.reload();
+    await page.getByTestId('advanced-filter-toggle').click();
     await page.getByTestId('only-mine-toggle').uncheck();
     await expect(page.locator('.player-card .player-name', { hasText: 'Outside Oscar' })).toHaveCount(0);
     await expect(page.locator('#teamFilter')).not.toContainText('Rival Academy');

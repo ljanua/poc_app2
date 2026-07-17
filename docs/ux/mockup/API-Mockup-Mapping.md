@@ -140,7 +140,7 @@ Source plan: `docs/plans/2026-07-13-009-feat-s1-advanced-filter-plan.md`.
 
 ### UI
 
-- Coach / SystemAdmin only: toolbar **Advanced Filter** (`[data-testid="advanced-filter-toggle"]`) opens Filter by Position|Skill, value select, Sort by Highest|Lowest (default Highest).
+- Coach / SystemAdmin only: toolbar **Advanced Filter** (`[data-testid="advanced-filter-toggle"]`) opens Filter by Position|Skill, value select, Sort by Highest|Lowest (default Highest). The toolbar now shows only **Advanced Filter** and **Add Player**; "Manage Teams" and "Admin Users" are reachable only via the bottom nav, and the Coach-only **Only My Players** toggle lives inside this panel (next to Clear).
 - Position mode: exact roster `position` match + sort by Feature 039 overall.
 - Skill mode: sort by `skillRatingsById[skillId]`; unrated (missing/null/non-finite) last for Highest / first for Lowest; `0` is a rated key.
 - Layers on team / search / Only Mine; Clear restores name ASC for the visibility set.
@@ -318,7 +318,7 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 
 ### UI
 
-- `S1-player-list.html` gains a Coach-only "Only My Players" checkbox in the toolbar. It is `hidden` and unchecked by default; for active Coach actors it is `hidden=false` and `checked=true`. Unchecking it keeps club scoping and expands from lead teams to all teams in the coach's clubs. The checkbox is shipped `hidden` in markup so coaches never see a flash of admin-only chrome before JS hydrates the role.
+- `S1-player-list.html` has a Coach-only "Only My Players" checkbox inside the **Advanced Filter** panel (`#advancedFilterPanel`), next to Clear. It is `hidden` and unchecked by default; for active Coach actors it is `hidden=false` and `checked=true` (still gated behind opening the panel). Unchecking it keeps club scoping and expands from lead teams to all teams in the coach's clubs. The checkbox is shipped `hidden` in markup so coaches never see a flash of admin-only chrome before JS hydrates the role.
 - `S1-player-list.html` reads `actorEmail` and `onlyMine` from the actor context on every call to `MockupApi.listPlayers`. The status banner switches between "Showing X players on teams you lead." (Coach + Only My Players ON), "Showing X players in your clubs." (Coach + OFF), and the existing team-specific / admin full-roster strings.
 - Every bottom-nav page (`S1`, `S2`, `S3`, `S3a`, `S4`, `S5`, `S6`, `S7`, `S7a`) now carries a `Clubs` nav entry gated to `SystemAdmin`. The entry links to `S7a-clubs.html` and is shipped `hidden` so coaches never see it before `MockupApi.applyRoleGatedNav` runs.
 ### Player-Club Invariant

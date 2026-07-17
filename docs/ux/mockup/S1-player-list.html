@@ -22,14 +22,8 @@
         <select id="teamFilter" class="pill-select" aria-label="Filter by team">
           <option value="all">All Teams</option>
         </select>
-        <label class="checkbox-label" id="onlyMineWrap" data-role-visible-to="Coach" hidden>
-          <input id="onlyMineToggle" type="checkbox" data-testid="only-mine-toggle">
-          <span>Only My Players</span>
-        </label>
-        <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
         <button id="toggleAdvancedFilter" class="btn btn-secondary" type="button" data-testid="advanced-filter-toggle" hidden>Advanced Filter</button>
-        <a class="btn btn-secondary" href="./S3-team-management.html">Manage Teams</a>
-        <a class="btn btn-secondary" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin">Admin Users</a>
+        <button id="toggleAddPlayer" class="btn btn-primary" type="button">Add Player</button>
       </div>
 
       <div class="advanced-filter-panel" id="advancedFilterPanel" data-testid="advanced-filter-panel" hidden>
@@ -55,6 +49,10 @@
             </select>
           </div>
           <div class="inline-actions">
+            <label class="checkbox-label" id="onlyMineWrap" data-role-visible-to="Coach" hidden>
+              <input id="onlyMineToggle" type="checkbox" data-testid="only-mine-toggle">
+              <span>Only My Players</span>
+            </label>
             <button id="advancedFilterClear" class="btn btn-secondary" type="button" data-testid="advanced-filter-clear">Clear</button>
           </div>
         </div>
