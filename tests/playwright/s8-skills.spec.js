@@ -1,4 +1,13 @@
 const { test, expect } = require('@playwright/test');
+const { Pool } = require('pg');
+const path = require('node:path');
+const { purgeSoccerPositionOrphans } = require('../../scripts/purge-soccer-position-orphans.js');
+
+try {
+  require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+} catch (err) {
+  // optional when DATABASE_URL is already set
+}
 
 async function loginAs(page, email) {
   await page.goto('/S0-login.html');
@@ -85,6 +94,18 @@ test.describe('S8 Skills page', () => {
     await loginAs(page, 'maria@vantageiq.club');
   });
 
+  test.afterAll(async () => {
+    if (!process.env.DATABASE_URL) {
+      return;
+    }
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    try {
+      await purgeSoccerPositionOrphans(pool);
+    } finally {
+      await pool.end();
+    }
+  });
+
   test('SystemAdmin sees the seeded Soccer catalog', async ({ page }) => {
     await page.goto('/S8-skills.html');
 
@@ -116,15 +137,26 @@ test.describe('S8 Skills page', () => {
     await expect(page.locator('#sportsTableBody tr', { hasText: name })).toHaveCount(1);
   });
 
-  test('Add Position flow creates a position under sport_soccer', async ({ page }) => {
-    const name = 'QA Position ' + Date.now().toString(36);
-    const created = await createPositionViaApi(page, name, 'sport_soccer');
+  test('Add Position flow creates a position under a disposable QA sport', async ({ page }) => {
+    const suffix = Date.now().toString(36);
+    const sportName = 'QA Pos Sport ' + suffix;
+    const positionName = 'QA Position ' + suffix;
+
+    const sportCreated = await createSportViaApi(page, sportName);
+    expect(sportCreated.status).toBe(201);
+    const sportId = sportCreated.body.data && sportCreated.body.data.id;
+    expect(sportId).toBeTruthy();
+    expect(sportId).not.toBe('sport_soccer');
+
+    const created = await createPositionViaApi(page, positionName, sportId);
     expect(created.status).toBe(201);
-    expect(created.body.data.name).toBe(name);
-    expect(created.body.data.sportId).toBe('sport_soccer');
+    expect(created.body.data.name).toBe(positionName);
+    expect(created.body.data.sportId).toBe(sportId);
 
     await page.goto('/S8-skills.html');
-    await expect(page.locator('#positionsTableBody tr', { hasText: name })).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Positions', exact: true }).click();
+    await page.selectOption('#positionSportFilter', sportId);
+    await expect(page.locator('#positionsTableBody tr', { hasText: positionName })).toHaveCount(1);
   });
 
   test('Add Skill flow creates a new skill and collision returns 409', async ({ page }) => {
