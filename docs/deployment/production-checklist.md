@@ -41,6 +41,7 @@ Use this session’s `$env:DATABASE_URL` / `$DATABASE_URL` for every `psql`, ver
 
 - [ ] Working tree / release commit is the intended `main` tip (or the exact commit you will run in prod).
 - [ ] Repo-root `.env_prod` exists and contains `DATABASE_URL` for production. Load it per the section above. **Do not commit** `.env_prod`.
+- [ ] Optional: set `STRUCTURED_LOG_PATH` in `.env_prod` if the structured log should not use the default `log/backend_logging.txt` (see `.env.example`).
 - [ ] Confirmed you are **not** using local `.env` for this session.
 - [ ] `psql` is on PATH, **or** you can run SQL via a one-off `pg.Client` (same pattern as the solutions doc).
 - [ ] App process that will serve the new code is identified (e.g. `node scripts/serve-mockup.js` host) so you can restart after schema + code land.
@@ -265,6 +266,7 @@ There is no automated down-migration in this repo.
 | Task | Command / location |
 |------|--------------------|
 | Prod credentials | Repo-root `.env_prod` (`DATABASE_URL=...`) — load into shell before ops |
+| Structured log path | Optional `STRUCTURED_LOG_PATH` in `.env` / `.env_prod` (see `.env.example`) |
 | Bootstrap (fresh DB) | Load `.env_prod`, then `npm run db:bootstrap` → `scripts/db-bootstrap.js` |
 | Apply one migration | `psql $env:DATABASE_URL -f apps/api/src/db/migrations/NNN_name.sql` (after `.env_prod`) |
 | Canonical schema | `apps/api/src/db/schema/deploy.sql` (+ keep in sync with migrations) |

@@ -43,6 +43,22 @@ describe('shared structured-logger', () => {
     expect(resolved.replace(/\\/g, '/')).toMatch(/\/log\/backend_logging\.txt$/);
   });
 
+  it('uses VIDEO_PROCESSING_AUDIT_LOG_PATH when STRUCTURED_LOG_PATH unset', async () => {
+    const legacyPath = path.join(os.tmpdir(), `legacy-audit-${Date.now()}-${Math.random()}.txt`);
+    delete process.env.STRUCTURED_LOG_PATH;
+    process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = legacyPath;
+    const { getLogPath } = await import('../../../../../scripts/logging/structured-logger.js');
+    expect(getLogPath()).toBe(path.resolve(legacyPath));
+  });
+
+  it('prefers STRUCTURED_LOG_PATH over legacy VIDEO_PROCESSING_AUDIT_LOG_PATH', async () => {
+    const legacyPath = path.join(os.tmpdir(), `legacy-audit-${Date.now()}-${Math.random()}.txt`);
+    process.env.STRUCTURED_LOG_PATH = tempLogPath;
+    process.env.VIDEO_PROCESSING_AUDIT_LOG_PATH = legacyPath;
+    const { getLogPath } = await import('../../../../../scripts/logging/structured-logger.js');
+    expect(getLogPath()).toBe(path.resolve(tempLogPath));
+  });
+
   it('writes timestamp, functionality, and optional userId', async () => {
     const { logEvent, getLogPath } = await import('../../../../../scripts/logging/structured-logger.js');
     expect(getLogPath()).toBe(tempLogPath);
