@@ -147,6 +147,22 @@
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       }
 
+      function firstLeadTeamForCoach(teams, currentUser) {
+        const actorEmail = String(currentUser && currentUser.email || '').trim().toLowerCase();
+        const actorName = String(currentUser && currentUser.name || '').trim().toLowerCase();
+        return teams.find(function (team) {
+          const teamCoachEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+          const teamCoachName = String(team.leadCoach || '').trim().toLowerCase();
+          if (actorEmail && teamCoachEmail && teamCoachEmail === actorEmail) {
+            return true;
+          }
+          if (actorName && teamCoachName && teamCoachName === actorName) {
+            return true;
+          }
+          return false;
+        }) || null;
+      }
+
       function fillTeams() {
         const teams = MockupApi.listTeams() || [];
         teamFilter.innerHTML = '';
@@ -156,8 +172,15 @@
           opt.textContent = team.name;
           teamFilter.appendChild(opt);
         });
-        const u19 = teams.find(function (t) { return t.name === 'U19 Prime'; });
-        if (u19) teamFilter.value = String(u19.id);
+        if (!teams.length) {
+          return;
+        }
+        const currentUser = MockupApi.getCurrentUser && MockupApi.getCurrentUser();
+        let defaultTeam = teams[0];
+        if (currentUser && currentUser.role === 'Coach') {
+          defaultTeam = firstLeadTeamForCoach(teams, currentUser) || teams[0];
+        }
+        teamFilter.value = String(defaultTeam.id);
       }
 
       function renderList() {

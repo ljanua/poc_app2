@@ -143,4 +143,63 @@ test.describe('S10 Games + Match History Performance', () => {
     await page.getByTestId('nav-games').click();
     await expect(page).toHaveURL(/S10-games\.html/);
   });
+
+  test('Coach Joao defaults Team filter to lead team U19 Prime (AE1)', async ({ page }) => {
+    await page.goto('/S10-games.html');
+    await expect(page.getByTestId('games-list-view')).toBeVisible();
+
+    const selected = page.getByTestId('games-team-filter');
+    await expect(selected.locator('option:checked')).toHaveText('U19 Prime');
+
+    const selectedId = await selected.inputValue();
+    const expectedId = await page.evaluate(() => {
+      const teams = window.MockupApi.listTeams() || [];
+      const u19 = teams.find((t) => t.name === 'U19 Prime');
+      return u19 ? String(u19.id) : null;
+    });
+    expect(selectedId).toBe(expectedId);
+  });
+
+  test('SystemAdmin defaults Team filter to first list team (not U19 hardcode)', async ({ page }) => {
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => {
+      window.localStorage.removeItem('vantageiq_mockup_v2');
+    });
+    await page.fill('#email', 'maria@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management/);
+
+    await page.goto('/S10-games.html');
+    await expect(page.getByTestId('games-list-view')).toBeVisible();
+
+    const expected = await page.evaluate(() => {
+      const teams = window.MockupApi.listTeams() || [];
+      return teams[0] ? { id: String(teams[0].id), name: teams[0].name } : null;
+    });
+    expect(expected).not.toBeNull();
+
+    const selected = page.getByTestId('games-team-filter');
+    await expect(selected.locator('option:checked')).toHaveText(expected.name);
+    expect(await selected.inputValue()).toBe(expected.id);
+  });
+
+  test('Coach with no lead teams selects first option without throw (AE2)', async ({ page }) => {
+    await page.goto('/S10-games.html');
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      (store.teams || []).forEach((team) => {
+        team.leadCoachEmail = 'other@vantageiq.club';
+        team.leadCoach = 'Other Coach';
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S10-games.html');
+    await expect(page.getByTestId('games-list-view')).toBeVisible();
+
+    const selected = page.getByTestId('games-team-filter');
+    const firstOption = selected.locator('option').first();
+    await expect(selected.locator('option:checked')).toHaveText(await firstOption.textContent());
+  });
 });
