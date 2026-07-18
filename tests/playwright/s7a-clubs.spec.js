@@ -48,9 +48,23 @@ test.describe('S7a Clubs page', () => {
     const created = await createClubViaApi(page, name);
     expect(created.status).toBe(201);
     expect(created.body.data.name).toBe(name);
+    expect(created.body.data.defaultSportId).toBe('sport_soccer');
 
     await page.goto('/S7a-clubs.html');
     await expect(page.locator('tbody tr', { hasText: name })).toHaveCount(1);
+    await expect(page.locator('tbody tr', { hasText: name }).getByTestId('club-default-sport')).toContainText(/Soccer/i);
+  });
+
+  test('Add Club UI persists Default sport', async ({ page }) => {
+    const name = 'QA Sport ' + Date.now().toString(36);
+    await page.goto('/S7a-clubs.html');
+    await page.getByTestId('open-create-club').click();
+    await page.fill('#createClubName', name);
+    await expect(page.getByTestId('create-club-default-sport')).toBeVisible();
+    await page.getByTestId('create-club-default-sport').selectOption('sport_soccer');
+    await page.locator('#createClubForm button[type="submit"]').click();
+    await expect(page.locator('tbody tr', { hasText: name })).toHaveCount(1);
+    await expect(page.locator('tbody tr', { hasText: name }).getByTestId('club-default-sport')).toContainText(/Soccer/i);
   });
 
   test('Add Club rejects a duplicate name with 409', async ({ page }) => {

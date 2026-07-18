@@ -24,7 +24,7 @@ test.describe('Club Admin role', () => {
     await expect(page.locator('#teamFilter')).toContainText('U19 Prime');
     await expect(page.getByTestId('nav-users')).toBeVisible();
     await expect(page.getByTestId('nav-clubs')).toBeHidden();
-    await expect(page.getByTestId('nav-skills')).toBeHidden();
+    await expect(page.getByTestId('nav-skills')).toBeVisible();
     await expect(page.getByTestId('advanced-filter-toggle')).toBeVisible();
   });
 

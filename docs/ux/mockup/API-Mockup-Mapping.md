@@ -276,6 +276,8 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 ## Clubs Admin (S7a) + S7 per-user club assignment
 
 - `clubs.status` (`active` / `inactive`) lands via `apps/api/src/db/migrations/014_clubs_status.sql`; every existing seeded club backfills to `active`.
+- Clubs carry `defaultSportId` (`clubs.default_sport_id`, migration `031_clubs_default_sport.sql`, backfill `sport_soccer`). S7a Add/Update Club collect **Default sport**; list table shows it. `POST/PATCH /v1/clubs` accept optional `defaultSportId` (omit → Soccer on create; keep existing on update when omitted).
+- S8 Sport filter (`#positionSportFilter`) defaults via `MockupApi.resolveDefaultSportId`: SystemAdmin → Soccer; Coach/ClubAdmin → primary club (`coach_clubs.created_at` ASC) `defaultSportId`, with Soccer/first-active fallback. Skills/Sports nav is visible to SystemAdmin, ClubAdmin, and Coach; catalog writes remain SystemAdmin-only (read-only notice for club users).
 - `POST /v1/users` (Create User) accepts optional `clubId`. Club is **required** when the created role is `Coach` or `ClubAdmin` (`400 validation_error` if missing after ClubAdmin sole-club defaulting). Club is **optional** when creating `SystemAdmin`. ClubAdmin actors may only assign a club they own (`403 forbidden_scope` otherwise); if they own exactly one club and omit `clubId`, the server defaults to that club. Membership is validated before the user INSERT so failed creates do not leave orphan users. S7 Create User modal exposes `#createClubSelect` / `[data-testid="create-club-select"]` (required asterisk toggles with create-role; ClubAdmin sole club is auto-selected and disabled). Separate Assign Club remains for adding further clubs.
 - The `GET /v1/users` payload now includes `clubIds` (array of `coach_clubs` club ids) so the S7 inline badge list can render without a second lookup.
 - `GET /v1/clubs?status=active|inactive|all` defaults to `active` for both roles; SystemAdmin sees every matching club, Coach sees only their `coach_clubs` set.
@@ -305,7 +307,7 @@ The Playwright suite enforces a single invariant: **at least 3 teams must be ava
 
 - Third role `ClubAdmin` (seed `rita@vantageiq.club`) on `coach_clubs` like Coach.
 - Club-scoped players/teams/clubs lists; no Only My Players lead narrowing.
-- Users nav: `data-role-visible-to="SystemAdmin,ClubAdmin"`; Clubs/Skills remain SystemAdmin-only.
+- Users nav: `data-role-visible-to="SystemAdmin,ClubAdmin"`; Clubs remain SystemAdmin-only; Skills/Sports nav visible to SystemAdmin, ClubAdmin, and Coach (S8 writes stay SystemAdmin-only).
 - User writes resolve `actorEmail`; Club Admin may manage Coach and ClubAdmin users in shared clubs only (not self, not SystemAdmin). ClubAdmin create/change-role allowlist is Coach + ClubAdmin.
 - Team create/update allow `ClubAdmin` with club membership checks.
 

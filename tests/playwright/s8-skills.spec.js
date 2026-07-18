@@ -277,36 +277,42 @@ test.describe('S8 Skills page', () => {
     await expect(page.locator('#skillsTableBody tr', { hasText: skillName })).toHaveCount(0);
   });
 
-  test('Role gating: Coach visiting S8 sees the 403 notice and panels are hidden', async ({ page }) => {
+  test('Role gating: Coach visiting S8 sees read-only catalog and write controls hidden', async ({ page }) => {
     await loginAs(page, 'joao@vantageiq.club');
     await page.goto('/S8-skills.html');
 
-    // 403 notice is visible
     await expect(page.locator('#roleNotice')).toBeVisible();
+    await expect(page.locator('#roleNotice')).toContainText(/Read-only/i);
+    await expect(page.locator('#skillPanels')).toBeVisible();
+    await expect(page.getByTestId('position-sport-filter')).toHaveValue('sport_soccer');
 
-    // The four admin panels are hidden from a Coach actor
     await expect(page.locator('[data-testid="add-sport"]')).toBeHidden();
     await expect(page.locator('[data-testid="add-position"]')).toBeHidden();
     await expect(page.locator('[data-testid="add-skill"]')).toBeHidden();
     await expect(page.locator('#assignSkillsButton')).toBeHidden();
   });
 
-  test('Nav item role gating: Skills nav is hidden for Coach, visible for SystemAdmin', async ({ page }) => {
-    // Coach view: Skills nav item should be hidden
+  test('Nav item role gating: Skills nav is visible for Coach and SystemAdmin', async ({ page }) => {
     await loginAs(page, 'joao@vantageiq.club');
     await page.goto('/S1-player-list.html');
-    await expect(page.getByTestId('nav-skills')).toBeHidden();
-    await expect(page.getByTestId('nav-sports')).toBeHidden();
+    await expect(page.getByTestId('nav-skills')).toBeVisible();
+    await expect(page.getByTestId('nav-sports')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Capture' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'My Clips' })).toBeVisible();
 
-    // SystemAdmin view: Skills + Sports visible; Capture / My Clips hidden
     await loginAs(page, 'maria@vantageiq.club');
     await page.goto('/S1-player-list.html');
     await expect(page.getByTestId('nav-skills')).toBeVisible();
     await expect(page.getByTestId('nav-sports')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Capture' })).toBeHidden();
     await expect(page.getByRole('link', { name: 'My Clips' })).toBeHidden();
+  });
+
+  test('SystemAdmin S8 Positions sport filter defaults to Soccer', async ({ page }) => {
+    await loginAs(page, 'maria@vantageiq.club');
+    await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Positions', exact: true }).click();
+    await expect(page.getByTestId('position-sport-filter')).toHaveValue('sport_soccer');
   });
 
   test('SystemAdmin Sports nav opens S8 Sports tab (AE1)', async ({ page }) => {

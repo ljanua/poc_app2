@@ -55,6 +55,7 @@
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Default sport</th>
                 <th>Status</th>
                 <th>Coaches</th>
                 <th>Teams</th>
@@ -100,11 +101,11 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
-      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin" data-testid="nav-sports" hidden>
+      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin,ClubAdmin,Coach" data-testid="nav-sports" hidden>
         <span class="nav-icon">⚽</span>
         <span>Sports</span>
       </a>
-      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin,ClubAdmin,Coach" data-testid="nav-skills" hidden>
         <span class="nav-icon">🧠</span>
         <span>Skills</span>
       </a>
@@ -120,6 +121,8 @@
       <form id="createClubForm" class="modal-form">
         <label class="form-label" for="createClubName">Club Name <span class="required">*</span></label>
         <input id="createClubName" type="text" required minlength="2" maxlength="60">
+        <label class="form-label" for="createClubDefaultSport">Default sport <span class="required">*</span></label>
+        <select id="createClubDefaultSport" data-testid="create-club-default-sport" required></select>
         <p class="error-msg" id="createClubError">Club name must be 2-60 characters and unique.</p>
 
         <div class="inline-actions">
@@ -140,6 +143,8 @@
         <div class="notice">Selected club: <strong id="renameTargetClub">-</strong></div>
         <label class="form-label" for="renameClubName">New Name <span class="required">*</span></label>
         <input id="renameClubName" type="text" required minlength="2" maxlength="60">
+        <label class="form-label" for="renameClubDefaultSport">Default sport <span class="required">*</span></label>
+        <select id="renameClubDefaultSport" data-testid="rename-club-default-sport" required></select>
         <p class="error-msg" id="renameClubError">Club name must be 2-60 characters and unique.</p>
 
         <div class="inline-actions">
@@ -208,7 +213,8 @@
         actorEmail: null,
         statusFilter: 'active',
         selectedClubId: null,
-        selectedClubName: null
+        selectedClubName: null,
+        selectedClubDefaultSportId: 'sport_soccer'
       };
 
       const sessionUser = MockupApi.getCurrentUser();
@@ -255,6 +261,21 @@
         btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
       });
 
+      function populateSportSelect(selectEl, selectedId) {
+        const sports = MockupApi.listSports(state.viewRole, state.actorEmail, 'active') || [];
+        selectEl.innerHTML = '';
+        sports.forEach(function (sport) {
+          const opt = document.createElement('option');
+          opt.value = sport.id;
+          opt.textContent = sport.name;
+          if (sport.id === selectedId) opt.selected = true;
+          selectEl.appendChild(opt);
+        });
+        if (!sports.find(function (s) { return s.id === selectedId; }) && sports.length) {
+          selectEl.value = sports[0].id;
+        }
+      }
+
       function setAdminActionState() {
         const isAdmin = state.viewRole === 'SystemAdmin';
         roleBadge.textContent = state.viewRole;
@@ -295,17 +316,20 @@
           const tr = document.createElement('tr');
           tr.setAttribute('data-club-id', club.id);
           tr.setAttribute('data-club-name', club.name);
+          tr.setAttribute('data-club-default-sport', club.defaultSportId || 'sport_soccer');
           tr.setAttribute('data-status', club.status || 'active');
           const statusBadge = (club.status || 'active') === 'active'
             ? '<span class="badge badge-improving">Active</span>'
             : '<span class="badge badge-declining">Inactive</span>';
+          const defaultSportLabel = club.defaultSportName || club.defaultSportId || 'Soccer';
           tr.innerHTML =
             '<td>' + escapeHtml(club.name) + '</td>' +
+            '<td data-testid="club-default-sport">' + escapeHtml(defaultSportLabel) + '</td>' +
             '<td>' + statusBadge + '</td>' +
             '<td>' + (club.coachCount == null ? '—' : club.coachCount) + '</td>' +
             '<td>' + (club.teamCount == null ? '—' : club.teamCount) + '</td>' +
             '<td><div class="inline-actions">' +
-              '<button class="mini-btn js-club-action js-rename-club" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Update</button>' +
+              '<button class="mini-btn js-club-action js-rename-club" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '" data-club-default-sport="' + escapeHtml(club.defaultSportId || 'sport_soccer') + '">Update</button>' +
               '<button class="mini-btn js-club-action js-assign-coaches" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Assign Coach(s)</button>' +
               '<button class="mini-btn js-club-action js-assign-teams" data-club-id="' + escapeHtml(club.id) + '" data-club-name="' + escapeHtml(club.name) + '">Assign Team(s)</button>' +
               ((club.status || 'active') === 'active'
@@ -384,6 +408,7 @@
       document.getElementById('openCreateClub').addEventListener('click', function () {
         document.getElementById('createClubName').value = '';
         document.getElementById('createClubError').classList.remove('show');
+        populateSportSelect(document.getElementById('createClubDefaultSport'), 'sport_soccer');
         openModal('createClubModal');
       });
 
@@ -398,9 +423,11 @@
         if (renameBtn) {
           state.selectedClubId = renameBtn.getAttribute('data-club-id');
           state.selectedClubName = renameBtn.getAttribute('data-club-name');
+          state.selectedClubDefaultSportId = renameBtn.getAttribute('data-club-default-sport') || 'sport_soccer';
           document.getElementById('renameTargetClub').textContent = state.selectedClubName;
           document.getElementById('renameClubName').value = state.selectedClubName;
           document.getElementById('renameClubError').classList.remove('show');
+          populateSportSelect(document.getElementById('renameClubDefaultSport'), state.selectedClubDefaultSportId);
           openModal('renameClubModal');
           return;
         }
@@ -455,7 +482,12 @@
       document.getElementById('createClubForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('createClubName').value.trim();
-        const response = MockupApi.createClub({ name: name }, state.viewRole, state.actorEmail);
+        const defaultSportId = document.getElementById('createClubDefaultSport').value;
+        const response = MockupApi.createClub(
+          { name: name, defaultSportId: defaultSportId },
+          state.viewRole,
+          state.actorEmail
+        );
         if (response.status >= 400) {
           document.getElementById('createClubError').textContent = response.message || 'Could not create the club.';
           document.getElementById('createClubError').classList.add('show');
@@ -470,7 +502,13 @@
       document.getElementById('renameClubForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('renameClubName').value.trim();
-        const response = MockupApi.updateClub(state.selectedClubId, { name: name }, state.viewRole, state.actorEmail);
+        const defaultSportId = document.getElementById('renameClubDefaultSport').value;
+        const response = MockupApi.updateClub(
+          state.selectedClubId,
+          { name: name, defaultSportId: defaultSportId },
+          state.viewRole,
+          state.actorEmail
+        );
         if (response.status >= 400) {
           document.getElementById('renameClubError').textContent = response.message || 'Could not update the club.';
           document.getElementById('renameClubError').classList.add('show');

@@ -39,12 +39,14 @@ CREATE TABLE IF NOT EXISTS clubs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  default_sport_id TEXT NOT NULL DEFAULT 'sport_soccer',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_clubs_name ON clubs(name);
 CREATE INDEX IF NOT EXISTS idx_clubs_status_name ON clubs(status, name);
+CREATE INDEX IF NOT EXISTS idx_clubs_default_sport_id ON clubs(default_sport_id);
 
 CREATE TABLE IF NOT EXISTS coach_clubs (
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -163,6 +165,20 @@ CREATE TABLE IF NOT EXISTS sports (
 
 CREATE INDEX IF NOT EXISTS idx_sports_name ON sports(name);
 CREATE INDEX IF NOT EXISTS idx_sports_status_name ON sports(status, name);
+
+ALTER TABLE clubs ADD COLUMN IF NOT EXISTS default_sport_id TEXT;
+UPDATE clubs SET default_sport_id = 'sport_soccer' WHERE default_sport_id IS NULL;
+ALTER TABLE clubs ALTER COLUMN default_sport_id SET DEFAULT 'sport_soccer';
+ALTER TABLE clubs ALTER COLUMN default_sport_id SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_clubs_default_sport_id ON clubs(default_sport_id);
+DO $$
+BEGIN
+  ALTER TABLE clubs
+    ADD CONSTRAINT clubs_default_sport_id_fkey
+    FOREIGN KEY (default_sport_id) REFERENCES sports(id) ON DELETE RESTRICT;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS positions (
   id TEXT PRIMARY KEY,

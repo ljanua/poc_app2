@@ -750,6 +750,8 @@ function toClubPayload(row) {
     id: row.id,
     name: row.name,
     status: row.status || 'active',
+    defaultSportId: row.defaultSportId || row.default_sport_id || 'sport_soccer',
+    defaultSportName: row.defaultSportName || row.default_sport_name || null,
     coachCount: row.coachCount === undefined || row.coachCount === null ? null : Number(row.coachCount),
     teamCount: row.teamCount === undefined || row.teamCount === null ? null : Number(row.teamCount)
   };
@@ -2967,12 +2969,15 @@ async function handlePlayersApi(req, res, requestUrl) {
       clubRows = await pool.query(
         `
           SELECT c.id, c.name, c.status,
+            c.default_sport_id AS "defaultSportId",
+            s.name AS "defaultSportName",
             (SELECT COUNT(*)::int FROM coach_clubs cc2 WHERE cc2.club_id = c.id) AS "coachCount",
             (SELECT COUNT(*)::int FROM teams t WHERE t.club_id = c.id) AS "teamCount"
           FROM clubs c
           INNER JOIN coach_clubs cc ON cc.club_id = c.id
+          LEFT JOIN sports s ON s.id = c.default_sport_id
           WHERE cc.user_id = $1 ${statusClause}
-          ORDER BY c.name ASC
+          ORDER BY cc.created_at ASC, c.name ASC
           `,
         [actor.id]
       );
@@ -2982,9 +2987,12 @@ async function handlePlayersApi(req, res, requestUrl) {
       clubRows = await pool.query(
         `
         SELECT c.id, c.name, c.status,
+          c.default_sport_id AS "defaultSportId",
+          s.name AS "defaultSportName",
           (SELECT COUNT(*)::int FROM coach_clubs cc2 WHERE cc2.club_id = c.id) AS "coachCount",
           (SELECT COUNT(*)::int FROM teams t WHERE t.club_id = c.id) AS "teamCount"
         FROM clubs c
+        LEFT JOIN sports s ON s.id = c.default_sport_id
         ${statusFilter === 'all' ? '' : 'WHERE c.status = $1'}
         ORDER BY c.name ASC
         `,
@@ -3013,6 +3021,19 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    let defaultSportId = String(payload.defaultSportId || '').trim();
+    if (!defaultSportId) {
+      defaultSportId = 'sport_soccer';
+    }
+    const sportRow = await pool.query(
+      `SELECT id, name FROM sports WHERE id = $1 AND status = 'active' LIMIT 1`,
+      [defaultSportId]
+    );
+    if (!sportRow.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The selected sport could not be found.'));
+      return;
+    }
+
     const existing = await pool.query(`SELECT id FROM clubs WHERE LOWER(name) = LOWER($1) LIMIT 1`, [name]);
     if (existing.rows[0]) {
       sendJson(res, 409, appError(409, 'conflict', 'A club with this name already exists.'));
@@ -3021,10 +3042,18 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const clubId = `c_${Date.now().toString(36)}`;
     const inserted = await pool.query(
-      `INSERT INTO clubs (id, name, status) VALUES ($1, $2, 'active') RETURNING id, name, status`,
-      [clubId, name]
+      `INSERT INTO clubs (id, name, status, default_sport_id) VALUES ($1, $2, 'active', $3)
+       RETURNING id, name, status, default_sport_id AS "defaultSportId"`,
+      [clubId, name, defaultSportId]
     );
-    sendJson(res, 201, { data: toClubPayload({ ...inserted.rows[0], coachCount: 0, teamCount: 0 }) });
+    sendJson(res, 201, {
+      data: toClubPayload({
+        ...inserted.rows[0],
+        defaultSportName: sportRow.rows[0].name,
+        coachCount: 0,
+        teamCount: 0
+      })
+    });
     return;
   }
 
@@ -3045,7 +3074,10 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const existing = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
+    const existing = await pool.query(
+      `SELECT id, default_sport_id AS "defaultSportId" FROM clubs WHERE id = $1 LIMIT 1`,
+      [clubId]
+    );
     if (!existing.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected club was not found anymore. Refresh and try again.'));
       return;
@@ -3057,9 +3089,23 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    let defaultSportId = String(payload.defaultSportId || '').trim();
+    if (!defaultSportId) {
+      defaultSportId = existing.rows[0].defaultSportId || 'sport_soccer';
+    }
+    const sportRow = await pool.query(
+      `SELECT id, name FROM sports WHERE id = $1 AND status = 'active' LIMIT 1`,
+      [defaultSportId]
+    );
+    if (!sportRow.rows[0]) {
+      sendJson(res, 400, appError(400, 'validation_error', 'The selected sport could not be found.'));
+      return;
+    }
+
     const updated = await pool.query(
-      `UPDATE clubs SET name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, status`,
-      [name, clubId]
+      `UPDATE clubs SET name = $1, default_sport_id = $2, updated_at = NOW() WHERE id = $3
+       RETURNING id, name, status, default_sport_id AS "defaultSportId"`,
+      [name, defaultSportId, clubId]
     );
     const counts = await pool.query(
       `SELECT
@@ -3067,7 +3113,13 @@ async function handlePlayersApi(req, res, requestUrl) {
          (SELECT COUNT(*)::int FROM teams WHERE club_id = $1) AS "teamCount"`,
       [clubId]
     );
-    sendJson(res, 200, { data: toClubPayload({ ...updated.rows[0], ...counts.rows[0] }) });
+    sendJson(res, 200, {
+      data: toClubPayload({
+        ...updated.rows[0],
+        defaultSportName: sportRow.rows[0].name,
+        ...counts.rows[0]
+      })
+    });
     return;
   }
 
@@ -3095,8 +3147,14 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const updated = await pool.query(
-      `UPDATE clubs SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, status`,
+      `UPDATE clubs SET status = $1, updated_at = NOW() WHERE id = $2
+       RETURNING id, name, status, default_sport_id AS "defaultSportId"`,
       [status, clubId]
+    );
+    const sportName = await pool.query(
+      `SELECT s.name AS "defaultSportName" FROM clubs c
+       LEFT JOIN sports s ON s.id = c.default_sport_id WHERE c.id = $1`,
+      [clubId]
     );
     const counts = await pool.query(
       `SELECT
@@ -3104,7 +3162,13 @@ async function handlePlayersApi(req, res, requestUrl) {
          (SELECT COUNT(*)::int FROM teams WHERE club_id = $1) AS "teamCount"`,
       [clubId]
     );
-    sendJson(res, 200, { data: toClubPayload({ ...updated.rows[0], ...counts.rows[0] }) });
+    sendJson(res, 200, {
+      data: toClubPayload({
+        ...updated.rows[0],
+        defaultSportName: sportName.rows[0] ? sportName.rows[0].defaultSportName : null,
+        ...counts.rows[0]
+      })
+    });
     return;
   }
 

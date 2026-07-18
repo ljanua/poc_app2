@@ -172,7 +172,7 @@
   function createSeed() {
     return {
       clubs: [
-        { id: 'c_default', name: 'VantageIQ Club' }
+        { id: 'c_default', name: 'VantageIQ Club', status: 'active', defaultSportId: 'sport_soccer' }
       ],
       coachClubs: [
         { userId: 'u_admin_maria', clubId: 'c_default' },
@@ -1629,8 +1629,12 @@
       const decorate = (club) => {
         const coachCount = store.coachClubs.filter((entry) => entry.clubId === club.id).length;
         const teamCount = store.teams.filter((entry) => entry.clubId === club.id).length;
+        const defaultSportId = club.defaultSportId || 'sport_soccer';
+        const sport = (store.sports || []).find((entry) => entry.id === defaultSportId);
         return Object.assign({}, club, {
           status: club.status || 'active',
+          defaultSportId: defaultSportId,
+          defaultSportName: sport ? sport.name : null,
           coachCount: coachCount,
           teamCount: teamCount
         });
@@ -1638,12 +1642,12 @@
 
       let scoped;
       if ((role === 'Coach' || role === 'ClubAdmin') && actorUser) {
-        const allowedClubIds = new Set(
-          store.coachClubs
-            .filter((entry) => entry.userId === actorUser.id || entry.userId === actorUser.email)
-            .map((entry) => entry.clubId)
+        const memberships = store.coachClubs.filter(
+          (entry) => entry.userId === actorUser.id || entry.userId === actorUser.email
         );
-        scoped = store.clubs.filter((club) => allowedClubIds.has(club.id));
+        const allowedClubIds = memberships.map((entry) => entry.clubId);
+        const byId = new Map(store.clubs.map((club) => [club.id, club]));
+        scoped = allowedClubIds.map((id) => byId.get(id)).filter(Boolean);
       } else {
         scoped = store.clubs.slice();
       }
@@ -1655,6 +1659,7 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/clubs', {
           name: payload && payload.name,
+          defaultSportId: payload && payload.defaultSportId,
           actorRole,
           actorEmail
         });
@@ -1678,8 +1683,24 @@
         return { status: 409, code: 'conflict', message: 'A club with this name already exists.' };
       }
 
+      let defaultSportId = String((payload && payload.defaultSportId) || '').trim() || 'sport_soccer';
+      const sport = (store.sports || []).find(
+        (entry) => entry.id === defaultSportId && (entry.status || 'active') === 'active'
+      );
+      if (!sport) {
+        return { status: 400, code: 'validation_error', message: 'The selected sport could not be found.' };
+      }
+
       const nextId = 'c_' + Date.now().toString(36);
-      const created = { id: nextId, name: name, status: 'active', coachCount: 0, teamCount: 0 };
+      const created = {
+        id: nextId,
+        name: name,
+        status: 'active',
+        defaultSportId: defaultSportId,
+        defaultSportName: sport.name,
+        coachCount: 0,
+        teamCount: 0
+      };
       store.clubs.push(created);
       saveStore(store);
       return { status: 201, code: 'created', club: clone(created) };
@@ -1689,6 +1710,7 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('PATCH', '/clubs/' + encodeURIComponent(clubId), {
           name: payload && payload.name,
+          defaultSportId: payload && payload.defaultSportId,
           actorRole,
           actorEmail
         });
@@ -1714,9 +1736,47 @@
       if (store.clubs.some((other) => other.id !== clubId && other.name.toLowerCase() === name.toLowerCase())) {
         return { status: 409, code: 'conflict', message: 'A club with this name already exists.' };
       }
+      let defaultSportId = String((payload && payload.defaultSportId) || '').trim();
+      if (!defaultSportId) {
+        defaultSportId = club.defaultSportId || 'sport_soccer';
+      }
+      const sport = (store.sports || []).find(
+        (entry) => entry.id === defaultSportId && (entry.status || 'active') === 'active'
+      );
+      if (!sport) {
+        return { status: 400, code: 'validation_error', message: 'The selected sport could not be found.' };
+      }
       club.name = name;
+      club.defaultSportId = defaultSportId;
       saveStore(store);
-      return { status: 200, code: 'ok', club: clone(club) };
+      return {
+        status: 200,
+        code: 'ok',
+        club: clone(Object.assign({}, club, { defaultSportName: sport.name }))
+      };
+    },
+
+    resolveDefaultSportId(actorRole, actorEmail) {
+      const activeSports = this.listSports(actorRole, actorEmail, 'active') || [];
+      const pickFallback = () => {
+        const soccer = activeSports.find((sport) => sport.id === 'sport_soccer');
+        if (soccer) return soccer.id;
+        return activeSports.length ? activeSports[0].id : 'sport_soccer';
+      };
+      const resolveCandidate = (candidateId) => {
+        if (candidateId && activeSports.some((sport) => sport.id === candidateId)) {
+          return candidateId;
+        }
+        return pickFallback();
+      };
+
+      if (actorRole === 'SystemAdmin' || !actorRole) {
+        return resolveCandidate('sport_soccer');
+      }
+
+      const clubs = this.listClubs(actorRole, actorEmail, 'active') || [];
+      const primary = clubs.length ? clubs[0] : null;
+      return resolveCandidate(primary && primary.defaultSportId);
     },
 
     setClubStatus(clubId, status, actorRole, actorEmail) {

@@ -47,7 +47,7 @@
         <a class="btn btn-secondary" href="./S7-admin-user-management.html">User &amp; Role Management</a>
       </div>
 
-      <div class="role-notice" id="roleNotice" style="margin-top: 1rem;">
+      <div class="role-notice" id="roleNotice" style="margin-top: 1rem; display: none;">
         You do not have permission to manage skills.
       </div>
 
@@ -63,7 +63,7 @@
         <section class="table-card" role="tabpanel" id="tabpanel-sports" data-tab-id="sports" aria-labelledby="tab-sports" hidden>
           <div class="modal-header">
             <h2>Sports</h2>
-            <button class="btn btn-primary" data-testid="add-sport" type="button">Add Sport</button>
+            <button class="btn btn-primary js-admin-write" data-testid="add-sport" type="button">Add Sport</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="sportsTable" data-testid="sports-table">
@@ -90,7 +90,7 @@
               <span>Sport:</span>
               <select data-testid="position-sport-filter" id="positionSportFilter"></select>
             </label>
-            <button class="btn btn-primary" data-testid="add-position" type="button">Add Position</button>
+            <button class="btn btn-primary js-admin-write" data-testid="add-position" type="button">Add Position</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="positionsTable" data-testid="positions-table">
@@ -111,7 +111,7 @@
         <section class="table-card" role="tabpanel" id="tabpanel-skills" data-tab-id="skills" aria-labelledby="tab-skills" hidden>
           <div class="modal-header">
             <h2>Skills</h2>
-            <button class="btn btn-primary" data-testid="add-skill" type="button">Add Skill</button>
+            <button class="btn btn-primary js-admin-write" data-testid="add-skill" type="button">Add Skill</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="skillsTable" data-testid="skills-table">
@@ -137,7 +137,7 @@
               <span>Position:</span>
               <select data-testid="position-skills-filter" id="positionSkillsFilter"></select>
             </label>
-            <button class="btn btn-primary" data-testid="assign-skills" type="button">Assign Skills</button>
+            <button class="btn btn-primary js-admin-write" data-testid="assign-skills" id="assignSkillsButton" type="button">Assign Skills</button>
           </div>
           <div class="table-wrap">
             <table class="data-table" id="positionSkillsTable" data-testid="position-skills-table">
@@ -184,11 +184,11 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
-      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin" data-testid="nav-sports" hidden>
+      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin,ClubAdmin,Coach" data-testid="nav-sports" hidden>
         <span class="nav-icon">⚽</span>
         <span>Sports</span>
       </a>
-<a class="nav-item active" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+<a class="nav-item active" href="./S8-skills.html" data-role-visible-to="SystemAdmin,ClubAdmin,Coach" data-testid="nav-skills" hidden>
         <span class="nav-icon">🧠</span>
         <span>Skills</span>
       </a>
@@ -382,8 +382,15 @@
       const roleBadge = document.getElementById('roleBadge');
       const toast = document.getElementById('toast');
       const showInactiveToggle = document.getElementById('showInactiveToggle');
+      const canWriteCatalog = currentUser && currentUser.role === 'SystemAdmin';
+      const canViewCatalog = currentUser && (
+        currentUser.role === 'SystemAdmin' ||
+        currentUser.role === 'ClubAdmin' ||
+        currentUser.role === 'Coach'
+      );
 
-      if (!currentUser || currentUser.role !== 'SystemAdmin') {
+      if (!canViewCatalog) {
+        roleNotice.textContent = 'You do not have permission to manage skills.';
         roleNotice.style.display = 'block';
         skillPanels.style.display = 'none';
         const tabsBar = document.getElementById('skillsTabs');
@@ -402,10 +409,24 @@
 
       state.actorRole = currentUser.role;
       state.actorEmail = currentUser.email;
+      state.selectedSportId = MockupApi.resolveDefaultSportId(state.actorRole, state.actorEmail);
       roleBadge.textContent = state.actorRole;
-      roleNotice.style.display = 'none';
+      if (canWriteCatalog) {
+        roleNotice.style.display = 'none';
+      } else {
+        roleNotice.textContent = 'Read-only: catalog changes require SystemAdmin.';
+        roleNotice.style.display = 'block';
+      }
       skillPanels.style.display = '';
       MockupApi.applyRoleGatedNav(currentUser);
+
+      function applyWriteAccess() {
+        document.querySelectorAll('.js-admin-write').forEach(function (el) {
+          el.hidden = !canWriteCatalog;
+          el.style.display = canWriteCatalog ? '' : 'none';
+          if ('disabled' in el) el.disabled = !canWriteCatalog;
+        });
+      }
 
       function escapeHtml(value) {
         return String(value == null ? '' : value)
@@ -475,14 +496,17 @@
             '<td>' + escapeHtml(String(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11)) + '</td>' +
             '<td>' + statusBadge(sport.status || 'active') + '</td>' +
             '<td>' + (sport.positionCount == null ? '—' : sport.positionCount) + '</td>' +
-            '<td><div class="inline-actions">' +
-              '<button class="mini-btn" data-testid="rename-sport-' + escapeHtml(sport.id) + '" type="button">Edit</button>' +
-              ((sport.status || 'active') === 'active'
-                ? '<button class="mini-btn warn" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Deactivate</button>'
-                : '<button class="mini-btn positive" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Activate</button>') +
-            '</div></td>';
+            (canWriteCatalog
+              ? ('<td><div class="inline-actions">' +
+                '<button class="mini-btn js-admin-write" data-testid="rename-sport-' + escapeHtml(sport.id) + '" type="button">Edit</button>' +
+                ((sport.status || 'active') === 'active'
+                  ? '<button class="mini-btn warn js-admin-write" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Deactivate</button>'
+                  : '<button class="mini-btn positive js-admin-write" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Activate</button>') +
+                '</div></td>')
+              : '<td>—</td>');
           body.appendChild(tr);
         });
+        applyWriteAccess();
       }
 
       function populateSportFilter() {
@@ -517,12 +541,14 @@
             '<td>' + escapeHtml(position.name) + '</td>' +
             '<td>' + statusBadge(position.status || 'active') + '</td>' +
             '<td>' + (position.skillCount == null ? '—' : position.skillCount) + '</td>' +
-            '<td><div class="inline-actions">' +
-              '<button class="mini-btn" data-testid="rename-position-' + escapeHtml(position.id) + '" type="button">Rename</button>' +
-              ((position.status || 'active') === 'active'
-                ? '<button class="mini-btn warn" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Deactivate</button>'
-                : '<button class="mini-btn positive" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Activate</button>') +
-            '</div></td>';
+            (canWriteCatalog
+              ? ('<td><div class="inline-actions">' +
+                '<button class="mini-btn js-admin-write" data-testid="rename-position-' + escapeHtml(position.id) + '" type="button">Rename</button>' +
+                ((position.status || 'active') === 'active'
+                  ? '<button class="mini-btn warn js-admin-write" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Deactivate</button>'
+                  : '<button class="mini-btn positive js-admin-write" data-testid="toggle-position-status-' + escapeHtml(position.id) + '" type="button">Activate</button>') +
+                '</div></td>')
+              : '<td>—</td>');
           body.appendChild(tr);
         });
         // Auto-pick the first position for the Position Skills filter when
@@ -531,6 +557,7 @@
           state.selectedPositionId = positions[0].id;
         }
         populatePositionSkillsFilter(positions);
+        applyWriteAccess();
       }
 
       function populatePositionSkillsFilter(positions) {
@@ -568,15 +595,18 @@
             '<td data-testid="skill-abbreviation-cell">' + escapeHtml(abbr) + '</td>' +
             '<td>' + statusBadge(skill.status || 'active') + '</td>' +
             '<td>' + (skill.assignedPositionCount == null ? '—' : skill.assignedPositionCount) + '</td>' +
-            '<td><div class="inline-actions">' +
-              '<button class="mini-btn" data-testid="rename-skill-' + escapeHtml(skill.id) + '" type="button">Rename</button>' +
-              ((skill.status || 'active') === 'active'
-                ? '<button class="mini-btn warn" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Deactivate</button>'
-                : '<button class="mini-btn positive" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Activate</button>') +
-              '<button class="mini-btn danger" data-testid="delete-skill-' + escapeHtml(skill.id) + '" type="button">Delete</button>' +
-            '</div></td>';
+            (canWriteCatalog
+              ? ('<td><div class="inline-actions">' +
+                '<button class="mini-btn js-admin-write" data-testid="rename-skill-' + escapeHtml(skill.id) + '" type="button">Rename</button>' +
+                ((skill.status || 'active') === 'active'
+                  ? '<button class="mini-btn warn js-admin-write" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Deactivate</button>'
+                  : '<button class="mini-btn positive js-admin-write" data-testid="toggle-skill-status-' + escapeHtml(skill.id) + '" type="button">Activate</button>') +
+                '<button class="mini-btn danger js-admin-write" data-testid="delete-skill-' + escapeHtml(skill.id) + '" type="button">Delete</button>' +
+                '</div></td>')
+              : '<td>—</td>');
           body.appendChild(tr);
         });
+        applyWriteAccess();
       }
 
       function renderPositionSkills() {
@@ -598,9 +628,12 @@
           tr.innerHTML =
             '<td>' + escapeHtml(entry.skillName || entry.skillId) + '</td>' +
             '<td>' + statusBadge(entry.status || 'active') + '</td>' +
-            '<td><button class="mini-btn warn" data-testid="remove-skill-' + escapeHtml(state.selectedPositionId) + '-' + escapeHtml(entry.skillId) + '" type="button">Remove</button></td>';
+            (canWriteCatalog
+              ? ('<td><button class="mini-btn warn js-admin-write" data-testid="remove-skill-' + escapeHtml(state.selectedPositionId) + '-' + escapeHtml(entry.skillId) + '" type="button">Remove</button></td>')
+              : '<td>—</td>');
           body.appendChild(tr);
         });
+        applyWriteAccess();
       }
 
       function renderAll() {
@@ -610,6 +643,7 @@
         renderSkills();
         renderPositionSkills();
         refreshKpis();
+        applyWriteAccess();
       }
 
       // Toolbar toggle.
