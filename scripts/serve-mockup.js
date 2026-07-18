@@ -2630,6 +2630,7 @@ async function handlePlayersApi(req, res, requestUrl) {
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/players/dashboard`) {
     const playerName = normalizeLookup(requestUrl.searchParams.get('playerName') || requestUrl.searchParams.get('player') || '');
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
 
     const actorResult = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [actorEmail]);
     const actor = actorResult.rows[0] || null;
@@ -2639,11 +2640,18 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
+    if (!clubId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+      return;
+    }
+    const allowed = await assertActorMayUseClub(actor, clubId);
+    if (!allowed.ok) {
+      sendJson(res, allowed.error.status, allowed.error);
+      return;
+    }
 
     let dashboardRow = null;
-    if (isSystemAdmin) {
-      dashboardRow = await findPlayerDashboardByLookup(playerName);
-    } else if (actor.role === 'ClubAdmin') {
+    if (isSystemAdmin || actor.role === 'ClubAdmin') {
       const dashboardRows = await pool.query(
         `
           SELECT ${DASHBOARD_PLAYER_SELECT}
@@ -2651,12 +2659,12 @@ async function handlePlayersApi(req, res, requestUrl) {
           JOIN player_team_assignments a ON a.player_id = p.id
           JOIN teams t ON t.id = a.team_id
           LEFT JOIN player_stats ps ON ps.player_id = p.id
-          WHERE t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $2)
+          WHERE t.club_id = $2
             AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
           ORDER BY p.name ASC
           LIMIT 1
         `,
-        [playerName, actor.id]
+        [playerName, clubId]
       );
       dashboardRow = dashboardRows.rows[0] || null;
     } else {
@@ -2669,11 +2677,12 @@ async function handlePlayersApi(req, res, requestUrl) {
           JOIN users coach ON coach.id = t.lead_coach_user_id
           LEFT JOIN player_stats ps ON ps.player_id = p.id
           WHERE coach.id = $2
+            AND t.club_id = $3
             AND ($1 = '' OR LOWER(p.name) = LOWER($1) OR LOWER(p.normalized_name) = LOWER($1) OR p.id = $1)
           ORDER BY p.name ASC
           LIMIT 1
         `,
-        [playerName, actor.id]
+        [playerName, actor.id, clubId]
       );
       dashboardRow = dashboardRows.rows[0] || null;
     }
@@ -3569,17 +3578,14 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     let clubId = String(payload.clubId || '').trim();
     if (!clubId) {
-      if (effectiveRole === 'Coach' || effectiveRole === 'ClubAdmin') {
-        const defaultClub = await pool.query(
-          `SELECT club_id FROM coach_clubs WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`,
-          [actorUser.id]
-        );
-        clubId = defaultClub.rows[0] ? defaultClub.rows[0].club_id : '';
-      }
-      if (!clubId) {
-        sendJson(res, 400, appError(400, 'validation_error', 'Please select a club for this team.'));
-        return;
-      }
+      sendJson(res, 400, appError(400, 'validation_error', 'Please select a club for this team.'));
+      return;
+    }
+
+    const clubAllowed = await assertActorMayUseClub(actorUser, clubId);
+    if (!clubAllowed.ok) {
+      sendJson(res, clubAllowed.error.status, clubAllowed.error);
+      return;
     }
 
     const clubRow = await pool.query(`SELECT id FROM clubs WHERE id = $1 LIMIT 1`, [clubId]);
@@ -3912,30 +3918,22 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
     if (actor && actor.role === 'ClubAdmin' && actor.status === 'active') {
       const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
-      if (clubId) {
-        const allowed = await assertActorMayUseClub(actor, clubId);
-        if (!allowed.ok) {
-          sendJson(res, allowed.error.status, allowed.error);
-          return;
-        }
-        params.push(clubId);
-        const clubFilter = `
-          id IN (
-            SELECT user_id FROM coach_clubs WHERE club_id = $${params.length}
-          )
-        `;
-        whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
-      } else {
-        params.push(actor.id);
-        const clubFilter = `
-          id IN (
-            SELECT b.user_id FROM coach_clubs a
-            INNER JOIN coach_clubs b ON b.club_id = a.club_id
-            WHERE a.user_id = $${params.length}
-          )
-        `;
-        whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
+      if (!clubId) {
+        sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+        return;
       }
+      const allowed = await assertActorMayUseClub(actor, clubId);
+      if (!allowed.ok) {
+        sendJson(res, allowed.error.status, allowed.error);
+        return;
+      }
+      params.push(clubId);
+      const clubFilter = `
+        id IN (
+          SELECT user_id FROM coach_clubs WHERE club_id = $${params.length}
+        )
+      `;
+      whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
     }
 
     const userRows = await pool.query(`
@@ -4448,6 +4446,10 @@ async function handlePlayersApi(req, res, requestUrl) {
     // always applies for active Coaches. SystemAdmin bypasses both.
     const onlyMine = String(requestUrl.searchParams.get('onlyMine') || '').toLowerCase() === 'true';
     const actor = await resolveActorForPlayersList(actorEmail);
+    if (clubId && !actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
     if (actor) {
       if (!clubId) {
         sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));

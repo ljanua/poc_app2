@@ -2665,11 +2665,13 @@
 
     createTeam(payload, actorRole, actorEmail) {
       if (shouldUseBackendPlayersMode()) {
+        const storedClub = readActiveClubStorage();
+        const clubId = String((payload && payload.clubId) || (storedClub && storedClub.id) || '').trim();
         const response = backendRequest('POST', '/teams', {
           name: payload && payload.name,
           ageGroup: payload && payload.ageGroup,
           coachEmail: payload && payload.coachEmail,
-          clubId: payload && payload.clubId,
+          clubId: clubId,
           sportId: payload && payload.sportId,
           actorRole,
           actorEmail
@@ -3292,10 +3294,12 @@
     getDashboardPlayer(playerName) {
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
-        const response = backendRequest(
-          'GET',
-          '/players/dashboard?playerName=' + encodeURIComponent(normalizeLookup(playerName || '')) + (actorEmail ? '&actorEmail=' + encodeURIComponent(actorEmail) : '')
-        );
+        const storedClub = readActiveClubStorage();
+        const params = new URLSearchParams();
+        params.set('playerName', normalizeLookup(playerName || ''));
+        if (actorEmail) params.set('actorEmail', actorEmail);
+        if (storedClub && storedClub.id) params.set('clubId', storedClub.id);
+        const response = backendRequest('GET', '/players/dashboard?' + params.toString());
 
         if (response.status === 200 && response.body && response.body.data) {
           return clone(response.body.data);
@@ -3315,6 +3319,15 @@
       const selected = playerName ? findPlayerByName(store, playerName) : store.players[0];
       if (!selected) {
         return null;
+      }
+      const storedClub = readActiveClubStorage();
+      if (storedClub && storedClub.id) {
+        const team = (store.teams || []).find(function (entry) {
+          return entry.name === selected.teamName;
+        });
+        if (team && String(team.clubId) !== String(storedClub.id)) {
+          return null;
+        }
       }
       return buildDashboardSnapshot(store, selected);
     },
