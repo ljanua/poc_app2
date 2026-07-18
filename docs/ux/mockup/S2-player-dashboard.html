@@ -19,6 +19,7 @@
     <div class="content">
       <div class="toolbar toolbar-icon-actions">
         <a class="btn btn-secondary btn-icon" id="editPlayerLink" href="./S1-player-list.html" title="Edit Player" aria-label="Edit Player" hidden><span class="btn-icon-glyph" aria-hidden="true">✏️</span></a>
+        <a class="btn btn-secondary btn-icon" id="assessmentLink" data-testid="assessment-link" href="./S9-assessment.html" title="Assessment" aria-label="Assessment" hidden><span class="btn-icon-glyph" aria-hidden="true">📋</span></a>
         <button type="button" class="btn btn-secondary btn-icon" id="shareLinkButton" data-testid="share-link-button" title="Share link" aria-label="Share link" hidden><span class="btn-icon-glyph" aria-hidden="true">🔗</span></button>
         <button type="button" class="btn btn-secondary btn-icon" id="revokeShareButton" data-testid="revoke-share-button" title="Revoke share" aria-label="Revoke share" hidden><span class="btn-icon-glyph" aria-hidden="true">🚫</span></button>
       </div>
@@ -213,6 +214,20 @@
         </div>
       </div>
 
+      <div class="section stats-section is-collapsed" data-testid="assessment-history-section" data-section="assessment-history">
+        <button type="button" class="section-title section-toggle" id="toggle-assessment-history"
+          aria-expanded="false" aria-controls="body-assessment-history"
+          data-testid="dashboard-section-toggle-assessment-history">
+          Assessment History
+        </button>
+        <div class="section-body" id="body-assessment-history">
+          <div id="assessmentHistoryEmpty" class="muted" data-testid="assessment-history-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+            No assessments recorded yet.
+          </div>
+          <div id="assessmentHistoryList" data-testid="assessment-history-list"></div>
+        </div>
+      </div>
+
       <div class="section stats-section is-collapsed" data-testid="change-history-section" data-section="change-history">
         <button type="button" class="section-title section-toggle" id="toggle-change-history"
           aria-expanded="false" aria-controls="body-change-history"
@@ -349,6 +364,12 @@
         editPlayerLink.hidden = false;
       }
 
+      const assessmentLink = document.getElementById('assessmentLink');
+      if (assessmentLink && player.id !== undefined && player.id !== null) {
+        assessmentLink.href = './S9-assessment.html?playerId=' + encodeURIComponent(player.id);
+        assessmentLink.hidden = false;
+      }
+
       const viewResultsLink = document.getElementById('viewResultsLink');
       if (viewResultsLink) {
         const viewParams = new URLSearchParams();
@@ -404,7 +425,7 @@
             element.hidden = liveClips.length === 0;
           } else if (section === 'skill-ratings') {
             element.hidden = !hasRatedSkills;
-          } else if (section === 'change-history') {
+          } else if (section === 'change-history' || section === 'assessment-history') {
             element.hidden = isGuest;
           } else {
             element.hidden = true;
@@ -414,7 +435,7 @@
         noStatsNotice.hidden = true;
         statsSections.forEach(function (element) {
           const section = element.getAttribute('data-section');
-          if (section === 'change-history') {
+          if (section === 'change-history' || section === 'assessment-history') {
             element.hidden = isGuest;
           } else {
             element.hidden = false;
@@ -827,6 +848,95 @@
         if (historySection) {
           historySection.hidden = true;
         }
+        const assessmentHistorySection = document.querySelector('[data-section="assessment-history"]');
+        if (assessmentHistorySection) {
+          assessmentHistorySection.hidden = true;
+        }
+      }
+
+      if (!isGuest && player.id !== undefined && player.id !== null) {
+        (function renderAssessmentHistory() {
+          const section = document.querySelector('[data-section="assessment-history"]');
+          const emptyEl = document.getElementById('assessmentHistoryEmpty');
+          const listEl = document.getElementById('assessmentHistoryList');
+          if (!section || !emptyEl || !listEl) {
+            return;
+          }
+          section.hidden = false;
+          const response = MockupApi.listAssessmentHistory(player.id);
+          const events = (response && response.events) || (response && response.data && response.data.events) || [];
+          listEl.innerHTML = '';
+          if (!events.length) {
+            emptyEl.hidden = false;
+            return;
+          }
+          emptyEl.hidden = true;
+
+          function formatAnySkillRating(rating) {
+            if (rating === null || rating === undefined || rating === '') {
+              return '—';
+            }
+            const num = Number(rating);
+            return Number.isFinite(num) ? String(Math.round(num)) : '—';
+          }
+
+          function escapeHtml(value) {
+            return String(value == null ? '' : value)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+          }
+
+          events.forEach(function (event) {
+            const when = event.assessedAt ? new Date(event.assessedAt) : null;
+            const dateLabel = when && !Number.isNaN(when.getTime())
+              ? when.toLocaleDateString()
+              : '—';
+            const timeLabel = when && !Number.isNaN(when.getTime())
+              ? when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '—';
+            const userLabel = event.updatedBy || '—';
+            const rows = Array.isArray(event.coreSkills) ? event.coreSkills : [];
+            let skillsMarkup = '';
+            if (rows.length) {
+              const columns = 'repeat(' + rows.length + ', minmax(0, 1fr))';
+              const abbrItems = rows.map(function (row) {
+                const abbr = row.abbreviation || MockupApi.suggestSkillAbbreviation(row.skillName) || '—';
+                return (
+                  '<li title="' + escapeHtml(row.skillName || abbr) + '" data-testid="assessment-history-skill-abbr">' +
+                  escapeHtml(abbr) +
+                  '</li>'
+                );
+              }).join('');
+              const ratingItems = rows.map(function (row) {
+                return (
+                  '<li data-testid="assessment-history-skill-rating">' +
+                  escapeHtml(formatAnySkillRating(row.rating)) +
+                  '</li>'
+                );
+              }).join('');
+              skillsMarkup =
+                '<div class="player-card-skills" data-testid="assessment-history-skills">' +
+                '<ul class="player-card-skill-abbrs" style="grid-template-columns:' + columns + '">' + abbrItems + '</ul>' +
+                '<ul class="player-card-skill-ratings" style="grid-template-columns:' + columns + '">' + ratingItems + '</ul>' +
+                '</div>';
+            }
+
+            const card = document.createElement('div');
+            card.className = 'assessment-history-event';
+            card.setAttribute('data-testid', 'assessment-history-event');
+            card.innerHTML =
+              '<div class="assessment-history-meta">' +
+                '<span data-testid="assessment-history-date">' + escapeHtml(dateLabel) + '</span>' +
+                '<span data-testid="assessment-history-time">' + escapeHtml(timeLabel) + '</span>' +
+                '<span data-testid="assessment-history-user">' + escapeHtml(userLabel) + '</span>' +
+              '</div>' +
+              skillsMarkup;
+            listEl.appendChild(card);
+          });
+        })();
       }
 
       renderVideoAssessments(liveClips);
@@ -850,6 +960,7 @@
 
       if (isGuest) {
         makeInert(editPlayerLink);
+        makeInert(assessmentLink);
         makeInert(submitNewClipLink);
         makeInert(submitClipLink);
         // View Results stays active and carries share= (Feature 035).

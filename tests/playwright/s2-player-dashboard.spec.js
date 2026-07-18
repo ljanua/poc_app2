@@ -427,6 +427,14 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(img).toBeHidden();
   });
 
+  test('shows Assessment History with seeded video-assessment event', async ({ page }) => {
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Lionel Messi'));
+    await expect(page.getByTestId('assessment-history-section')).toBeVisible();
+    await page.getByTestId('dashboard-section-toggle-assessment-history').click();
+    await expect(page.getByTestId('assessment-history-user').first()).toHaveText('video-assessment');
+    await expect(page.getByTestId('assessment-history-skills').first()).toBeVisible();
+  });
+
   test('uploading an avatar updates the avatar preview immediately on S2', async ({ page }) => {
     // Seed a player with an avatar URL directly in localStorage
     await page.evaluate(() => {

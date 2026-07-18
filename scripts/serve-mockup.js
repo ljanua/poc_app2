@@ -7,6 +7,7 @@ const { startVideoProcessingQueue } = require('./video-processing/queue');
 const { createClipUpload, reprocessClip, deleteClip, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
 const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJpegFile } = require('./video-processing/clip-media');
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
+const { recordSkillAssessment } = require('./player-skill-assessment');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 const { generateShareToken, hashShareToken } = require('./share-token');
 const { suggestSkillAbbreviation, normalizeSkillAbbreviation, validateSkillAbbreviation } = require('./skills/suggest-abbreviation');
@@ -1608,6 +1609,28 @@ async function ensureDatabase() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_player_data_audits_player_created
       ON player_data_audits(player_id, created_at DESC);
+  `);
+
+  // Feature Assessment: live updated_by + history table.
+  await pool.query(`ALTER TABLE player_skill_ratings ADD COLUMN IF NOT EXISTS updated_by TEXT;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_skill_ratings_history (
+      id TEXT PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
+      rating SMALLINT NOT NULL CHECK (rating BETWEEN 0 AND 100),
+      updated_by TEXT NOT NULL,
+      assessed_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_history_player_assessed
+      ON player_skill_ratings_history(player_id, assessed_at DESC);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_history_skill_id
+      ON player_skill_ratings_history(skill_id);
   `);
 
   // Feature 037: skill abbreviation (additive; skills table comes from migrations/deploy).
@@ -4428,6 +4451,147 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const skillRatings = await listSkillsForPlayer(playerId);
     sendJson(res, 200, { data: { skillRatings } });
+    return;
+  }
+
+  const assessmentsMatch = requestUrl.pathname.match(/^\/api\/v1\/players\/([^/]+)\/assessments$/);
+  if (req.method === 'POST' && assessmentsMatch) {
+    const playerId = decodeURIComponent(assessmentsMatch[1] || '');
+    const body = await readJsonBody(req);
+    const actorEmail = String((body && body.actorEmail) || '').trim().toLowerCase();
+    const editor = await resolveShareEditorForPlayer(actorEmail, playerId);
+    if (!editor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const parsed = parseUpdateSkillRatingsPayload(body);
+    if (parsed.error) {
+      sendJson(res, 400, appError(400, 'validation_error', parsed.error));
+      return;
+    }
+
+    // Partial assessment: only numeric ratings; blanks omitted (no-op if empty).
+    const ratedOnly = parsed.ratings.filter((entry) => entry.rating !== null && entry.rating !== undefined);
+    if (!ratedOnly.length) {
+      sendJson(res, 200, {
+        data: {
+          assessedAt: null,
+          count: 0,
+          message: 'No ratings submitted.'
+        }
+      });
+      return;
+    }
+
+    const allowedSkills = await listSkillsForPlayer(playerId);
+    const allowedById = new Map(allowedSkills.map((row) => [row.skillId, row]));
+    for (const entry of ratedOnly) {
+      const skillRow = await pool.query(`SELECT id, name, status FROM skills WHERE id = $1`, [entry.skillId]);
+      if (!skillRow.rows[0]) {
+        sendJson(res, 400, appError(400, 'validation_error', `Unknown skillId '${entry.skillId}'.`));
+        return;
+      }
+      if (!allowedById.get(entry.skillId)) {
+        sendJson(res, 400, appError(
+          400,
+          'validation_error',
+          `Skill '${skillRow.rows[0].name}' is not tracked for this player.`
+        ));
+        return;
+      }
+      if (skillRow.rows[0].status !== 'active') {
+        sendJson(res, 400, appError(400, 'validation_error', `Cannot set a rating for inactive skill '${skillRow.rows[0].name}'.`));
+        return;
+      }
+    }
+
+    const updatedBy = String(editor.actor.email || actorEmail).trim().toLowerCase();
+    const client = await pool.connect();
+    let recordResult;
+    try {
+      await client.query('BEGIN');
+      recordResult = await recordSkillAssessment(client, {
+        playerId,
+        ratings: ratedOnly,
+        updatedBy
+      });
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    sendJson(res, 201, {
+      data: {
+        assessedAt: recordResult.assessedAt,
+        count: recordResult.count,
+        updatedBy
+      }
+    });
+    return;
+  }
+
+  const assessmentHistoryMatch = requestUrl.pathname.match(
+    /^\/api\/v1\/players\/([^/]+)\/assessment-history$/
+  );
+  if (req.method === 'GET' && assessmentHistoryMatch) {
+    const playerId = decodeURIComponent(assessmentHistoryMatch[1] || '');
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const viewer = await resolvePlayerHistoryViewer(actorEmail, playerId);
+    if (!viewer) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const eventsResult = await pool.query(
+      `
+        SELECT assessed_at AS "assessedAt", updated_by AS "updatedBy"
+        FROM player_skill_ratings_history
+        WHERE player_id = $1
+        GROUP BY assessed_at, updated_by
+        ORDER BY assessed_at DESC
+      `,
+      [playerId]
+    );
+
+    const anySkills = await listAnySkillRatingsByPlayerIds([playerId]);
+    const anySkillIds = new Set(
+      (anySkills.get(playerId) || []).map((row) => String(row.skillId))
+    );
+
+    const events = [];
+    for (const event of eventsResult.rows) {
+      const rows = await pool.query(
+        `
+          SELECT
+            h.skill_id AS "skillId",
+            s.name AS "skillName",
+            COALESCE(
+              NULLIF(BTRIM(s.abbreviation), ''),
+              UPPER(LEFT(REGEXP_REPLACE(s.name, '[^A-Za-z0-9]', '', 'g'), 3))
+            ) AS "abbreviation",
+            h.rating AS "rating"
+          FROM player_skill_ratings_history h
+          JOIN skills s ON s.id = h.skill_id
+          WHERE h.player_id = $1
+            AND h.assessed_at = $2
+            AND h.updated_by = $3
+          ORDER BY s.name ASC
+        `,
+        [playerId, event.assessedAt, event.updatedBy]
+      );
+      const coreSkills = rows.rows.filter((row) => anySkillIds.has(String(row.skillId)));
+      events.push({
+        assessedAt: event.assessedAt,
+        updatedBy: event.updatedBy,
+        coreSkills
+      });
+    }
+
+    sendJson(res, 200, { data: { events } });
     return;
   }
 

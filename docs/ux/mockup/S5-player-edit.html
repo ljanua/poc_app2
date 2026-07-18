@@ -190,6 +190,9 @@
 
         <div class="section" data-testid="skill-ratings-section">
           <div class="section-title">Skill Ratings</div>
+          <p class="muted" style="margin: 0.35rem 0 0.75rem; font-size: 0.85rem;">
+            Ratings are display-only here. Use Assessment from the player dashboard to record a new assessment.
+          </p>
           <div id="skillRatingsEmpty" class="muted" data-testid="skill-ratings-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
             No skills are tracked for this player yet — pick a position above.
           </div>
@@ -602,9 +605,6 @@
         lastMatchScore: buildSliderControl('ctrlLastMatchScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 })
       };
 
-      var skillRatingControls = {};
-      var anyPositionSkillIds = {};
-
       function isAnySkillRow(row) {
         return String(row.positionName || '').toLowerCase() === 'any position';
       }
@@ -617,50 +617,30 @@
         const anyBody = document.getElementById('skillRatingsAnyBody');
         const roleBody = document.getElementById('skillRatingsRoleBody');
         const roleTitle = document.getElementById('skillRatingsRoleTitle');
-        skillRatingControls = {};
-        anyPositionSkillIds = {};
         if (!emptyEl || !anyBlock || !roleBlock || !anyBody || !roleBody) {
           return;
         }
 
-        function appendEditableRows(bodyEl, list) {
+        function appendReadonlyRows(bodyEl, list) {
           bodyEl.innerHTML = '';
           list.forEach(function (row) {
             const skillId = String(row.skillId);
             const tr = document.createElement('tr');
             tr.setAttribute('data-testid', 'skill-rating-row-' + skillId);
-
             const skillTd = document.createElement('td');
             skillTd.textContent = row.skillName || skillId;
-
             const ratingTd = document.createElement('td');
-            const container = document.createElement('div');
-            container.className = 'form-field';
-            container.id = 'ctrlSkillRating_' + skillId;
-            container.innerHTML =
-              '<div class="ctrl-header">' +
-                '<span class="form-label" style="margin:0;">Rating</span>' +
-                '<label class="ctrl-toggle-label">' +
-                  '<input type="checkbox" class="ctrl-toggle" data-testid="skill-rating-toggle-' + skillId + '" aria-label="Record ' + (row.skillName || skillId) + '">' +
-                  '<span>Record</span>' +
-                '</label>' +
-              '</div>' +
-              '<div class="ctrl-row">' +
-                '<input type="range" class="ctrl-slider" min="0" max="100" step="1" data-testid="skill-rating-slider-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' slider" disabled>' +
-                '<input type="number" class="ctrl-box" min="0" max="100" step="1" data-testid="skill-rating-value-' + skillId + '" aria-label="' + (row.skillName || skillId) + ' value" disabled>' +
-                '<span class="ctrl-suffix">%</span>' +
-              '</div>';
-            ratingTd.appendChild(container);
+            if (row.rating === null || row.rating === undefined) {
+              const muted = document.createElement('span');
+              muted.className = 'muted';
+              muted.textContent = '—';
+              ratingTd.appendChild(muted);
+            } else {
+              ratingTd.textContent = String(Math.round(Number(row.rating))) + '%';
+            }
             tr.appendChild(skillTd);
             tr.appendChild(ratingTd);
             bodyEl.appendChild(tr);
-
-            const control = buildSliderControl(container.id, { min: 0, max: 100, step: 1, midpoint: 50 });
-            control.setState(row.rating === null || row.rating === undefined ? null : Number(row.rating));
-            skillRatingControls[skillId] = control;
-            if (isAnySkillRow(row)) {
-              anyPositionSkillIds[skillId] = true;
-            }
           });
         }
 
@@ -679,7 +659,7 @@
 
         if (anyRows.length > 0) {
           anyBlock.hidden = false;
-          appendEditableRows(anyBody, anyRows);
+          appendReadonlyRows(anyBody, anyRows);
         } else {
           anyBlock.hidden = true;
           anyBody.innerHTML = '';
@@ -690,25 +670,11 @@
           if (roleTitle) {
             roleTitle.textContent = roleRows[0].positionName || 'Position';
           }
-          appendEditableRows(roleBody, roleRows);
+          appendReadonlyRows(roleBody, roleRows);
         } else {
           roleBlock.hidden = true;
           roleBody.innerHTML = '';
         }
-      }
-
-      function readSkillRatingsPayload(anyOnly) {
-        const ratings = [];
-        Object.keys(skillRatingControls).forEach(function (skillId) {
-          if (anyOnly && !anyPositionSkillIds[skillId]) {
-            return;
-          }
-          ratings.push({
-            skillId: skillId,
-            rating: skillRatingControls[skillId].getState()
-          });
-        });
-        return { ratings: ratings };
       }
 
       function fillTeamOptions(selectedTeamName) {
@@ -900,23 +866,9 @@
         event.preventDefault();
         hideError();
 
-        const previousPosition = String((profileResponse.data.player && profileResponse.data.player.position) || '');
         const response = MockupApi.updatePlayerProfile(playerId, buildPayload());
         if (!response || response.status >= 400 || !response.data) {
           showError((response && response.message) || 'Unable to save this player right now.');
-          return;
-        }
-
-        const savedPosition = String((response.data.player && response.data.player.position) || '');
-        // When position changes, PATCH already swapped role-unique rows while
-        // preserving Any Position ratings. Still PUT Any Position controls so
-        // same-save baseline edits are not lost; omit stale role skillIds.
-        const ratingsPayload = savedPosition === previousPosition
-          ? readSkillRatingsPayload(false)
-          : readSkillRatingsPayload(true);
-        const ratingsResponse = MockupApi.updatePlayerSkillRatings(playerId, ratingsPayload);
-        if (!ratingsResponse || ratingsResponse.status >= 400) {
-          showError((ratingsResponse && ratingsResponse.message) || 'Unable to save skill ratings right now.');
           return;
         }
 

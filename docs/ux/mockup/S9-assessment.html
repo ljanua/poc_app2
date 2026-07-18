@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S9: Assessment — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+  <style>
+    input[type="number"] {
+      width: 5rem;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--surface-1);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--r-md);
+      padding: 0.55rem 0.65rem;
+    }
+    input[type="number"]:focus {
+      outline: none;
+      border-color: rgba(198, 255, 58, 0.5);
+      box-shadow: 0 0 0 4px rgba(198, 255, 58, 0.12);
+    }
+    .assessment-skill-row td:last-child {
+      white-space: nowrap;
+    }
+    .assessment-skill-row .ctrl-suffix {
+      margin-left: 0.35rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" id="backLink" href="./S2-player-dashboard.html">←</a>
+      <div class="header-title">Assessment</div>
+      <div class="header-meta" id="assessmentHeaderMeta">Coach</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
+    </header>
+
+    <div class="content">
+      <div class="notice" id="assessmentNotice" hidden></div>
+      <div class="notice" id="assessmentError" data-testid="assessment-error" hidden style="border-color: var(--down);"></div>
+
+      <div class="player-summary" id="playerSummary" hidden>
+        <div class="player-details">
+          <div class="player-name" id="assessmentPlayerName">—</div>
+          <div class="player-meta" id="assessmentPlayerMeta">—</div>
+        </div>
+      </div>
+
+      <p class="muted" style="margin: 0.75rem 0 1rem; font-size: 0.9rem;">
+        Enter ratings for this assessment. Leave skills blank to skip them — existing live ratings are not cleared.
+      </p>
+
+      <form id="assessmentForm" data-testid="assessment-form" hidden>
+        <div class="section" data-testid="assessment-skills-section">
+          <div class="section-title">Skills</div>
+          <div id="skillsEmpty" class="muted" data-testid="assessment-skills-empty" hidden style="color: var(--text-muted); font-size: 0.9rem;">
+            No skills are tracked for this player yet — pick a position in Edit Player (S5).
+          </div>
+          <div id="skillsAnyBlock" data-testid="assessment-skills-any-section" hidden style="margin-top: 0.75rem;">
+            <div class="section-title" style="font-size: 0.95rem;">Any Position</div>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 0;">
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="skillsAnyBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="skillsRoleBlock" data-testid="assessment-skills-role-section" hidden style="margin-top: 1rem;">
+            <div class="section-title" id="skillsRoleTitle" style="font-size: 0.95rem;">Position</div>
+            <div class="table-wrap">
+              <table class="data-table" style="min-width: 0;">
+                <thead>
+                  <tr>
+                    <th>Skill</th>
+                    <th>Rating</th>
+                  </tr>
+                </thead>
+                <tbody id="skillsRoleBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="cta-buttons" style="margin-top: 1.25rem;">
+          <a class="btn btn-secondary" id="cancelLink" href="./S2-player-dashboard.html">Cancel</a>
+          <button class="btn btn-primary" type="submit" data-testid="assessment-save">Save Assessment</button>
+        </div>
+      </form>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html">
+        <span class="nav-icon">👥</span>
+        <span>Players</span>
+      </a>
+      <a class="nav-item" href="./S3-team-management.html">
+        <span class="nav-icon">🧩</span>
+        <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S4-video-capture.html">
+        <span class="nav-icon">📹</span>
+        <span>Capture</span>
+      </a>
+      <a class="nav-item" href="./S6-assessment-list.html">
+        <span class="nav-icon">📊</span>
+        <span>My Clips</span>
+      </a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin" data-testid="nav-users" hidden>
+        <span class="nav-icon">🛡️</span>
+        <span>Users</span>
+      </a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden>
+        <span class="nav-icon">🏛️</span>
+        <span>Clubs</span>
+      </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+        <span class="nav-icon">🧠</span>
+        <span>Skills</span>
+      </a>
+    </nav>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const playerId = params.get('playerId');
+      const notice = document.getElementById('assessmentNotice');
+      const errorEl = document.getElementById('assessmentError');
+      const form = document.getElementById('assessmentForm');
+      const backLink = document.getElementById('backLink');
+      const cancelLink = document.getElementById('cancelLink');
+
+      function showNotice(message) {
+        notice.textContent = message;
+        notice.hidden = !message;
+      }
+
+      function showError(message) {
+        errorEl.textContent = message || '';
+        errorEl.hidden = !message;
+      }
+
+      function isAnySkillRow(row) {
+        return String(row.positionName || '').toLowerCase() === 'any position';
+      }
+
+      function appendBlankRows(bodyEl, list) {
+        bodyEl.innerHTML = '';
+        list.forEach(function (row) {
+          const skillId = String(row.skillId);
+          const tr = document.createElement('tr');
+          tr.className = 'assessment-skill-row';
+          tr.setAttribute('data-testid', 'assessment-skill-row-' + skillId);
+          tr.innerHTML =
+            '<td>' + escapeHtml(row.skillName || skillId) + '</td>' +
+            '<td>' +
+              '<input type="number" min="0" max="100" step="1" inputmode="numeric" ' +
+              'data-skill-id="' + escapeHtml(skillId) + '" ' +
+              'data-testid="assessment-rating-' + escapeHtml(skillId) + '" ' +
+              'aria-label="' + escapeHtml(row.skillName || skillId) + ' rating" value="">' +
+              '<span class="ctrl-suffix">%</span>' +
+            '</td>';
+          bodyEl.appendChild(tr);
+        });
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function renderSkills(skillRatings) {
+        const rows = Array.isArray(skillRatings) ? skillRatings : [];
+        const emptyEl = document.getElementById('skillsEmpty');
+        const anyBlock = document.getElementById('skillsAnyBlock');
+        const roleBlock = document.getElementById('skillsRoleBlock');
+        const anyBody = document.getElementById('skillsAnyBody');
+        const roleBody = document.getElementById('skillsRoleBody');
+        const roleTitle = document.getElementById('skillsRoleTitle');
+
+        if (!rows.length) {
+          emptyEl.hidden = false;
+          anyBlock.hidden = true;
+          roleBlock.hidden = true;
+          anyBody.innerHTML = '';
+          roleBody.innerHTML = '';
+          return;
+        }
+
+        emptyEl.hidden = true;
+        const anyRows = rows.filter(isAnySkillRow);
+        const roleRows = rows.filter(function (row) { return !isAnySkillRow(row); });
+
+        if (anyRows.length) {
+          anyBlock.hidden = false;
+          appendBlankRows(anyBody, anyRows);
+        } else {
+          anyBlock.hidden = true;
+          anyBody.innerHTML = '';
+        }
+
+        if (roleRows.length) {
+          roleBlock.hidden = false;
+          if (roleTitle) {
+            roleTitle.textContent = roleRows[0].positionName || 'Position';
+          }
+          appendBlankRows(roleBody, roleRows);
+        } else {
+          roleBlock.hidden = true;
+          roleBody.innerHTML = '';
+        }
+      }
+
+      function readRatingsPayload() {
+        const ratings = [];
+        form.querySelectorAll('input[data-skill-id]').forEach(function (input) {
+          const raw = String(input.value || '').trim();
+          if (!raw) {
+            return;
+          }
+          ratings.push({
+            skillId: input.getAttribute('data-skill-id'),
+            rating: Number(raw)
+          });
+        });
+        return { ratings: ratings };
+      }
+
+      if (!playerId) {
+        showNotice('No player was selected. Return to the dashboard and choose Assessment.');
+        return;
+      }
+
+      MockupApi.applyRoleGatedNav();
+
+      const profileResponse = MockupApi.getPlayerProfile(playerId);
+      if (!profileResponse || profileResponse.status !== 200 || !profileResponse.data) {
+        showNotice((profileResponse && profileResponse.message) || 'This player profile is unavailable right now.');
+        return;
+      }
+
+      const player = profileResponse.data.player;
+      const dashHref = './S2-player-dashboard.html?player=' + encodeURIComponent(player.name);
+      backLink.href = dashHref;
+      cancelLink.href = dashHref;
+
+      document.getElementById('assessmentPlayerName').textContent = player.name;
+      const ageSuffix = (player.age != null) ? ' • Age ' + player.age : '';
+      document.getElementById('assessmentPlayerMeta').textContent =
+        (player.position || '') + (player.teamName ? ' • ' + player.teamName : '') + ageSuffix;
+      document.getElementById('playerSummary').hidden = false;
+      form.hidden = false;
+
+      // Blank-slate: render skill list but do not prefill live ratings.
+      const skillRows = (profileResponse.data.skillRatings || []).map(function (row) {
+        return Object.assign({}, row, { rating: null });
+      });
+      renderSkills(skillRows);
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        showError('');
+        const payload = readRatingsPayload();
+        const response = MockupApi.submitAssessment(playerId, payload);
+        if (!response || response.status >= 400) {
+          showError((response && response.message) || 'Unable to save this assessment right now.');
+          return;
+        }
+        window.location.href = dashHref;
+      });
+
+      const exitButton = document.querySelector('[data-testid="exit-button"]');
+      if (exitButton) {
+        exitButton.addEventListener('click', function () {
+          MockupApi.logout();
+          window.location.href = './S0-login.html';
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

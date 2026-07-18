@@ -342,6 +342,24 @@
         { playerId: 10, skillId: 's_speed', rating: 76 },
         { playerId: 11, skillId: 's_ball_control', rating: 70 },
         { playerId: 13, skillId: 's_ball_control', rating: 95 }
+      ],
+      assessmentHistory: [
+        {
+          id: 'psrh_seed_video_bc',
+          playerId: 10,
+          skillId: 's_ball_control',
+          rating: 85,
+          updatedBy: 'video-assessment',
+          assessedAt: '2026-06-01T15:30:00.000Z'
+        },
+        {
+          id: 'psrh_seed_video_pas',
+          playerId: 10,
+          skillId: 's_passing',
+          rating: 82,
+          updatedBy: 'video-assessment',
+          assessedAt: '2026-06-01T15:30:00.000Z'
+        }
       ]
     };
   }
@@ -357,6 +375,9 @@
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.players) || !Array.isArray(parsed.teams) || !Array.isArray(parsed.skills) || !Array.isArray(parsed.positions) || !Array.isArray(parsed.sports) || !Array.isArray(parsed.playerSkillRatings)) {
         throw new Error('Invalid store');
+      }
+      if (!Array.isArray(parsed.assessmentHistory)) {
+        parsed.assessmentHistory = [];
       }
       return parsed;
     } catch (error) {
@@ -3030,6 +3051,199 @@
       saveStore(store);
       const skillRatings = listSkillsForPlayerOffline(store, player);
       return { status: 200, code: 'ok', data: { skillRatings: clone(skillRatings) }, skillRatings: clone(skillRatings) };
+    },
+
+    submitAssessment(playerId, payload) {
+      const ratingsInput = payload && Array.isArray(payload.ratings) ? payload.ratings : null;
+      if (!ratingsInput) {
+        return { status: 400, code: 'validation_error', message: 'ratings must be an array of { skillId, rating } objects.' };
+      }
+
+      const ratedOnly = [];
+      for (let i = 0; i < ratingsInput.length; i += 1) {
+        const entry = ratingsInput[i];
+        const skillId = String((entry && entry.skillId) || '').trim();
+        if (!skillId) {
+          return { status: 400, code: 'validation_error', message: 'Each rating entry requires a non-empty skillId.' };
+        }
+        if (entry.rating === null || entry.rating === undefined || entry.rating === '') {
+          continue;
+        }
+        const rating = Number(entry.rating);
+        if (!Number.isInteger(rating) || rating < 0 || rating > 100) {
+          return { status: 400, code: 'validation_error', message: 'Skill rating must be a whole number from 0 to 100.' };
+        }
+        ratedOnly.push({ skillId: skillId, rating: rating });
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'POST',
+          '/players/' + encodeURIComponent(playerId) + '/assessments',
+          { actorEmail: actorEmail, ratings: ratedOnly }
+        );
+        if ((response.status === 200 || response.status === 201) && response.body && response.body.data) {
+          return {
+            status: response.status,
+            code: 'ok',
+            data: clone(response.body.data)
+          };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return {
+          status: 503,
+          code: 'service_unavailable',
+          message: 'Backend persistence is unavailable. Check /api/v1 connectivity and DATABASE_URL.'
+        };
+      }
+
+      if (!ratedOnly.length) {
+        return {
+          status: 200,
+          code: 'ok',
+          data: { assessedAt: null, count: 0, message: 'No ratings submitted.' }
+        };
+      }
+
+      const store = loadStore();
+      const actor = getSessionUser(store);
+      if (!actor || actor.status !== 'active'
+        || (actor.role !== 'Coach' && actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const allowed = listSkillsForPlayerOffline(store, player);
+      const allowedById = {};
+      allowed.forEach(function (row) { allowedById[String(row.skillId)] = row; });
+
+      for (let j = 0; j < ratedOnly.length; j += 1) {
+        if (!allowedById[ratedOnly[j].skillId]) {
+          return {
+            status: 400,
+            code: 'validation_error',
+            message: 'Skill is not tracked for this player.'
+          };
+        }
+      }
+
+      const updatedBy = String(actor.email || '').trim().toLowerCase();
+      const assessedAt = new Date().toISOString();
+      store.playerSkillRatings = store.playerSkillRatings || [];
+      store.assessmentHistory = store.assessmentHistory || [];
+
+      ratedOnly.forEach(function (entry) {
+        store.playerSkillRatings = store.playerSkillRatings.filter(function (row) {
+          return !(String(row.playerId) === String(playerId) && String(row.skillId) === entry.skillId);
+        });
+        store.playerSkillRatings.push({
+          playerId: playerId,
+          skillId: entry.skillId,
+          rating: entry.rating,
+          updatedBy: updatedBy
+        });
+        store.assessmentHistory.push({
+          id: 'psrh_' + Math.random().toString(36).slice(2, 10),
+          playerId: playerId,
+          skillId: entry.skillId,
+          rating: entry.rating,
+          updatedBy: updatedBy,
+          assessedAt: assessedAt
+        });
+      });
+
+      saveStore(store);
+      return {
+        status: 201,
+        code: 'ok',
+        data: { assessedAt: assessedAt, count: ratedOnly.length, updatedBy: updatedBy }
+      };
+    },
+
+    listAssessmentHistory(playerId) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const qs = actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '';
+        const response = backendRequest(
+          'GET',
+          '/players/' + encodeURIComponent(playerId) + '/assessment-history' + qs
+        );
+        if (response.status === 200 && response.body && response.body.data) {
+          return {
+            status: 200,
+            data: clone(response.body.data),
+            events: clone(response.body.data.events || [])
+          };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          window.__MOCK_API_LAST_ERROR__ = response.body;
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      const player = store.players.find(function (entry) { return String(entry.id) === String(playerId); });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const anySkillIds = {};
+      listSkillsForPlayerOffline(store, player).forEach(function (row) {
+        if (String(row.positionName || '').toLowerCase() === 'any position') {
+          anySkillIds[String(row.skillId)] = true;
+        }
+      });
+
+      const rows = (store.assessmentHistory || []).filter(function (entry) {
+        return String(entry.playerId) === String(playerId);
+      });
+      const groupKeys = [];
+      const groups = {};
+      rows.forEach(function (entry) {
+        const key = String(entry.assessedAt) + '\0' + String(entry.updatedBy);
+        if (!groups[key]) {
+          groups[key] = {
+            assessedAt: entry.assessedAt,
+            updatedBy: entry.updatedBy,
+            coreSkills: []
+          };
+          groupKeys.push(key);
+        }
+        if (anySkillIds[String(entry.skillId)]) {
+          const skill = (store.skills || []).find(function (s) { return String(s.id) === String(entry.skillId); });
+          const skillName = (skill && skill.name) || entry.skillId;
+          groups[key].coreSkills.push({
+            skillId: entry.skillId,
+            skillName: skillName,
+            abbreviation: (skill && skill.abbreviation)
+              || suggestSkillAbbreviation(skillName)
+              || '',
+            rating: entry.rating
+          });
+        }
+      });
+
+      groupKeys.sort(function (a, b) {
+        return String(groups[b].assessedAt).localeCompare(String(groups[a].assessedAt));
+      });
+
+      const events = groupKeys.map(function (key) {
+        const event = groups[key];
+        event.coreSkills.sort(function (a, b) {
+          return String(a.skillName).localeCompare(String(b.skillName));
+        });
+        return event;
+      });
+
+      return { status: 200, data: { events: clone(events) }, events: clone(events) };
     },
 
     updatePlayerProfile(playerId, payload) {

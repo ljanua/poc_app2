@@ -42,8 +42,10 @@ Source plans:
 | S6-assessment-list.html | Guest open `?share=` | Guest read-only assessment list | GET /v1/share/{token}/dashboard ; GET /v1/share/{token}/clips ; share media + thumbnail | Bound player clips only; Pre-Selected/team locked; play via share URLs; Back → S2 with `share=`; nav inert | 404 → guest-share-unavailable notice |
 | S2-player-dashboard.html | Upload player avatar (click icon) | Upload avatar | PATCH /v1/players/{playerId}?actorEmail= with `{ avatarUrl }` | 200 OK with updated `{ player, stats }`; `player.avatarUrl` set | 400 validation_error, 403 forbidden, 404 not_found |
 | S5-player-edit.html | Load editable player profile | Get player profile | GET /v1/players/{playerId}/profile?actorEmail= | 200 OK with `{ player, stats, skillRatings }` (full editable identity + `PlayerDashboardStats` + position-scoped skill ratings) | 403 forbidden, 404 not_found |
-| S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats, skillRatings }`; when `position` changes, server replaces all `player_skill_ratings` rows for the new position as null; `missingDataMessage` cleared only when at least one Development Progress rating is recorded | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
-| S5-player-edit.html | Save Player (skill ratings) | Update player skill ratings | PUT /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` after partial upsert/delete of listed skills | 400 validation_error, 403 forbidden, 404 not_found |
+| S5-player-edit.html | Save Player | Update full player profile | PATCH /v1/players/{playerId}?actorEmail= | 200 OK with updated `{ player, stats, skillRatings }`; when `position` changes, server replaces all `player_skill_ratings` rows for the new position as null; `missingDataMessage` cleared only when at least one Development Progress rating is recorded. **Skill ratings are display-only on S5** — Save does not call skill-ratings write. | 400 validation_error, 403 forbidden, 404 not_found, 409 conflict |
+| S9-assessment.html | Save Assessment | Submit skill assessment | POST /v1/players/{playerId}/assessments | 201 with `{ assessedAt, count, updatedBy }`; upserts rated skills only; blanks skipped; writes `player_skill_ratings_history` with shared `assessed_at`; `updated_by` = editor email | 400 validation_error, 403 forbidden, 404 not_found |
+| S2-player-dashboard.html | Assessment toolbar (📋 after Edit) | Open Assessment | — (nav to `S9-assessment.html?playerId=`) | `data-testid="assessment-link"`; hidden/inert for guests | — |
+| S2-player-dashboard.html | Assessment History section | List assessment events | GET /v1/players/{playerId}/assessment-history?actorEmail= | 200 OK with `{ events: [{ assessedAt, updatedBy, coreSkills }] }` (Any-Position skills only; S1 card visual). Hidden for guest share. Video sync uses `updatedBy: video-assessment`. | 403 forbidden |
 | S2-player-dashboard.html / S5-player-edit.html | Read skill ratings only | List player skill ratings | GET /v1/players/{playerId}/skill-ratings?actorEmail= | 200 OK with `{ skillRatings }` for the player's current position (null ratings included) | 403 forbidden, 404 not_found |
 | S2-player-dashboard.html | Change History section | List player data audits | GET /v1/players/{playerId}/audits?actorEmail= | 200 OK with `{ audits }` (profile / team / skill changes; Coach scoped or SystemAdmin). Hidden for guest share. | 403 forbidden |
 | S8-skills.html | Add Sport modal submit | Create sport | POST /v1/sports | 201 Created with sanitized sport object (`status: 'active'`) | 400 validation_error, 403 forbidden, 409 conflict |
@@ -387,8 +389,9 @@ Source plans:
 
 ### Client
 
-- `MockupApi.listPlayerSkillRatings(playerId)` / `MockupApi.updatePlayerSkillRatings(playerId, payload)` dual-mode (backend + offline `store.playerSkillRatings`).
-- Offline seed includes `playerSkillRatings: []`; `loadStore()` requires the array or reseeds.
+- `MockupApi.listPlayerSkillRatings(playerId)` / `MockupApi.updatePlayerSkillRatings(playerId, payload)` dual-mode (backend + offline `store.playerSkillRatings`). PUT remains for back-compat; coach UI writes go through `MockupApi.submitAssessment`.
+- `MockupApi.submitAssessment(playerId, payload)` / `MockupApi.listAssessmentHistory(playerId)` dual-mode (backend + offline `store.assessmentHistory`).
+- Offline seed includes `playerSkillRatings` and a sample `assessmentHistory` video event for Messi; `loadStore()` initializes missing `assessmentHistory` to `[]`.
 - Offline list/replace mirrors the Any∪role-unique and preserve-Any rules.
 
 ### UI
@@ -457,7 +460,9 @@ Source plan: `docs/plans/2026-07-13-005-feat-player-data-change-audit-plan.md` (
 
 ### UI
 
-- S2 collapsible **Change History**; hidden for guest share views. Rendered as the **last** dashboard section, directly above the page-level action buttons (`Compare Player` / `Submit a Clip`).
+- S2 collapsible **Assessment History** (`data-testid="assessment-history-section"`); hidden for guest share views. Each event shows Date, Time, User (`updated_by`), and Any-Position skills in S1 card style. Seeded offline video event uses User `video-assessment`.
+- S2 collapsible **Change History**; hidden for guest share views. Rendered near the bottom of the dashboard (after Assessment History), directly above the page-level action buttons (`Compare Player` / `Submit a Clip`).
+- S2 toolbar **Assessment** control (`data-testid="assessment-link"`) sits immediately after Edit; opens `S9-assessment.html?playerId=`. Guests: inert like Edit.
 
 ### Test traceability
 

@@ -186,12 +186,29 @@ CREATE TABLE IF NOT EXISTS player_skill_ratings (
   player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
   skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
   rating SMALLINT CHECK (rating IS NULL OR (rating BETWEEN 0 AND 100)),
+  updated_by TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (player_id, skill_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_skill_id ON player_skill_ratings(skill_id);
+
+CREATE TABLE IF NOT EXISTS player_skill_ratings_history (
+  id TEXT PRIMARY KEY,
+  player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE RESTRICT,
+  rating SMALLINT NOT NULL CHECK (rating BETWEEN 0 AND 100),
+  updated_by TEXT NOT NULL,
+  assessed_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_history_player_assessed
+  ON player_skill_ratings_history(player_id, assessed_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_player_skill_ratings_history_skill_id
+  ON player_skill_ratings_history(skill_id);
 
 CREATE TABLE IF NOT EXISTS player_share_links (
   id TEXT PRIMARY KEY,

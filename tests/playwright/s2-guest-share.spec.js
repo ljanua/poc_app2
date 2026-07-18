@@ -65,6 +65,8 @@ test.describe('S2/S6 guest share (backend)', () => {
     await expect(guestPage.locator('#dashboardHeaderMeta')).toHaveText('Guest View');
     await expect(guestPage.locator('#dashboardPlayerName')).toHaveText(setup.playerName);
     await expect(guestPage.locator('#editPlayerLink')).toHaveAttribute('aria-disabled', 'true');
+    await expect(guestPage.getByTestId('assessment-link')).toHaveAttribute('aria-disabled', 'true');
+    await expect(guestPage.getByTestId('assessment-history-section')).toBeHidden();
 
     const revoke = await page.evaluate((playerId) => {
       return window.MockupApi.revokePlayerShare(playerId);
