@@ -169,6 +169,7 @@ test.describe('S8 Skills page', () => {
 
     await page.goto('/S8-skills.html');
     await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await page.getByTestId('skill-sport-filter').selectOption('all');
     await expect(page.locator('#skillsTableBody tr', { hasText: name })).toHaveCount(1);
     await expect(
       page.locator('#skillsTableBody tr', { hasText: name }).getByTestId('skill-abbreviation-cell')
@@ -191,6 +192,7 @@ test.describe('S8 Skills page', () => {
     const suggested = await page.getByTestId('skill-abbreviation-input').inputValue();
     await page.getByTestId('skill-abbreviation-input').fill('LSQ');
     await page.getByTestId('create-skill-submit').click();
+    await page.getByTestId('skill-sport-filter').selectOption('all');
     await expect(page.locator('#skillsTableBody tr', { hasText: name })).toHaveCount(1);
     await expect(
       page.locator('#skillsTableBody tr', { hasText: name }).getByTestId('skill-abbreviation-cell')
@@ -274,6 +276,8 @@ test.describe('S8 Skills page', () => {
     expect(deleted).toBe(204);
 
     await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await page.getByTestId('skill-sport-filter').selectOption('all');
     await expect(page.locator('#skillsTableBody tr', { hasText: skillName })).toHaveCount(0);
   });
 
@@ -285,11 +289,72 @@ test.describe('S8 Skills page', () => {
     await expect(page.locator('#roleNotice')).toContainText(/Read-only/i);
     await expect(page.locator('#skillPanels')).toBeVisible();
     await expect(page.getByTestId('position-sport-filter')).toHaveValue('sport_soccer');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await expect(page.getByTestId('skill-sport-filter')).toHaveValue('sport_soccer');
 
     await expect(page.locator('[data-testid="add-sport"]')).toBeHidden();
     await expect(page.locator('[data-testid="add-position"]')).toBeHidden();
     await expect(page.locator('[data-testid="add-skill"]')).toBeHidden();
     await expect(page.locator('#assignSkillsButton')).toBeHidden();
+  });
+
+  test('Skills tab Sport filter defaults to Soccer and scopes by assignment', async ({ page }) => {
+    const suffix = Date.now().toString(36);
+    const sportName = 'QA Skill Sport ' + suffix;
+    const skillName = 'QA Only QA Sport ' + suffix;
+    const positionName = 'QA Skill Pos ' + suffix;
+
+    const sportCreated = await createSportViaApi(page, sportName);
+    expect(sportCreated.status).toBe(201);
+    const sportId = sportCreated.body.data.id;
+    expect(sportId).not.toBe('sport_soccer');
+
+    const positionCreated = await createPositionViaApi(page, positionName, sportId);
+    expect(positionCreated.status).toBe(201);
+    const positionId = positionCreated.body.data.id;
+
+    const skillCreated = await createSkillViaApi(page, skillName);
+    expect(skillCreated.status).toBe(201);
+    const skillId = skillCreated.body.data.id;
+
+    const assigned = await assignSkillToPositionViaApi(page, positionId, skillId);
+    expect([200, 201]).toContain(assigned.status);
+
+    await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await expect(page.getByTestId('skill-sport-filter')).toHaveValue('sport_soccer');
+    await expect(page.locator('#skillsTableBody tr', { hasText: 'Ball Control' })).toHaveCount(1);
+    await expect(page.locator('#skillsTableBody tr', { hasText: skillName })).toHaveCount(0);
+
+    await page.getByTestId('skill-sport-filter').selectOption(sportId);
+    await expect(page.locator('#skillsTableBody tr', { hasText: skillName })).toHaveCount(1);
+
+    await page.getByTestId('skill-sport-filter').selectOption('all');
+    await expect(page.locator('#skillsTableBody tr', { hasText: skillName })).toHaveCount(1);
+
+    const emptySport = await createSportViaApi(page, 'QA Empty Skill Sport ' + suffix);
+    expect(emptySport.status).toBe(201);
+    await page.goto('/S8-skills.html');
+    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
+    await page.getByTestId('skill-sport-filter').selectOption(emptySport.body.data.id);
+    await expect(page.locator('#skillsTableBody tr')).toHaveCount(0);
+  });
+
+  test('GET /skills sportId filters API list', async ({ page }) => {
+    await loginAs(page, 'maria@vantageiq.club');
+    const soccer = await page.evaluate(async () => {
+      const response = await fetch('/api/v1/skills?status=active&sportId=sport_soccer');
+      return { status: response.status, body: await response.json() };
+    });
+    expect(soccer.status).toBe(200);
+    expect(soccer.body.data.some((s) => s.name === 'Ball Control')).toBe(true);
+
+    const unknown = await page.evaluate(async () => {
+      const response = await fetch('/api/v1/skills?status=active&sportId=sport_nonexistent');
+      return { status: response.status, body: await response.json() };
+    });
+    expect(unknown.status).toBe(200);
+    expect(unknown.body.data).toEqual([]);
   });
 
   test('Nav item role gating: Skills nav is visible for Coach and SystemAdmin', async ({ page }) => {

@@ -1405,9 +1405,13 @@ paths:
     get:
       summary: List skills
       description: >
-        SystemAdmin-only. Returns every skill with `assignedPositionCount`.
-        By default only `status = 'active'` skills are returned; pass
-        `?status=inactive` or `?status=all` to override.
+        Returns skills with `assignedPositionCount`. By default only
+        `status = 'active'` skills are returned; pass `?status=inactive` or
+        `?status=all` to override. Optional `sportId` limits the list to skills
+        assigned to at least one position under that sport (via
+        `position_skills` → `positions`). Omit `sportId` or pass `all` for the
+        unfiltered catalog. When `sportId` is a concrete sport, assignment
+        counts are scoped to positions of that sport.
       tags: [Skills]
       security:
         - bearerAuth: []
@@ -1423,6 +1427,15 @@ paths:
           schema:
             type: string
             enum: [active, inactive, all]
+        - name: sportId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            When set to a sport id, return only skills with ≥1 assignment under
+            that sport. Use `all` or omit for every skill (status filter still
+            applies). Unknown sport ids yield an empty list.
       responses:
         '200':
           description: Skill list

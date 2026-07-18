@@ -2166,11 +2166,12 @@
       return { status: 200, code: 'ok', position: clone(position) };
     },
 
-    listSkills(actorRole, actorEmail, statusFilter) {
+    listSkills(actorRole, actorEmail, statusFilter, sportId) {
       if (shouldUseBackendPlayersMode()) {
         const params = new URLSearchParams();
         if (actorEmail) params.set('actorEmail', actorEmail);
         if (statusFilter) params.set('status', statusFilter);
+        if (sportId) params.set('sportId', sportId);
         const query = params.toString() ? `?${params.toString()}` : '';
         const response = backendRequest('GET', `/skills${query}`);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -2182,19 +2183,39 @@
 
       const store = loadStore();
       const status = String(statusFilter || 'active').trim().toLowerCase();
+      const normalizedSportId = String(sportId || '').trim();
+      const applySportFilter = normalizedSportId && normalizedSportId.toLowerCase() !== 'all';
       const matchStatus = (skill) => {
         if (status === 'all') return true;
         return (skill.status || 'active') === status;
       };
+      const positionsById = new Map((store.positions || []).map((position) => [position.id, position]));
       const decorate = (skill) => {
-        const assignedPositionCount = (store.positionSkills || []).filter((entry) => entry.skillId === skill.id).length;
+        const assignments = (store.positionSkills || []).filter((entry) => {
+          if (entry.skillId !== skill.id) return false;
+          if (!applySportFilter) return true;
+          const position = positionsById.get(entry.positionId);
+          return position && String(position.sportId) === normalizedSportId;
+        });
         return Object.assign({}, skill, {
           status: skill.status || 'active',
           abbreviation: skill.abbreviation || suggestSkillAbbreviation(skill.name),
-          assignedPositionCount: assignedPositionCount
+          assignedPositionCount: assignments.length
         });
       };
-      return clone((store.skills || []).filter(matchStatus).map(decorate));
+      let skills = (store.skills || []).filter(matchStatus);
+      if (applySportFilter) {
+        const linkedSkillIds = new Set(
+          (store.positionSkills || [])
+            .filter((entry) => {
+              const position = positionsById.get(entry.positionId);
+              return position && String(position.sportId) === normalizedSportId;
+            })
+            .map((entry) => entry.skillId)
+        );
+        skills = skills.filter((skill) => linkedSkillIds.has(skill.id));
+      }
+      return clone(skills.map(decorate));
     },
 
     createSkill(payload, actorRole, actorEmail) {

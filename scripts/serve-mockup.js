@@ -917,14 +917,31 @@ async function listPositionsWithCounts(sportId, statusFilter, client) {
   return result.rows.map(toPositionPayload);
 }
 
-async function listSkillsWithCounts(statusFilter, client) {
+async function listSkillsWithCounts(statusFilter, sportId, client) {
   const runner = client || pool;
   const params = [];
-  let whereClause = '';
+  const whereParts = [];
+  const normalizedSportId = String(sportId || '').trim();
+  const applySportFilter = normalizedSportId && normalizedSportId.toLowerCase() !== 'all';
+
   if (statusFilter === 'active' || statusFilter === 'inactive') {
-    whereClause = 'WHERE s.status = $1';
     params.push(statusFilter);
+    whereParts.push(`s.status = $${params.length}`);
   }
+  if (applySportFilter) {
+    params.push(normalizedSportId);
+    whereParts.push(`EXISTS (
+      SELECT 1 FROM position_skills ps
+      INNER JOIN positions p ON p.id = ps.position_id
+      WHERE ps.skill_id = s.id AND p.sport_id = $${params.length}
+    )`);
+  }
+  const whereClause = whereParts.length ? `WHERE ${whereParts.join(' AND ')}` : '';
+  const countSql = applySportFilter
+    ? `(SELECT COUNT(*) FROM position_skills ps
+        INNER JOIN positions p ON p.id = ps.position_id
+        WHERE ps.skill_id = s.id AND p.sport_id = $${params.length})`
+    : `(SELECT COUNT(*) FROM position_skills ps WHERE ps.skill_id = s.id)`;
   const result = await runner.query(
     `
       SELECT
@@ -932,7 +949,7 @@ async function listSkillsWithCounts(statusFilter, client) {
         s.name,
         s.abbreviation,
         s.status,
-        (SELECT COUNT(*) FROM position_skills ps WHERE ps.skill_id = s.id) AS "assignedPositionCount"
+        ${countSql} AS "assignedPositionCount"
       FROM skills s
       ${whereClause}
       ORDER BY s.name ASC
@@ -5330,7 +5347,8 @@ async function handlePlayersApi(req, res, requestUrl) {
 
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/skills`) {
     const statusFilter = String(requestUrl.searchParams.get('status') || 'active').trim().toLowerCase();
-    const rows = await listSkillsWithCounts(statusFilter);
+    const sportId = String(requestUrl.searchParams.get('sportId') || '').trim();
+    const rows = await listSkillsWithCounts(statusFilter, sportId);
     sendJson(res, 200, { data: rows });
     return;
   }

@@ -111,6 +111,10 @@
         <section class="table-card" role="tabpanel" id="tabpanel-skills" data-tab-id="skills" aria-labelledby="tab-skills" hidden>
           <div class="modal-header">
             <h2>Skills</h2>
+            <label class="pill-select" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+              <span>Sport:</span>
+              <select data-testid="skill-sport-filter" id="skillSportFilter"></select>
+            </label>
             <button class="btn btn-primary js-admin-write" data-testid="add-skill" type="button">Add Skill</button>
           </div>
           <div class="table-wrap">
@@ -370,6 +374,7 @@
         actorEmail: null,
         showInactive: false,
         selectedSportId: 'sport_soccer',
+        skillsSportId: 'sport_soccer',
         selectedPositionId: null,
         selectedSkillId: null,
         createAbbrDirty: false,
@@ -410,6 +415,7 @@
       state.actorRole = currentUser.role;
       state.actorEmail = currentUser.email;
       state.selectedSportId = MockupApi.resolveDefaultSportId(state.actorRole, state.actorEmail);
+      state.skillsSportId = state.selectedSportId;
       roleBadge.textContent = state.actorRole;
       if (canWriteCatalog) {
         roleNotice.style.display = 'none';
@@ -578,9 +584,34 @@
         }
       }
 
+      function populateSkillSportFilter() {
+        const select = document.getElementById('skillSportFilter');
+        const sports = MockupApi.listSports(state.actorRole, state.actorEmail, 'all') || [];
+        const previous = state.skillsSportId;
+        select.innerHTML = '';
+        const allOpt = document.createElement('option');
+        allOpt.value = 'all';
+        allOpt.textContent = 'All sports';
+        select.appendChild(allOpt);
+        sports.forEach(function (sport) {
+          const opt = document.createElement('option');
+          opt.value = sport.id;
+          opt.textContent = sport.name;
+          select.appendChild(opt);
+        });
+        if (previous === 'all' || sports.find(function (s) { return s.id === previous; })) {
+          select.value = previous;
+          state.skillsSportId = previous;
+        } else {
+          state.skillsSportId = state.selectedSportId || (sports.length ? sports[0].id : 'all');
+          select.value = state.skillsSportId;
+        }
+      }
+
       function renderSkills() {
         const statusFilter = state.showInactive ? 'all' : 'active';
-        const skills = MockupApi.listSkills(state.actorRole, state.actorEmail, statusFilter) || [];
+        const sportArg = state.skillsSportId === 'all' ? 'all' : state.skillsSportId;
+        const skills = MockupApi.listSkills(state.actorRole, state.actorEmail, statusFilter, sportArg) || [];
         const body = document.getElementById('skillsTableBody');
         body.innerHTML = '';
         skills.forEach(function (skill) {
@@ -638,6 +669,7 @@
 
       function renderAll() {
         populateSportFilter();
+        populateSkillSportFilter();
         renderSports();
         renderPositions();
         renderSkills();
@@ -659,6 +691,12 @@
         renderPositions();
         renderPositionSkills();
         refreshKpis();
+      });
+
+      // Sport filter (Skills panel).
+      document.getElementById('skillSportFilter').addEventListener('change', function (event) {
+        state.skillsSportId = event.target.value;
+        renderSkills();
       });
 
       // Position Skills filter.
