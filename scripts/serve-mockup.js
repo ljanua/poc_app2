@@ -1350,9 +1350,51 @@ function appError(status, code, message) {
   return { status, code, message };
 }
 
+async function getClubFreeTierFlag(clubId) {
+  const row = await pool.query(
+    `SELECT is_free_tier AS "isFreeTier" FROM clubs WHERE id = $1 LIMIT 1`,
+    [clubId]
+  );
+  return row.rows[0] || null;
+}
+
+async function assertFreeTierAllowsNewTeam(clubId) {
+  const club = await getClubFreeTierFlag(clubId);
+  if (!club || !club.isFreeTier) {
+    return { ok: true };
+  }
+  const count = await pool.query(`SELECT COUNT(*)::int AS n FROM teams WHERE club_id = $1`, [clubId]);
+  if ((count.rows[0] && count.rows[0].n) >= 1) {
+    return {
+      ok: false,
+      error: appError(403, 'free_tier_limit', 'Free tier allows only 1 team. Upgrade to add more teams.')
+    };
+  }
+  return { ok: true };
+}
+
+async function assertFreeTierAllowsNewMember(clubId) {
+  const club = await getClubFreeTierFlag(clubId);
+  if (!club || !club.isFreeTier) {
+    return { ok: true };
+  }
+  const count = await pool.query(`SELECT COUNT(*)::int AS n FROM coach_clubs WHERE club_id = $1`, [clubId]);
+  if ((count.rows[0] && count.rows[0].n) >= 1) {
+    return {
+      ok: false,
+      error: appError(403, 'free_tier_limit', 'Free tier allows only 1 coach (your own account). Upgrade to add more coaches.')
+    };
+  }
+  return { ok: true };
+}
+
 function resolveTarget(urlPath) {
   if (urlPath === '/' || urlPath === '') {
-    return path.join(root, 'index.html');
+    return path.join(root, 'public-home.html');
+  }
+
+  if (urlPath === '/mockup' || urlPath === '/mockup/') {
+    return path.join(root, 'mockup-hub.html');
   }
 
   const cleanPath = decodeURIComponent(urlPath.split('?')[0]);
@@ -1758,6 +1800,17 @@ async function ensureDatabase() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_game_performance_player_id
       ON game_performance(player_id);
+  `);
+
+  // Public landing free-tier clubs (migration 032).
+  await pool.query(`
+    ALTER TABLE clubs
+      ADD COLUMN IF NOT EXISTS is_free_tier BOOLEAN NOT NULL DEFAULT FALSE
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_clubs_is_free_tier
+      ON clubs(is_free_tier)
+      WHERE is_free_tier = TRUE
   `);
 
   // Feature 037: skill abbreviation (additive; skills table comes from migrations/deploy).
@@ -2608,7 +2661,7 @@ async function handlePlayersApi(req, res, requestUrl) {
   console.log('API request', req.method, logPath);
 
   const mutatingMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
-  if (mutatingMethods.has(req.method) && requestUrl.pathname !== `${apiPrefix}/auth/login`) {
+  if (mutatingMethods.has(req.method) && requestUrl.pathname !== `${apiPrefix}/auth/login` && requestUrl.pathname !== `${apiPrefix}/auth/register`) {
     const queryActorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim();
     const queryUserId = queryActorEmail ? await resolveUserIdByEmail(queryActorEmail) : null;
     logStructured(`api.${req.method.toLowerCase()}${requestUrl.pathname}`, queryUserId, {
@@ -3471,6 +3524,11 @@ async function handlePlayersApi(req, res, requestUrl) {
     );
     const alreadyMember = existing.rows.length > 0;
     if (!alreadyMember) {
+      const freeMemberOk = await assertFreeTierAllowsNewMember(clubId);
+      if (!freeMemberOk.ok) {
+        sendJson(res, freeMemberOk.error.status, freeMemberOk.error);
+        return;
+      }
       await pool.query(
         `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2) ON CONFLICT (user_id, club_id) DO NOTHING`,
         [userId, clubId]
@@ -3562,18 +3620,32 @@ async function handlePlayersApi(req, res, requestUrl) {
     let leadCoachUserId = actorUser.id;
     if (effectiveRole === 'SystemAdmin' || effectiveRole === 'ClubAdmin') {
       const selectedCoachEmail = String(payload.coachEmail || '').trim().toLowerCase();
-      if (!selectedCoachEmail) {
-        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
-        return;
-      }
+      const selfEmail = String(actorUser.email || '').trim().toLowerCase();
 
-      const selectedCoach = await pool.query(`SELECT id, name, email, role, status FROM users WHERE LOWER(email) = LOWER($1) AND role = 'Coach' AND status = 'active' LIMIT 1`, [selectedCoachEmail]);
-      if (!selectedCoach.rows[0]) {
-        sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
-        return;
-      }
+      // Free-tier / solo ClubAdmin: allow leading their own first team without a separate Coach user.
+      if (effectiveRole === 'ClubAdmin' && (!selectedCoachEmail || selectedCoachEmail === selfEmail)) {
+        leadCoachUserId = actorUser.id;
+      } else {
+        if (!selectedCoachEmail) {
+          sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+          return;
+        }
 
-      leadCoachUserId = selectedCoach.rows[0].id;
+        const selectedCoach = await pool.query(
+          `SELECT id, name, email, role, status FROM users
+           WHERE LOWER(email) = LOWER($1)
+             AND role IN ('Coach', 'ClubAdmin')
+             AND status = 'active'
+           LIMIT 1`,
+          [selectedCoachEmail]
+        );
+        if (!selectedCoach.rows[0]) {
+          sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+          return;
+        }
+
+        leadCoachUserId = selectedCoach.rows[0].id;
+      }
     }
 
     let clubId = String(payload.clubId || '').trim();
@@ -3603,6 +3675,12 @@ async function handlePlayersApi(req, res, requestUrl) {
         sendJson(res, 403, appError(403, 'forbidden_scope', 'Club Admins can only create teams in clubs they belong to.'));
         return;
       }
+    }
+
+    const freeTeamOk = await assertFreeTierAllowsNewTeam(clubId);
+    if (!freeTeamOk.ok) {
+      sendJson(res, freeTeamOk.error.status, freeTeamOk.error);
+      return;
     }
 
     let sportId = String(payload.sportId || '').trim();
@@ -3833,7 +3911,11 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
 
     const coach = await pool.query(
-      `SELECT id, name, email FROM users WHERE LOWER(email) = LOWER($1) AND role = 'Coach' AND status = 'active' LIMIT 1`,
+      `SELECT id, name, email FROM users
+       WHERE LOWER(email) = LOWER($1)
+         AND role IN ('Coach', 'ClubAdmin')
+         AND status = 'active'
+       LIMIT 1`,
       [newCoachEmail]
     );
     if (!coach.rows[0]) {
@@ -4014,6 +4096,11 @@ async function handlePlayersApi(req, res, requestUrl) {
         sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
         return;
       }
+      const freeMemberOk = await assertFreeTierAllowsNewMember(clubId);
+      if (!freeMemberOk.ok) {
+        sendJson(res, freeMemberOk.error.status, freeMemberOk.error);
+        return;
+      }
     }
 
     const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
@@ -4186,6 +4273,78 @@ async function handlePlayersApi(req, res, requestUrl) {
     const user = toUserPayload({ ...row.rows[0], lastLogin: 'Just now' });
     logStructured('auth.login.success', user.id, { email: user.email, role: user.role });
     sendJson(res, 200, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/auth/register`) {
+    const payload = await readJsonBody(req);
+    const email = String(payload.email || '').trim().toLowerCase();
+    const name = normalizeLookup(payload.name);
+    const password = String(payload.password || '').trim();
+    const hasNumber = /\d/.test(password);
+
+    if (!name || name.length < 2 || !email.includes('@') || password.length < 10 || !hasNumber) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
+      return;
+    }
+
+    const existing = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    if (existing.rows[0]) {
+      sendJson(res, 409, appError(409, 'conflict', 'A user with the same identifier already exists.'));
+      return;
+    }
+
+    const baseClubName = `${name}'s Club`.slice(0, 60);
+    let clubName = baseClubName;
+    let suffix = 0;
+    while (true) {
+      const clash = await pool.query(`SELECT id FROM clubs WHERE LOWER(name) = LOWER($1) LIMIT 1`, [clubName]);
+      if (!clash.rows[0]) {
+        break;
+      }
+      suffix += 1;
+      const tag = ` ${suffix}`;
+      clubName = `${baseClubName.slice(0, Math.max(2, 60 - tag.length))}${tag}`;
+    }
+
+    const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const clubId = `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}`;
+
+    await pool.query('BEGIN');
+    try {
+      await pool.query(`
+        INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
+        VALUES ($1, $2, $3, 'ClubAdmin', 'active', $4, 'Just now')
+      `, [userId, name, email, password]);
+
+      await pool.query(
+        `INSERT INTO clubs (id, name, status, default_sport_id, is_free_tier)
+         VALUES ($1, $2, 'active', 'sport_soccer', TRUE)`,
+        [clubId, clubName]
+      );
+
+      await pool.query(
+        `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2)`,
+        [userId, clubId]
+      );
+
+      await pool.query('COMMIT');
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      console.error('auth.register failed', error);
+      sendJson(res, 500, appError(500, 'unknown', 'Could not create your free account. Please try again.'));
+      return;
+    }
+
+    const created = await pool.query(
+      `SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"
+       FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    const user = toUserPayload(created.rows[0]);
+    user.clubIds = [clubId];
+    logStructured('auth.register.success', user.id, { email: user.email, role: user.role, clubId });
+    sendJson(res, 201, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
     return;
   }
 
@@ -6253,7 +6412,7 @@ ensureDatabase()
   .then(() => {
     server.listen(port, host, () => {
       console.log(`Mockup server running at http://${host}:${port}`);
-      console.log('Supported routes: /, /S0-login, /S1-player-list, /S2-player-dashboard, /S3-team-management, /S4-video-capture, /S6-assessment-list, /S7-admin-user-management, /api/v1/players');
+      console.log('Supported routes: /, /mockup, /S0-login, /S1-player-list, /S2-player-dashboard, /S3-team-management, /S4-video-capture, /S6-assessment-list, /S7-admin-user-management, /api/v1/players');
       console.log(`Structured log file: ${getLogPath()}`);
       logStructured('server.started', null, { host, port });
       if (!databaseUrl) {

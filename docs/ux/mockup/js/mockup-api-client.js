@@ -475,7 +475,9 @@
   }
 
   function listActiveCoachesInternal(store) {
-    return store.users.filter((user) => user.role === 'Coach' && user.status === 'active');
+    return store.users.filter(
+      (user) => (user.role === 'Coach' || user.role === 'ClubAdmin') && user.status === 'active'
+    );
   }
 
   function resolveActorContext(store, actorRole, actorEmail) {
@@ -1644,7 +1646,9 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('GET', '/users');
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
-          return clone(response.body.data.filter((user) => user.role === 'Coach' && user.status === 'active'));
+          return clone(response.body.data.filter(
+            (user) => (user.role === 'Coach' || user.role === 'ClubAdmin') && user.status === 'active'
+          ));
         }
 
         window.__MOCK_API_LAST_ERROR__ = response.body;
@@ -5315,6 +5319,36 @@
       setSessionEmail(user.email);
       clearActiveClubStorage();
       return { status: 200, token: 'jwt-' + user.role.toLowerCase(), role: user.role, user: clone(user) };
+    },
+
+    register(name, email, password) {
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/auth/register', { name, email, password });
+        if ((response.status === 200 || response.status === 201) && response.body && response.body.user) {
+          setSessionEmail(response.body.user.email);
+          clearActiveClubStorage();
+          return {
+            status: response.status,
+            token: response.body.token,
+            role: response.body.role,
+            user: clone(response.body.user)
+          };
+        }
+
+        setSessionEmail('');
+        clearActiveClubStorage();
+        return clone(response.body || {
+          status: 400,
+          code: 'validation_error',
+          message: 'Please review the form fields and try again.'
+        });
+      }
+
+      return {
+        status: 503,
+        code: 'service_unavailable',
+        message: 'Free signup requires the live database backend.'
+      };
     },
 
     logout() {

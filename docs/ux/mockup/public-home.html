@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VantagIQ — Track player development with AI</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body class="public-landing">
+  <section class="landing-hero" data-testid="landing-hero">
+    <div class="landing-hero-inner">
+      <div class="landing-brand">
+        <img class="brand-logo landing-logo" src="/data/img/VantagIQ_transp_300_2.png" alt="VantageIQ" data-testid="brand-logo">
+        <span class="landing-wordmark">VantagIQ</span>
+      </div>
+      <p class="landing-promise" data-testid="landing-promise">
+        Replace messy social updates with one clear story of your player’s progress — powered by AI assessment and coach guidance.
+      </p>
+      <div class="landing-doors" data-testid="landing-doors">
+        <button type="button" class="landing-door" id="doorParent" data-testid="door-parent">
+          I’m a parent
+          <small>Ask your coach for a share</small>
+        </button>
+        <button type="button" class="landing-door" id="doorCoach" data-testid="door-coach">
+          I’m a coach
+          <small>Start free · Sign in</small>
+        </button>
+      </div>
+
+      <div class="landing-panel" id="panelParent" data-testid="panel-parent" hidden>
+        <h2>See your player’s progress</h2>
+        <p>
+          VantagIQ keeps development, ratings, and AI clip assessments in one place — not scattered across chats and feeds.
+          Ask your coach to share your player’s VantagIQ link (no parent account needed).
+        </p>
+        <label class="form-label" for="askCoachMessage">Copy this message to your coach</label>
+        <textarea id="askCoachMessage" class="landing-ask-message" data-testid="ask-coach-message" readonly rows="4">Hi — could you share my player’s progress on VantagIQ? I’d love a private link so I can follow development and assessments in one place instead of social posts. Thanks!</textarea>
+        <button type="button" class="btn btn-primary" id="copyAskCoach" data-testid="copy-ask-coach">Copy message</button>
+        <p class="landing-copy-status" id="copyStatus" data-testid="copy-status" hidden>Copied</p>
+      </div>
+
+      <div class="landing-panel" id="panelCoach" data-testid="panel-coach" hidden>
+        <h2>Start free as a club admin</h2>
+        <form class="auth-form" id="signupForm" data-testid="signup-form">
+          <div>
+            <label class="form-label" for="signupName">Name</label>
+            <input id="signupName" data-testid="signup-name" type="text" autocomplete="name" required>
+          </div>
+          <div>
+            <label class="form-label" for="signupEmail">Email</label>
+            <input id="signupEmail" data-testid="signup-email" type="email" autocomplete="email" required>
+          </div>
+          <div>
+            <label class="form-label" for="signupPassword">Password</label>
+            <input id="signupPassword" data-testid="signup-password" type="password" autocomplete="new-password" required minlength="10">
+          </div>
+          <button class="btn btn-primary" type="submit" data-testid="signup-submit">Create free account</button>
+        </form>
+        <p class="error-msg" id="signupError" data-testid="signup-error"></p>
+        <p class="landing-signin-row">
+          Already registered?
+          <a href="./S0-login.html" data-testid="sign-in-link">Sign in</a>
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-proof" data-testid="landing-proof">
+    <h2>Built for development, not highlight reels alone</h2>
+    <p class="landing-proof-lead">
+      Gather info, monitor progress, share results, and use <strong data-testid="ai-mention">AI-assisted assessment</strong> for clearer guidance.
+    </p>
+    <p class="landing-soft-free" data-testid="free-to-start">
+      Free to start — set up your club and first team. Upgrade later when you need more.
+    </p>
+    <div class="landing-proof-grid">
+      <figure class="landing-shot">
+        <img src="/data/img/VantagIQ_transp_300_2.png" alt="Player progress overview" data-testid="proof-shot-progress">
+        <figcaption>Track player development over time</figcaption>
+      </figure>
+      <figure class="landing-shot">
+        <img src="/data/img/vantagiq_logo_background.png" alt="AI clip assessment" data-testid="proof-shot-ai">
+        <figcaption>AI helps assess performance from video</figcaption>
+      </figure>
+      <figure class="landing-shot">
+        <img src="/data/img/VantagIQ_transp2.png" alt="Games and ratings" data-testid="proof-shot-games">
+        <figcaption>Share results with families via coach links</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const doorParent = document.getElementById('doorParent');
+      const doorCoach = document.getElementById('doorCoach');
+      const panelParent = document.getElementById('panelParent');
+      const panelCoach = document.getElementById('panelCoach');
+      const copyBtn = document.getElementById('copyAskCoach');
+      const askMsg = document.getElementById('askCoachMessage');
+      const copyStatus = document.getElementById('copyStatus');
+      const signupForm = document.getElementById('signupForm');
+      const signupError = document.getElementById('signupError');
+
+      function showPanel(which) {
+        const parentOn = which === 'parent';
+        const coachOn = which === 'coach';
+        panelParent.hidden = !parentOn;
+        panelCoach.hidden = !coachOn;
+        doorParent.classList.toggle('is-active', parentOn);
+        doorCoach.classList.toggle('is-active', coachOn);
+      }
+
+      doorParent.addEventListener('click', function () { showPanel('parent'); });
+      doorCoach.addEventListener('click', function () { showPanel('coach'); });
+
+      copyBtn.addEventListener('click', function () {
+        const text = askMsg.value;
+        function done() {
+          copyStatus.hidden = false;
+          setTimeout(function () { copyStatus.hidden = true; }, 1600);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            askMsg.select();
+            document.execCommand('copy');
+            done();
+          });
+        } else {
+          askMsg.select();
+          document.execCommand('copy');
+          done();
+        }
+      });
+
+      signupForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        signupError.classList.remove('show');
+        signupError.textContent = '';
+
+        const name = document.getElementById('signupName').value;
+        const email = document.getElementById('signupEmail').value;
+        const password = document.getElementById('signupPassword').value;
+        const response = MockupApi.register(name, email, password);
+
+        if (response.status !== 200 && response.status !== 201) {
+          signupError.textContent = response.message || 'Could not create your account. Please try again.';
+          signupError.classList.add('show');
+          return;
+        }
+
+        MockupApi.continueAfterLogin(response.user);
+      });
+    })();
+  </script>
+</body>
+</html>

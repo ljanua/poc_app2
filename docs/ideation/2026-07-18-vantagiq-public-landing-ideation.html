@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ideation: VantagIQ public landing for coaches &amp; parents</title>
+  <style>
+    :root {
+      --bg: #070b16;
+      --surface: #121a2b;
+      --text: #e8eef7;
+      --muted: #8b9bb4;
+      --accent: #c6ff3a;
+      --cyan: #5eead4;
+      --border: #2a3a52;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      padding: 2rem 1.25rem 4rem;
+    }
+    .wrap { max-width: 52rem; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.2rem; margin: 2.25rem 0 0.75rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    h3 { font-size: 1.05rem; margin: 0 0 0.35rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .meta span { margin-right: 1rem; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+      margin: 1rem 0;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.75rem;
+      color: var(--cyan);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.15rem 0.55rem;
+      margin: 0 0.35rem 0.5rem 0;
+    }
+    .jump a { color: var(--cyan); margin-right: 0.75rem; text-decoration: none; }
+    .jump a:hover { text-decoration: underline; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .muted { color: var(--muted); }
+    ul { padding-left: 1.2rem; }
+    code { font-size: 0.85em; color: var(--cyan); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>VantagIQ public landing — coaches &amp; parents</h1>
+    <div class="meta">
+      <span><strong>Date:</strong> 2026-07-18</span>
+      <span><strong>Topic:</strong> vantagiq-public-landing</span>
+      <span><strong>Mode:</strong> repo-grounded</span>
+      <span><strong>Focus:</strong> appealing public page; free-tier signup + sign-in; player development + AI assessment</span>
+    </div>
+
+    <h2>Grounding context</h2>
+    <div class="card">
+      <p><strong>Codebase:</strong> Phase 1 HTML mockups (<code>docs/ux/mockup/</code>) served by <code>scripts/serve-mockup.js</code>. Dark athletic design (Sora/Inter, lime <code>#c6ff3a</code>, cyan/violet). Auth today is <strong>login-only</strong> (<code>S0-login.html</code>) — users are provisioned by admins; <strong>no public signup</strong>. Roles: SystemAdmin, Coach, ClubAdmin. Players are roster records, not login personas. Guest share (<code>?share=</code> on S2/S6) is the only parent-facing path today. <code>index.html</code> is an internal mockup hub, not marketing.</p>
+      <p><strong>Past learnings:</strong> Thin on landing/onboarding; coach UX learnings stress live-backend truthfulness over localStorage-only demos.</p>
+      <p><strong>External:</strong> Youth sports conversion in 2026 favors mobile-first heroes that answer who/what/next in seconds, sticky CTAs, short forms, social proof near buttons, and seamless handoff into the product (camp/tryout landing patterns).</p>
+    </div>
+
+    <h2>Topic axes</h2>
+    <ul>
+      <li>Hero &amp; first-viewport promise</li>
+      <li>Dual audience (coach vs parent) without muddle</li>
+      <li>Free-tier signup &amp; trust friction</li>
+      <li>Product proof (AI assessment, progress, share)</li>
+      <li>Handoff into existing app (login, guest share, roles)</li>
+    </ul>
+
+    <h2 id="ranked">Ranked ideas</h2>
+    <p class="jump muted">Jump:
+      <a href="#i1">1. Dual-door hero</a>
+      <a href="#i2">2. Parent share-first</a>
+      <a href="#i3">3. Live product strip</a>
+      <a href="#i4">4. Free-tier honesty</a>
+      <a href="#i5">5. Role mosaic</a>
+      <a href="#i6">6. Brand-matched landing shell</a>
+      <a href="#i7">7. Soft athlete promise</a>
+    </p>
+
+    <div class="card" id="i1">
+      <h3>1. Dual-door hero: “I’m a coach” / “I’m a parent”</h3>
+      <span class="tag">axis: dual audience</span>
+      <span class="tag">confidence: 88%</span>
+      <span class="tag">complexity: Medium</span>
+      <p>First viewport is brand-forward (logo as hero signal) with one short outcome line, then two equal CTAs that route into different onboarding stories — coach free signup vs parent path (share/invite/parent signup later). Secondary “Already registered? Sign in” links to existing S0.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> S0 is sign-in only; no Parent role yet; guest share is parent wedge. <code>external:</code> youth sports pages win when audience + next step are clear in ~10s.</p>
+      <p><strong>Rationale:</strong> Avoids a generic “Sign up free” that forces one persona into the wrong funnel while still satisfying dual CTA ask.</p>
+      <p class="muted"><strong>Downsides:</strong> Needs careful visual hierarchy so the page doesn’t feel like a dashboard of doors; parent path must not over-promise accounts that don’t exist yet.</p>
+    </div>
+
+    <div class="card" id="i2">
+      <h3>2. Parent share-first funnel (zero account until value)</h3>
+      <span class="tag">axis: free-tier / handoff</span>
+      <span class="tag">confidence: 84%</span>
+      <span class="tag">complexity: Low–Medium</span>
+      <p>Public page sells “see your player’s progress” and primary parent CTA is “Open a shared player link” or “Ask your coach for a VantagIQ share” — with a secondary “Create free coach account.” Reuses Feature 034 guest share as the true free tier for families.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> guest S2/S6 share already works read-only. <code>reasoned:</code> free tier for parents can be share-mediated until Parent role ships.</p>
+      <p><strong>Rationale:</strong> Ships value without inventing Parent auth on day one; coaches become the growth loop.</p>
+      <p class="muted"><strong>Downsides:</strong> Weaker “self-serve parent signup” story; relies on coaches generating shares.</p>
+    </div>
+
+    <div class="card" id="i3">
+      <h3>3. Live product proof strip (not stock kids-sports collage)</h3>
+      <span class="tag">axis: product proof</span>
+      <span class="tag">confidence: 82%</span>
+      <span class="tag">complexity: Medium</span>
+      <p>Below the hero, a single full-bleed or edge-to-edge sequence of real mockup surfaces (S1 list → S2 progress → S4/S6 AI clip assessment → S10 games) with one caption each. Motion: subtle cross-fade or scroll-scrub of 2–3 screens. No fake stat tiles in the hero.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> rich coach journey already in mockups; design system already youth-sports energetic. <code>external:</code> trust comes from real product imagery near CTAs.</p>
+      <p><strong>Rationale:</strong> Differentiates from generic camp templates; proves AI assessment claim with existing UI.</p>
+      <p class="muted"><strong>Downsides:</strong> Needs curated screenshots/assets; stale if UI drifts.</p>
+    </div>
+
+    <div class="card" id="i4">
+      <h3>4. Honest free-tier card + Sign in twin</h3>
+      <span class="tag">axis: free-tier signup</span>
+      <span class="tag">confidence: 80%</span>
+      <span class="tag">complexity: Medium–High</span>
+      <p>A dedicated “Start free” block that states what’s included (e.g. 1 team / N players / AI clip assessments cap) and what requires club upgrade — then email/password signup creating a Coach (or ClubAdmin-lite) account. Adjacent “Sign in” for registered users → S0. Sticky mobile CTA bar mirrors both.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> user asked for free-tier signup + sign-on. <code>external:</code> short forms + visible sticky CTA for parent/coach mobile traffic.</p>
+      <p><strong>Rationale:</strong> Makes the commercial promise concrete; forces product to define free-tier limits early.</p>
+      <p class="muted"><strong>Downsides:</strong> Requires net-new signup API + role seeding (not in app today); needs product decisions on limits.</p>
+    </div>
+
+    <div class="card" id="i5">
+      <h3>5. Four-persona mosaic (tools for everyone) with one primary CTA</h3>
+      <span class="tag">axis: dual audience / product proof</span>
+      <span class="tag">confidence: 76%</span>
+      <span class="tag">complexity: Low</span>
+      <p>One section, four quiet columns — Coach, Club Admin, Parent, Athlete — each one sentence. Only one primary free CTA on the page (coach-led); parent/athlete rows say “via coach share” or “coming soon” so the mosaic matches the user brief without pretending all four can register today.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> user named four audiences; only three staff roles exist. <code>reasoned:</code> listing four builds brand aspiration while labeling honesty avoids trust break.</p>
+      <p><strong>Rationale:</strong> Captures positioning language without lying about auth.</p>
+      <p class="muted"><strong>Downsides:</strong> Easy to over-design into a feature grid; keep one job per section.</p>
+    </div>
+
+    <div class="card" id="i6">
+      <h3>6. Brand-matched public shell (reuse design tokens, not index.html)</h3>
+      <span class="tag">axis: hero / handoff</span>
+      <span class="tag">confidence: 85%</span>
+      <span class="tag">complexity: Low</span>
+      <p>New public HTML (e.g. <code>docs/ux/mockup/public-home.html</code> or a served root route) using existing <code>site.css</code> variables, logo, Sora/Inter — full-bleed athletic atmosphere, brand as hero-level signal, no internal “Mockup Flow” chrome. Sign-in deep-links to S0; free signup to a new S0b or modal.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> index.html is prototype hub; site.css already encodes brand. Frontend design rules: brand first, one composition, avoid purple-AI cliché (product already lime/cyan athletic).</p>
+      <p><strong>Rationale:</strong> Fast path to an appealing page that feels like the product, not a separate WordPress skin.</p>
+      <p class="muted"><strong>Downsides:</strong> Must not ship the internal mockup index as marketing.</p>
+    </div>
+
+    <div class="card" id="i7">
+      <h3>7. Soft athlete promise without athlete login</h3>
+      <span class="tag">axis: dual audience</span>
+      <span class="tag">confidence: 72%</span>
+      <span class="tag">complexity: Low</span>
+      <p>Copy line for athletes: “Athletes grow through coach-led assessments and shared progress — athlete accounts coming.” Keeps the four-audience narrative while avoiding a dead signup door.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> no Athlete role. <code>reasoned:</code> young athletes rarely self-provision; parents/coaches mediate.</p>
+      <p><strong>Rationale:</strong> Prevents scope overrun into athlete auth while honoring the brief.</p>
+      <p class="muted"><strong>Downsides:</strong> Some visitors may bounce if they wanted athlete-first TikTok-style signup.</p>
+    </div>
+
+    <h2>Rejection summary</h2>
+    <table>
+      <thead><tr><th>Idea (cut)</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Pricing table with 5 tiers on first viewport</td><td>Scope overrun / hero clutter; free + sign-in is enough for v1.</td></tr>
+        <tr><td>Interactive “AI assessment demo” that uploads video on the marketing page</td><td>High cost vs landing goal; better as in-app free-tier after signup.</td></tr>
+        <tr><td>Separate microsites per sport (soccer/basketball…)</td><td>Premature; product is multi-sport via S8 but brand is one app.</td></tr>
+        <tr><td>Replace S0 with a social OAuth-only wall</td><td>Subject replacement; breaks existing email/password coaches.</td></tr>
+        <tr><td>Marketplace / trading platform CTA on landing</td><td>Subject replacement (other ideation tracks); confuses core promise.</td></tr>
+        <tr><td>Dense coach feature matrix in hero</td><td>Fails meeting-test for “appealing”; contradicts one-composition hero rules.</td></tr>
+        <tr><td>Require Parent account for any progress view</td><td>Conflicts with working guest share; raises friction for free tier.</td></tr>
+        <tr><td>Generic purple SaaS gradient landing kit</td><td>Brand mismatch; product already has athletic lime/cyan system.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Suggested next step</h2>
+    <p>Strongest combo to brainstorm: <strong>#6 shell + #1 dual-door hero + #2 parent share-first + #4 free-tier honesty</strong> (coach signup). Product proof strip (#3) and persona mosaic (#5) fill the scroll.</p>
+  </div>
+</body>
+</html>

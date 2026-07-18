@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS clubs (
   name TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   default_sport_id TEXT NOT NULL DEFAULT 'sport_soccer',
+  is_free_tier BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

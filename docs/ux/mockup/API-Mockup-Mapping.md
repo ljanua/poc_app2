@@ -194,6 +194,7 @@ Source plan: `docs/plans/2026-07-13-009-feat-s1-advanced-filter-plan.md`.
 
 ## Session entry behavior
 - S0 login provides authenticated entry for Coach, ClubAdmin, and SystemAdmin paths.
+- Public free signup: `POST /api/v1/auth/register` creates a `ClubAdmin` with a personal `is_free_tier` club (1 team / 1 coach caps enforced on team create and coach assignment).
 - After login, the session binds to **one active club** (`localStorage` key `vantageiq_active_club_id`). Single eligible club auto-binds; multiple clubs require `S0a-club-select.html` before app pages. Deep-links without a valid active club re-run the same gate. Logout clears email + active club.
 - SystemAdmin eligible clubs = all active clubs; Coach/ClubAdmin = `coach_clubs` memberships. Header shows `[data-testid="active-club-name"]` left of the role badge and `[data-testid="change-club"]` when more than one eligible club.
 - Operational list APIs (`GET /players`, `GET /teams`, `GET /clips`, `GET /games`) require `clubId` for authenticated actors and return `403 forbidden_scope` when the actor may not use that club. Missing `clubId` → `400`. SystemAdmin `GET /clubs` (S7a) remains unscoped by active club.
