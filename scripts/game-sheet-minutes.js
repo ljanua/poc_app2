@@ -105,7 +105,7 @@ function computeMinutesFromSheet({ durationMinutes, starterIds, substitutions })
 /**
  * Validate sheet for API: returns { error } or { ok: true }.
  */
-function validateSheet({ durationMinutes, starterIds, substitutions }) {
+function validateSheet({ durationMinutes, starterIds, substitutions, maxStarters }) {
   const duration = Math.round(Number(durationMinutes) || 0);
   if (!Number.isInteger(duration) || duration <= 0 || duration > 180) {
     return { error: 'durationMinutes must be an integer from 1 to 180.' };
@@ -115,6 +115,10 @@ function validateSheet({ durationMinutes, starterIds, substitutions }) {
     : [];
   if (!starters.length) {
     return { error: 'At least one starter is required.' };
+  }
+  const maxAllowed = maxStarters != null ? Math.round(Number(maxStarters)) : null;
+  if (maxAllowed != null && Number.isInteger(maxAllowed) && maxAllowed > 0 && starters.length > maxAllowed) {
+    return { error: 'At most ' + maxAllowed + ' starters are allowed for this sport.' };
   }
   const starterSet = new Set(starters);
   if (starterSet.size !== starters.length) {

@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS sports (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  duration_minutes INTEGER NOT NULL DEFAULT 90 CHECK (duration_minutes >= 1 AND duration_minutes <= 180),
+  number_of_players INTEGER NOT NULL DEFAULT 11 CHECK (number_of_players >= 1 AND number_of_players <= 30),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

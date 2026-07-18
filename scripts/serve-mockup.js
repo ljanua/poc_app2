@@ -765,10 +765,18 @@ function toUserClubPayload(row) {
 }
 
 function toSportPayload(row) {
+  const durationMinutes = Math.round(Number(
+    row.durationMinutes != null ? row.durationMinutes : (row.duration_minutes != null ? row.duration_minutes : 90)
+  ));
+  const numberOfPlayers = Math.round(Number(
+    row.numberOfPlayers != null ? row.numberOfPlayers : (row.number_of_players != null ? row.number_of_players : 11)
+  ));
   return {
     id: row.id,
     name: row.name,
     status: row.status || 'active',
+    durationMinutes: durationMinutes >= 1 && durationMinutes <= 180 ? durationMinutes : 90,
+    numberOfPlayers: numberOfPlayers >= 1 && numberOfPlayers <= 30 ? numberOfPlayers : 11,
     positionCount: row.positionCount === undefined || row.positionCount === null ? null : Number(row.positionCount)
   };
 }
@@ -808,6 +816,20 @@ function validateName(name, minLen, maxLen, fieldLabel) {
     return `${fieldLabel} name must be ${minLen}-${maxLen} characters.`;
   }
   return null;
+}
+
+function validateSportPresets(payload) {
+  const hasDuration = payload && payload.durationMinutes != null && String(payload.durationMinutes).trim() !== '';
+  const hasPlayers = payload && payload.numberOfPlayers != null && String(payload.numberOfPlayers).trim() !== '';
+  const durationMinutes = Math.round(Number(hasDuration ? payload.durationMinutes : 90));
+  const numberOfPlayers = Math.round(Number(hasPlayers ? payload.numberOfPlayers : 11));
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 180) {
+    return { error: 'Duration must be an integer from 1 to 180.' };
+  }
+  if (!Number.isInteger(numberOfPlayers) || numberOfPlayers < 1 || numberOfPlayers > 30) {
+    return { error: 'Number of players must be an integer from 1 to 30.' };
+  }
+  return { durationMinutes, numberOfPlayers };
 }
 
 async function findSportByName(name, client) {
@@ -851,6 +873,8 @@ async function listSportsWithCounts(statusFilter, client) {
         s.id,
         s.name,
         s.status,
+        s.duration_minutes AS "durationMinutes",
+        s.number_of_players AS "numberOfPlayers",
         (SELECT COUNT(*) FROM positions p WHERE p.sport_id = s.id) AS "positionCount"
       FROM sports s
       ${whereClause}
@@ -5040,6 +5064,11 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 400, appError(400, 'validation_error', nameError));
       return;
     }
+    const presets = validateSportPresets(payload);
+    if (presets.error) {
+      sendJson(res, 400, appError(400, 'validation_error', presets.error));
+      return;
+    }
     const trimmedName = String(payload.name).trim();
     const existing = await findSportByName(trimmedName);
     if (existing) {
@@ -5048,8 +5077,10 @@ async function handlePlayersApi(req, res, requestUrl) {
     }
     const sportId = `sport_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     const insertResult = await pool.query(
-      `INSERT INTO sports (id, name, status) VALUES ($1, $2, 'active') RETURNING id, name, status`,
-      [sportId, trimmedName]
+      `INSERT INTO sports (id, name, status, duration_minutes, number_of_players)
+       VALUES ($1, $2, 'active', $3, $4)
+       RETURNING id, name, status, duration_minutes, number_of_players`,
+      [sportId, trimmedName, presets.durationMinutes, presets.numberOfPlayers]
     );
     const row = (await listSportsWithCounts('all')).find((r) => r.id === insertResult.rows[0].id) || toSportPayload({ ...insertResult.rows[0], positionCount: 0 });
     sendJson(res, 201, { data: row });
@@ -5069,6 +5100,11 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 400, appError(400, 'validation_error', nameError));
       return;
     }
+    const presets = validateSportPresets(payload);
+    if (presets.error) {
+      sendJson(res, 400, appError(400, 'validation_error', presets.error));
+      return;
+    }
     const trimmedName = String(payload.name).trim();
     const existing = await pool.query(`SELECT id FROM sports WHERE id = $1`, [sportId]);
     if (!existing.rows[0]) {
@@ -5080,7 +5116,10 @@ async function handlePlayersApi(req, res, requestUrl) {
       sendJson(res, 409, appError(409, 'conflict', 'A sport with this name already exists.'));
       return;
     }
-    await pool.query(`UPDATE sports SET name = $1, updated_at = NOW() WHERE id = $2`, [trimmedName, sportId]);
+    await pool.query(
+      `UPDATE sports SET name = $1, duration_minutes = $2, number_of_players = $3, updated_at = NOW() WHERE id = $4`,
+      [trimmedName, presets.durationMinutes, presets.numberOfPlayers, sportId]
+    );
     const row = (await listSportsWithCounts('all')).find((r) => r.id === sportId);
     sendJson(res, 200, { data: row });
     return;
@@ -5620,10 +5659,24 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
+    const sportResult = await pool.query(
+      `
+        SELECT s.number_of_players AS "numberOfPlayers"
+        FROM teams t
+        LEFT JOIN sports s ON s.id = t.sport_id
+        WHERE t.id = $1
+      `,
+      [game.teamId]
+    );
+    const maxStarters = sportResult.rows[0] && sportResult.rows[0].numberOfPlayers != null
+      ? Number(sportResult.rows[0].numberOfPlayers)
+      : 11;
+
     const validation = validateSheet({
       durationMinutes: game.durationMinutes,
       starterIds: starters,
-      substitutions
+      substitutions,
+      maxStarters: maxStarters
     });
     if (validation.error) {
       sendJson(res, 400, appError(400, 'validation_error', validation.error));

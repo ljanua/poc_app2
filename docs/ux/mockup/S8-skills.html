@@ -70,6 +70,8 @@
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Duration</th>
+                  <th>Players</th>
                   <th>Status</th>
                   <th># Positions</th>
                   <th>Actions</th>
@@ -166,11 +168,11 @@
         <span class="nav-icon">???</span>
         <span>Games</span>
       </a>
-      <a class="nav-item" href="./S4-video-capture.html">
+      <a class="nav-item" href="./S4-video-capture.html" data-role-visible-to="Coach,ClubAdmin" hidden>
         <span class="nav-icon">📹</span>
         <span>Capture</span>
       </a>
-      <a class="nav-item" href="./S6-assessment-list.html">
+      <a class="nav-item" href="./S6-assessment-list.html" data-role-visible-to="Coach,ClubAdmin" hidden>
         <span class="nav-icon">📊</span>
         <span>My Clips</span>
       </a>
@@ -182,7 +184,11 @@
         <span class="nav-icon">🏛️</span>
         <span>Clubs</span>
       </a>
-      <a class="nav-item active" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
+      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin" data-testid="nav-sports" hidden>
+        <span class="nav-icon">⚽</span>
+        <span>Sports</span>
+      </a>
+<a class="nav-item active" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden>
         <span class="nav-icon">🧠</span>
         <span>Skills</span>
       </a>
@@ -198,6 +204,13 @@
       <form id="createSportForm" class="modal-form">
         <label class="form-label" for="sportNameInput">Sport Name <span class="required">*</span></label>
         <input id="sportNameInput" data-testid="sport-name-input" type="text" required minlength="2" maxlength="40">
+
+        <label class="form-label" for="sportDurationInput">Duration (minutes) <span class="required">*</span></label>
+        <input id="sportDurationInput" data-testid="sport-duration-input" type="number" required min="1" max="180" value="90">
+
+        <label class="form-label" for="sportPlayersInput">Number of players <span class="required">*</span></label>
+        <input id="sportPlayersInput" data-testid="sport-players-input" type="number" required min="1" max="30" value="11">
+
         <p class="error-msg" id="createSportError">Sport name must be 2-40 characters and unique.</p>
 
         <div class="inline-actions">
@@ -216,8 +229,15 @@
       </div>
       <form id="renameSportForm" class="modal-form">
         <div class="notice">Selected sport: <strong id="renameTargetSport">-</strong></div>
-        <label class="form-label" for="renameSportName">New Name <span class="required">*</span></label>
-        <input id="renameSportName" type="text" required minlength="2" maxlength="40">
+        <label class="form-label" for="renameSportName">Name <span class="required">*</span></label>
+        <input id="renameSportName" data-testid="rename-sport-name" type="text" required minlength="2" maxlength="40">
+
+        <label class="form-label" for="renameSportDuration">Duration (minutes) <span class="required">*</span></label>
+        <input id="renameSportDuration" data-testid="rename-sport-duration" type="number" required min="1" max="180" value="90">
+
+        <label class="form-label" for="renameSportPlayers">Number of players <span class="required">*</span></label>
+        <input id="renameSportPlayers" data-testid="rename-sport-players" type="number" required min="1" max="30" value="11">
+
         <p class="error-msg" id="renameSportError">Sport name must be 2-40 characters and unique.</p>
 
         <div class="inline-actions">
@@ -447,12 +467,16 @@
           tr.id = 'sportRow-' + sport.id;
           tr.setAttribute('data-sport-id', sport.id);
           tr.setAttribute('data-sport-name', sport.name);
+          tr.setAttribute('data-sport-duration', String(sport.durationMinutes != null ? sport.durationMinutes : 90));
+          tr.setAttribute('data-sport-players', String(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11));
           tr.innerHTML =
             '<td>' + escapeHtml(sport.name) + '</td>' +
+            '<td>' + escapeHtml(String(sport.durationMinutes != null ? sport.durationMinutes : 90)) + '</td>' +
+            '<td>' + escapeHtml(String(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11)) + '</td>' +
             '<td>' + statusBadge(sport.status || 'active') + '</td>' +
             '<td>' + (sport.positionCount == null ? '—' : sport.positionCount) + '</td>' +
             '<td><div class="inline-actions">' +
-              '<button class="mini-btn" data-testid="rename-sport-' + escapeHtml(sport.id) + '" type="button">Rename</button>' +
+              '<button class="mini-btn" data-testid="rename-sport-' + escapeHtml(sport.id) + '" type="button">Edit</button>' +
               ((sport.status || 'active') === 'active'
                 ? '<button class="mini-btn warn" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Deactivate</button>'
                 : '<button class="mini-btn positive" data-testid="toggle-sport-status-' + escapeHtml(sport.id) + '" type="button">Activate</button>') +
@@ -612,6 +636,8 @@
       // Add buttons.
       document.querySelector('[data-testid="add-sport"]').addEventListener('click', function () {
         document.getElementById('sportNameInput').value = '';
+        document.getElementById('sportDurationInput').value = '90';
+        document.getElementById('sportPlayersInput').value = '11';
         document.getElementById('createSportError').classList.remove('show');
         openModal('createSportModal');
       });
@@ -668,6 +694,8 @@
           state.selectedSportId = sportId;
           document.getElementById('renameTargetSport').textContent = currentName || sportId;
           document.getElementById('renameSportName').value = currentName || '';
+          document.getElementById('renameSportDuration').value = row.getAttribute('data-sport-duration') || '90';
+          document.getElementById('renameSportPlayers').value = row.getAttribute('data-sport-players') || '11';
           document.getElementById('renameSportError').classList.remove('show');
           openModal('renameSportModal');
           return;
@@ -804,7 +832,13 @@
       document.getElementById('createSportForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('sportNameInput').value.trim();
-        const response = MockupApi.createSport({ name: name }, state.actorRole, state.actorEmail);
+        const durationMinutes = Number(document.getElementById('sportDurationInput').value);
+        const numberOfPlayers = Number(document.getElementById('sportPlayersInput').value);
+        const response = MockupApi.createSport({
+          name: name,
+          durationMinutes: durationMinutes,
+          numberOfPlayers: numberOfPlayers
+        }, state.actorRole, state.actorEmail);
         if (response.status >= 400) {
           document.getElementById('createSportError').textContent = response.message || 'Could not create sport.';
           document.getElementById('createSportError').classList.add('show');
@@ -812,6 +846,8 @@
         }
         closeModal('createSportModal');
         event.target.reset();
+        document.getElementById('sportDurationInput').value = '90';
+        document.getElementById('sportPlayersInput').value = '11';
         renderAll();
         showToast('Sport "' + (response.sport && response.sport.name) + '" created.');
       });
@@ -819,7 +855,13 @@
       document.getElementById('renameSportForm').addEventListener('submit', function (event) {
         event.preventDefault();
         const name = document.getElementById('renameSportName').value.trim();
-        const response = MockupApi.updateSport(state.selectedSportId, { name: name }, state.actorRole, state.actorEmail);
+        const durationMinutes = Number(document.getElementById('renameSportDuration').value);
+        const numberOfPlayers = Number(document.getElementById('renameSportPlayers').value);
+        const response = MockupApi.updateSport(state.selectedSportId, {
+          name: name,
+          durationMinutes: durationMinutes,
+          numberOfPlayers: numberOfPlayers
+        }, state.actorRole, state.actorEmail);
         if (response.status >= 400) {
           document.getElementById('renameSportError').textContent = response.message || 'Could not update sport.';
           document.getElementById('renameSportError').classList.add('show');
@@ -978,7 +1020,13 @@
           });
         }
 
-        setActiveTab(readStoredTab());
+        setActiveTab((function () {
+          try {
+            const tabFromUrl = new URLSearchParams(window.location.search).get('tab');
+            if (tabFromUrl && VALID_TABS.indexOf(tabFromUrl) !== -1) return tabFromUrl;
+          } catch (e) { /* ignore */ }
+          return readStoredTab();
+        })());
       })();
 
       // Exit button wires MockupApi.logout + redirect to login (mirrors S7a).

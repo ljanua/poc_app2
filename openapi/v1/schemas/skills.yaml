@@ -2,7 +2,7 @@ components:
   schemas:
     Sport:
       type: object
-      required: [id, name, status]
+      required: [id, name, status, durationMinutes, numberOfPlayers]
       properties:
         id:
           type: string
@@ -13,6 +13,16 @@ components:
         status:
           type: string
           enum: [active, inactive]
+        durationMinutes:
+          type: integer
+          minimum: 1
+          maximum: 180
+          description: Default match duration in minutes (S10 create-game preset).
+        numberOfPlayers:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: Max starters allowed when starting a match (S10 Game Sheet).
         positionCount:
           type: integer
           nullable: true
@@ -45,6 +55,14 @@ components:
           type: string
           minLength: 2
           maxLength: 40
+        durationMinutes:
+          type: integer
+          minimum: 1
+          maximum: 180
+        numberOfPlayers:
+          type: integer
+          minimum: 1
+          maximum: 30
 
     UpdateSportRequest:
       type: object
@@ -54,6 +72,14 @@ components:
           type: string
           minLength: 2
           maxLength: 40
+        durationMinutes:
+          type: integer
+          minimum: 1
+          maximum: 180
+        numberOfPlayers:
+          type: integer
+          minimum: 1
+          maximum: 30
 
     SportStatusRequest:
       type: object

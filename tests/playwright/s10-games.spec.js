@@ -202,4 +202,61 @@ test.describe('S10 Games + Match History Performance', () => {
     const firstOption = selected.locator('option').first();
     await expect(selected.locator('option:checked')).toHaveText(await firstOption.textContent());
   });
+
+  test('Create Duration presets from team sport (AE4)', async ({ page }) => {
+    await page.goto('/S10-games.html');
+    await page.getByTestId('create-game-button').click();
+    await expect(page.getByTestId('game-duration')).toHaveValue('90');
+  });
+
+  test('Game Sheet blocks more starters than sport numberOfPlayers (AE5)', async ({ page }) => {
+    await page.goto('/S10-games.html');
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      const sport = (store.sports || []).find((s) => s.id === 'sport_soccer');
+      if (sport) sport.numberOfPlayers = 2;
+      const onTeam = (store.players || []).filter((p) => p.teamName === 'U19 Prime');
+      while (onTeam.length < 3) {
+        const id = 910 + onTeam.length;
+        const player = {
+          id: id,
+          name: 'Starter Cap ' + id,
+          normalizedName: 'starter cap ' + id,
+          teamName: 'U19 Prime',
+          position: 'CM – Central Midfielder',
+          trend: 'plateau',
+          updated: 'Updated just now'
+        };
+        store.players.push(player);
+        onTeam.push(player);
+      }
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    const gameId = await page.evaluate(() => {
+      const teams = window.MockupApi.listTeams() || [];
+      const u19 = teams.find((t) => t.name === 'U19 Prime');
+      const created = window.MockupApi.createGame({
+        teamId: String(u19.id),
+        kickoffAt: new Date('2026-07-20T16:00:00').toISOString(),
+        opponent: 'Cap Test FC',
+        homeAway: 'home',
+        durationMinutes: 90
+      });
+      return created.game && created.game.id;
+    });
+
+    await page.goto('/S10-games.html?gameId=' + encodeURIComponent(gameId));
+    await expect(page.getByTestId('game-sheet-view')).toBeVisible();
+
+    const starterChecks = page.locator('.starter-check');
+    const count = await starterChecks.count();
+    expect(count).toBeGreaterThanOrEqual(3);
+    await starterChecks.nth(0).check();
+    await starterChecks.nth(1).check();
+    await starterChecks.nth(2).click();
+    await expect(starterChecks.nth(2)).not.toBeChecked();
+    await expect(page.getByTestId('games-error')).toContainText('At most 2 starters');
+  });
 });

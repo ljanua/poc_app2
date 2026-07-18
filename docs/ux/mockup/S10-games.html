@@ -112,8 +112,15 @@
       <a class="nav-item" href="./S1-player-list.html"><span class="nav-icon">👥</span><span>Players</span></a>
       <a class="nav-item" href="./S3-team-management.html"><span class="nav-icon">🧩</span><span>Teams</span></a>
       <a class="nav-item active" href="./S10-games.html" data-testid="nav-games"><span class="nav-icon">🗓️</span><span>Games</span></a>
-      <a class="nav-item" href="./S4-video-capture.html"><span class="nav-icon">📹</span><span>Capture</span></a>
-      <a class="nav-item" href="./S6-assessment-list.html"><span class="nav-icon">📊</span><span>My Clips</span></a>
+      <a class="nav-item" href="./S4-video-capture.html" data-role-visible-to="Coach,ClubAdmin" hidden><span class="nav-icon">📹</span><span>Capture</span></a>
+      <a class="nav-item" href="./S6-assessment-list.html" data-role-visible-to="Coach,ClubAdmin" hidden><span class="nav-icon">📊</span><span>My Clips</span></a>
+      <a class="nav-item" href="./S7-admin-user-management.html" data-role-visible-to="SystemAdmin,ClubAdmin" data-testid="nav-users" hidden><span class="nav-icon">🛡️</span><span>Users</span></a>
+      <a class="nav-item" href="./S7a-clubs.html" data-role-visible-to="SystemAdmin" data-testid="nav-clubs" hidden><span class="nav-icon">🏛️</span><span>Clubs</span></a>
+      <a class="nav-item" href="./S8-skills.html?tab=sports" data-role-visible-to="SystemAdmin" data-testid="nav-sports" hidden>
+        <span class="nav-icon">⚽</span>
+        <span>Sports</span>
+      </a>
+      <a class="nav-item" href="./S8-skills.html" data-role-visible-to="SystemAdmin" data-testid="nav-skills" hidden><span class="nav-icon">🧠</span><span>Skills</span></a>
     </nav>
   </div>
 
@@ -130,6 +137,7 @@
       const createForm = document.getElementById('createGameForm');
       let currentGameId = null;
       let currentDurationMinutes = 90;
+      let currentMaxStarters = 11;
       let roster = [];
       let previewMinutes = {};
 
@@ -145,6 +153,23 @@
         return String(value == null ? '' : value)
           .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
           .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function sportForTeamId(teamId) {
+        const teams = MockupApi.listTeams() || [];
+        const team = teams.find(function (entry) { return String(entry.id) === String(teamId); });
+        const sportId = team && team.sportId ? team.sportId : 'sport_soccer';
+        const sports = MockupApi.listSports(null, null, 'all') || [];
+        const sport = sports.find(function (entry) { return String(entry.id) === String(sportId); });
+        return sport || { durationMinutes: 90, numberOfPlayers: 11 };
+      }
+
+      function applySportPresetsFromTeam() {
+        const sport = sportForTeamId(teamFilter.value);
+        const duration = Number(sport.durationMinutes != null ? sport.durationMinutes : 90);
+        const players = Number(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11);
+        document.getElementById('fieldDuration').value = String(duration >= 1 ? duration : 90);
+        currentMaxStarters = players >= 1 ? players : 11;
       }
 
       function firstLeadTeamForCoach(teams, currentUser) {
@@ -217,9 +242,11 @@
         roster = response.data.roster || [];
         const game = response.data.game;
         currentDurationMinutes = Number(game.durationMinutes) || 90;
+        const sport = sportForTeamId(game.teamId);
+        currentMaxStarters = Number(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11) || 11;
         document.getElementById('sheetTitle').textContent = 'vs ' + (game.opponent || 'Opponent');
         document.getElementById('sheetMeta').textContent =
-          (game.homeAway || '') + ' · ' + currentDurationMinutes + "' · " + (game.status || '');
+          (game.homeAway || '') + ' · ' + currentDurationMinutes + "' · max " + currentMaxStarters + ' starters · ' + (game.status || '');
         const startersList = document.getElementById('startersList');
         startersList.innerHTML = '';
         const existingPerf = response.data.performances || [];
@@ -361,6 +388,7 @@
       }
 
       document.getElementById('createGameBtn').addEventListener('click', function () {
+        applySportPresetsFromTeam();
         createForm.hidden = false;
       });
       document.getElementById('cancelCreateBtn').addEventListener('click', function () {
@@ -384,11 +412,16 @@
         }
         createForm.hidden = true;
         createForm.reset();
-        document.getElementById('fieldDuration').value = '90';
+        applySportPresetsFromTeam();
         renderList();
       });
 
-      teamFilter.addEventListener('change', renderList);
+      teamFilter.addEventListener('change', function () {
+        if (!createForm.hidden) {
+          applySportPresetsFromTeam();
+        }
+        renderList();
+      });
       gamesList.addEventListener('click', function (event) {
         const btn = event.target.closest('[data-open-sheet]');
         if (btn) openSheet(btn.getAttribute('data-open-sheet'));
@@ -397,7 +430,19 @@
         addSubRow('', roster[0] && roster[0].id, roster[1] && roster[1].id);
         refreshPreviewMinutes();
       });
-      document.getElementById('startersList').addEventListener('change', refreshPreviewMinutes);
+      document.getElementById('startersList').addEventListener('change', function (event) {
+        const target = event.target;
+        if (target && target.classList.contains('starter-check') && target.checked) {
+          const checked = document.querySelectorAll('.starter-check:checked');
+          if (checked.length > currentMaxStarters) {
+            target.checked = false;
+            showError('At most ' + currentMaxStarters + ' starters are allowed for this sport.');
+            return;
+          }
+        }
+        showError('');
+        refreshPreviewMinutes();
+      });
       document.getElementById('backToListBtn').addEventListener('click', function () {
         sheetView.hidden = true;
         listView.hidden = false;
@@ -433,6 +478,7 @@
 
       MockupApi.applyRoleGatedNav && MockupApi.applyRoleGatedNav();
       fillTeams();
+      applySportPresetsFromTeam();
       const params = new URLSearchParams(window.location.search);
       if (params.get('gameId')) {
         openSheet(params.get('gameId'));

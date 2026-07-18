@@ -264,10 +264,55 @@ test.describe('S8 Skills page', () => {
     await loginAs(page, 'joao@vantageiq.club');
     await page.goto('/S1-player-list.html');
     await expect(page.getByTestId('nav-skills')).toBeHidden();
+    await expect(page.getByTestId('nav-sports')).toBeHidden();
+    await expect(page.getByRole('link', { name: 'Capture' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'My Clips' })).toBeVisible();
 
-    // SystemAdmin view: Skills nav item should be visible
+    // SystemAdmin view: Skills + Sports visible; Capture / My Clips hidden
     await loginAs(page, 'maria@vantageiq.club');
     await page.goto('/S1-player-list.html');
     await expect(page.getByTestId('nav-skills')).toBeVisible();
+    await expect(page.getByTestId('nav-sports')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Capture' })).toBeHidden();
+    await expect(page.getByRole('link', { name: 'My Clips' })).toBeHidden();
+  });
+
+  test('SystemAdmin Sports nav opens S8 Sports tab (AE1)', async ({ page }) => {
+    await loginAs(page, 'maria@vantageiq.club');
+    await page.goto('/S1-player-list.html');
+    await page.getByTestId('nav-sports').click();
+    await expect(page).toHaveURL(/S8-skills\.html/);
+    await expect(page.locator('#tabpanel-sports')).toBeVisible();
+  });
+
+  test('SystemAdmin can create sport with Duration and Number of players (AE3)', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => {
+      window.localStorage.removeItem('vantageiq_mockup_v2');
+      window.localStorage.removeItem('vantageiq_current_user_email');
+    });
+    await page.fill('#email', 'maria@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management/);
+
+    await page.goto('/S8-skills.html?tab=sports');
+    await expect(page.locator('#tabpanel-sports')).toBeVisible();
+
+    const sportName = 'Futsal QA ' + Date.now().toString(36);
+    await page.getByTestId('add-sport').click();
+    await page.getByTestId('sport-name-input').fill(sportName);
+    await page.getByTestId('sport-duration-input').fill('70');
+    await page.getByTestId('sport-players-input').fill('7');
+    await page.getByTestId('create-sport-submit').click();
+
+    const row = page.locator('#sportsTableBody tr', { hasText: sportName });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('70');
+    await expect(row).toContainText('7');
   });
 });

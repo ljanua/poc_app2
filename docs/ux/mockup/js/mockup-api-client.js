@@ -205,7 +205,7 @@
         { id: 'u_clubadmin_rita', name: 'Rita Costa', email: 'rita@vantageiq.club', role: 'ClubAdmin', status: 'active', password: 'SecurePass123', lastLogin: 'Today' }
       ],
       sports: [
-        { id: 'sport_soccer', name: 'Soccer', status: 'active', positionCount: 13 }
+        { id: 'sport_soccer', name: 'Soccer', status: 'active', durationMinutes: 90, numberOfPlayers: 11, positionCount: 13 }
       ],
       positions: [
         { id: 'pos_any', name: 'Any Position', sportId: 'sport_soccer', status: 'active', skillCount: 5 },
@@ -1302,6 +1302,10 @@
     if (!starters.length) {
       return { error: 'At least one starter is required.' };
     }
+    const maxStarters = params && params.maxStarters != null ? Math.round(Number(params.maxStarters)) : null;
+    if (maxStarters != null && Number.isInteger(maxStarters) && maxStarters > 0 && starters.length > maxStarters) {
+      return { error: 'At most ' + maxStarters + ' starters are allowed for this sport.' };
+    }
     const starterSet = {};
     for (let s = 0; s < starters.length; s += 1) {
       if (starterSet[starters[s]]) {
@@ -1804,8 +1808,12 @@
       };
       const decorate = (sport) => {
         const positionCount = store.positions.filter((entry) => entry.sportId === sport.id).length;
+        const durationMinutes = Math.round(Number(sport.durationMinutes != null ? sport.durationMinutes : 90));
+        const numberOfPlayers = Math.round(Number(sport.numberOfPlayers != null ? sport.numberOfPlayers : 11));
         return Object.assign({}, sport, {
           status: sport.status || 'active',
+          durationMinutes: durationMinutes >= 1 && durationMinutes <= 180 ? durationMinutes : 90,
+          numberOfPlayers: numberOfPlayers >= 1 && numberOfPlayers <= 30 ? numberOfPlayers : 11,
           positionCount: positionCount
         });
       };
@@ -1816,6 +1824,8 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/sports', {
           name: payload && payload.name,
+          durationMinutes: payload && payload.durationMinutes,
+          numberOfPlayers: payload && payload.numberOfPlayers,
           actorRole,
           actorEmail
         });
@@ -1835,13 +1845,28 @@
       if (!name || name.length < 2 || name.length > 40) {
         return { status: 400, code: 'validation_error', message: 'Sport name must be 2-40 characters.' };
       }
+      const durationMinutes = Math.round(Number(payload && payload.durationMinutes != null ? payload.durationMinutes : 90));
+      const numberOfPlayers = Math.round(Number(payload && payload.numberOfPlayers != null ? payload.numberOfPlayers : 11));
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 180) {
+        return { status: 400, code: 'validation_error', message: 'Duration must be an integer from 1 to 180.' };
+      }
+      if (!Number.isInteger(numberOfPlayers) || numberOfPlayers < 1 || numberOfPlayers > 30) {
+        return { status: 400, code: 'validation_error', message: 'Number of players must be an integer from 1 to 30.' };
+      }
       if (!Array.isArray(store.sports)) store.sports = [];
       if (store.sports.some((sport) => sport.name.toLowerCase() === name.toLowerCase())) {
         return { status: 409, code: 'conflict', message: 'A sport with this name already exists.' };
       }
 
       const nextId = 'sport_' + Date.now().toString(36);
-      const created = { id: nextId, name: name, status: 'active', positionCount: 0 };
+      const created = {
+        id: nextId,
+        name: name,
+        status: 'active',
+        durationMinutes: durationMinutes,
+        numberOfPlayers: numberOfPlayers,
+        positionCount: 0
+      };
       store.sports.push(created);
       saveStore(store);
       return { status: 201, code: 'created', sport: clone(created) };
@@ -1851,6 +1876,8 @@
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('PATCH', '/sports/' + encodeURIComponent(sportId), {
           name: payload && payload.name,
+          durationMinutes: payload && payload.durationMinutes,
+          numberOfPlayers: payload && payload.numberOfPlayers,
           actorRole,
           actorEmail
         });
@@ -1874,10 +1901,20 @@
       if (!name || name.length < 2 || name.length > 40) {
         return { status: 400, code: 'validation_error', message: 'Sport name must be 2-40 characters.' };
       }
+      const durationMinutes = Math.round(Number(payload && payload.durationMinutes != null ? payload.durationMinutes : sport.durationMinutes != null ? sport.durationMinutes : 90));
+      const numberOfPlayers = Math.round(Number(payload && payload.numberOfPlayers != null ? payload.numberOfPlayers : sport.numberOfPlayers != null ? sport.numberOfPlayers : 11));
+      if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || durationMinutes > 180) {
+        return { status: 400, code: 'validation_error', message: 'Duration must be an integer from 1 to 180.' };
+      }
+      if (!Number.isInteger(numberOfPlayers) || numberOfPlayers < 1 || numberOfPlayers > 30) {
+        return { status: 400, code: 'validation_error', message: 'Number of players must be an integer from 1 to 30.' };
+      }
       if (store.sports.some((other) => other.id !== sportId && other.name.toLowerCase() === name.toLowerCase())) {
         return { status: 409, code: 'conflict', message: 'A sport with this name already exists.' };
       }
       sport.name = name;
+      sport.durationMinutes = durationMinutes;
+      sport.numberOfPlayers = numberOfPlayers;
       saveStore(store);
       return { status: 200, code: 'ok', sport: clone(sport) };
     },
@@ -3818,7 +3855,14 @@
       const validation = validateGameSheet({
         durationMinutes: game.durationMinutes,
         starterIds: starters,
-        substitutions: substitutions
+        substitutions: substitutions,
+        maxStarters: (function () {
+          const team = (store.teams || []).find(function (entry) { return String(entry.id) === String(game.teamId); });
+          const sportId = team && team.sportId ? team.sportId : 'sport_soccer';
+          const sport = (store.sports || []).find(function (entry) { return String(entry.id) === String(sportId); });
+          const maxPlayers = sport && sport.numberOfPlayers != null ? Number(sport.numberOfPlayers) : 11;
+          return Number.isFinite(maxPlayers) && maxPlayers > 0 ? maxPlayers : 11;
+        })()
       });
       if (validation.error) {
         return { status: 400, code: 'validation_error', message: validation.error };
