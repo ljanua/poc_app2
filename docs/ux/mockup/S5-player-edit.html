@@ -450,6 +450,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const params = new URLSearchParams(window.location.search);
       const playerId = params.get('playerId') || '';
 

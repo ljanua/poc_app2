@@ -322,6 +322,7 @@
       }
 
       if (!isGuest) {
+        if (!MockupApi.ensureActiveClub({ redirect: true })) return;
         MockupApi.applyRoleGatedNav();
       }
 

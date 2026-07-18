@@ -45,8 +45,33 @@ async function restoreCoachRole(page, email) {
   return result;
 }
 
+/**
+ * After login, SystemAdmin (and multi-club actors) may land on S0a club select.
+ * Prefer c_default when present, otherwise the first eligible option.
+ */
+async function completeClubSelectIfNeeded(page) {
+  if (!/S0a-club-select/.test(page.url())) {
+    return;
+  }
+  const select = page.getByTestId('club-select');
+  await select.waitFor({ state: 'visible' });
+  const hasDefault = await select.locator('option[value="c_default"]').count();
+  if (hasDefault) {
+    await select.selectOption('c_default');
+  } else {
+    const values = await select.locator('option').evaluateAll((opts) =>
+      opts.map((opt) => opt.value).filter(Boolean)
+    );
+    if (values.length) {
+      await select.selectOption(values[0]);
+    }
+  }
+  await page.getByTestId('club-select-submit').click();
+}
+
 module.exports = {
   uniqueTeamName,
   uniqueEmail,
-  restoreCoachRole
+  restoreCoachRole,
+  completeClubSelectIfNeeded
 };

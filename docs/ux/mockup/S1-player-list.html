@@ -1023,6 +1023,7 @@
 
       // Hydrate actor (onlyMine / Coach flags) before team options — otherwise
       // getAvailableTeams runs with onlyMine still false and lists club-wide teams.
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       hydrateActor();
       const currentUser = MockupApi.getCurrentUser();
       const initialTeams = getAvailableTeams(currentUser);

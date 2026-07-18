@@ -56,12 +56,7 @@
           return;
         }
 
-        if (response.role === 'SystemAdmin') {
-          window.location.href = './S7-admin-user-management.html';
-          return;
-        }
-
-        window.location.href = './S1-player-list.html';
+        MockupApi.continueAfterLogin(response.user);
       });
     })();
   </script>

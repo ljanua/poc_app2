@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { completeClubSelectIfNeeded } = require('./_fixture-utils');
 
 test.describe('S0 Login role entry points', () => {
   test.beforeEach(async ({ page }) => {
@@ -37,6 +38,8 @@ test.describe('S0 Login role entry points', () => {
     await page.fill('#email', 'joao@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.waitForURL(/S1-player-list|S0a-club-select|S7-admin/);
+    await completeClubSelectIfNeeded(page);
     await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
     await expect(page.getByRole('button', { name: 'Add Player' })).toBeVisible();
 
@@ -44,6 +47,8 @@ test.describe('S0 Login role entry points', () => {
     await page.fill('#email', 'maria@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.waitForURL(/S7-admin-user-management|S0a-club-select/);
+    await completeClubSelectIfNeeded(page);
     await expect(page).toHaveURL(/S7-admin-user-management\.html|S7-admin-user-management$/);
     await expect(page.getByRole('button', { name: 'Create User' })).toBeVisible();
   });
@@ -52,6 +57,8 @@ test.describe('S0 Login role entry points', () => {
     await page.fill('#email', 'maria@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.getByRole('button', { name: 'Sign In' }).click();
+    await page.waitForURL(/S7-admin-user-management|S0a-club-select/);
+    await completeClubSelectIfNeeded(page);
     await expect(page).toHaveURL(/S7-admin-user-management\.html|S7-admin-user-management$/);
 
     await page.getByRole('link', { name: 'Teams' }).click();

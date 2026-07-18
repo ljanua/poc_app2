@@ -127,6 +127,7 @@
   <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const notice = document.getElementById('gamesNotice');
       const errorEl = document.getElementById('gamesError');
       const listView = document.getElementById('listView');

@@ -7,19 +7,28 @@ const { test, expect } = require('@playwright/test');
 // cleared.
 
 const SESSION_KEY = 'vantageiq_current_user_email';
+const ACTIVE_CLUB_KEY = 'vantageiq_active_club_id';
 
 async function seedCoachSession(page) {
   await page.goto('/S0-login.html');
-  await page.evaluate((email) => {
+  await page.evaluate(({ email, clubKey }) => {
     window.localStorage.setItem('vantageiq_current_user_email', email);
-  }, 'joao@vantageiq.club');
+    window.localStorage.setItem(
+      clubKey,
+      JSON.stringify({ id: 'c_default', name: 'VantageIQ Club' })
+    );
+  }, { email: 'joao@vantageiq.club', clubKey: ACTIVE_CLUB_KEY });
 }
 
 async function seedAdminSession(page) {
   await page.goto('/S0-login.html');
-  await page.evaluate((email) => {
+  await page.evaluate(({ email, clubKey }) => {
     window.localStorage.setItem('vantageiq_current_user_email', email);
-  }, 'maria@vantageiq.club');
+    window.localStorage.setItem(
+      clubKey,
+      JSON.stringify({ id: 'c_default', name: 'VantageIQ Club' })
+    );
+  }, { email: 'maria@vantageiq.club', clubKey: ACTIVE_CLUB_KEY });
 }
 
 test.describe('S1 player list — exit button clears session and navigates to S0', () => {

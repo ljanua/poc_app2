@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { completeClubSelectIfNeeded } = require('./_fixture-utils');
 
 test.describe('S1 Player List team filter and add-player flow', () => {
   test.beforeEach(async ({ page }) => {
@@ -466,10 +467,15 @@ const TINY_JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2
 
 async function loginAsCoach(page) {
   await page.goto('/S0-login.html');
-  await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+  await page.evaluate(() => {
+    window.localStorage.removeItem('vantageiq_mockup_v2');
+    window.localStorage.removeItem('vantageiq_active_club_id');
+  });
   await page.fill('#email', 'joao@vantageiq.club');
   await page.fill('#password', 'SecurePass123');
   await page.locator('#loginForm button[type="submit"]').click();
+  await page.waitForURL(/S1-player-list|S0a-club-select/);
+  await completeClubSelectIfNeeded(page);
   await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
 }
 

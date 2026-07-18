@@ -1,6 +1,7 @@
 (function () {
   const STORAGE_KEY = 'vantageiq_mockup_v2';
   const SESSION_KEY = 'vantageiq_current_user_email';
+  const ACTIVE_CLUB_KEY = 'vantageiq_active_club_id';
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -412,12 +413,56 @@
     localStorage.setItem(SESSION_KEY, normalized);
   }
 
+  function clearActiveClubStorage() {
+    localStorage.removeItem(ACTIVE_CLUB_KEY);
+  }
+
+  function readActiveClubStorage() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_CLUB_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.id) return null;
+      return {
+        id: String(parsed.id),
+        name: parsed.name ? String(parsed.name) : ''
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeActiveClubStorage(club) {
+    if (!club || !club.id) {
+      clearActiveClubStorage();
+      return;
+    }
+    localStorage.setItem(
+      ACTIVE_CLUB_KEY,
+      JSON.stringify({
+        id: String(club.id),
+        name: club.name ? String(club.name) : ''
+      })
+    );
+  }
+
   function getSessionUser(store) {
     const email = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
     if (!email) {
       return null;
     }
     return store.users.find((user) => user.email.toLowerCase() === email) || null;
+  }
+
+  function injectActiveClubId(params) {
+    const search = params instanceof URLSearchParams ? params : new URLSearchParams(String(params || '').replace(/^\?/, ''));
+    if (!search.get('clubId')) {
+      const active = readActiveClubStorage();
+      if (active && active.id) {
+        search.set('clubId', active.id);
+      }
+    }
+    return search;
   }
 
   function normalizeTeamName(value) {
@@ -1518,7 +1563,7 @@
     },
 
     listTeams(queryString) {
-      const params = new URLSearchParams(String(queryString || '').replace(/^\?/, ''));
+      const params = injectActiveClubId(new URLSearchParams(String(queryString || '').replace(/^\?/, '')));
       if (!params.get('actorEmail')) {
         const sessionEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
         if (sessionEmail) params.set('actorEmail', sessionEmail);
@@ -1560,7 +1605,14 @@
               .filter((entry) => String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email))
               .map((entry) => entry.clubId)
           );
-          teams = teams.filter((team) => allowedClubIds.has(team.clubId));
+          if (clubId && !allowedClubIds.has(clubId)) {
+            teams = [];
+          } else {
+            teams = teams.filter((team) => allowedClubIds.has(team.clubId));
+            if (clubId) {
+              teams = teams.filter((team) => String(team.clubId) === clubId);
+            }
+          }
         } else if (!actor || actor.role !== 'SystemAdmin') {
           teams = [];
         }
@@ -1769,6 +1821,15 @@
         }
         return pickFallback();
       };
+
+      const activeClub = this.getActiveClub();
+      if (activeClub && activeClub.id) {
+        const clubs = this.listClubs(actorRole, actorEmail, 'active') || [];
+        const match = clubs.find((club) => String(club.id) === String(activeClub.id));
+        if (match && match.defaultSportId) {
+          return resolveCandidate(match.defaultSportId);
+        }
+      }
 
       if (actorRole === 'SystemAdmin' || !actorRole) {
         return resolveCandidate('sport_soccer');
@@ -2889,6 +2950,8 @@
         if (filters.query) params.set('query', filters.query);
         if (filters.actorEmail) params.set('actorEmail', filters.actorEmail);
         if (filters.onlyMine) params.set('onlyMine', 'true');
+        if (filters.clubId) params.set('clubId', filters.clubId);
+        injectActiveClubId(params);
 
         const response = backendRequest('GET', '/players?' + params.toString());
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -2903,35 +2966,43 @@
       const filters = options || {};
       const teamName = filters.teamName || 'all';
       const query = normalizeComparable(filters.query || '');
+      const storedClub = readActiveClubStorage();
+      const activeClubId = String(filters.clubId || (storedClub && storedClub.id) || '').trim();
 
       // Coach and ClubAdmin are always club-scoped. onlyMine further narrows
-      // to lead teams for Coach only. SystemAdmin / unknown: full roster.
+      // to lead teams for Coach only. Active club further narrows to one club.
       const actor = resolveActorContext(store, null, filters.actorEmail).actorUser;
       const isClubScoped = Boolean(
         actor && actor.status === 'active' && (actor.role === 'Coach' || actor.role === 'ClubAdmin')
       );
       let allowedTeamNames = null;
-      if (isClubScoped) {
-        const actorEmail = String(actor.email || '').trim().toLowerCase();
-        const actorId = actor.id;
-        const actorName = String(actor.name || '').trim().toLowerCase();
-        const allowedClubIds = new Set(
-          (store.coachClubs || [])
-            .filter((entry) => {
-              const id = entry.userId;
-              return String(id) === String(actorId) || String(id).toLowerCase() === actorEmail;
-            })
-            .map((entry) => entry.clubId)
-        );
-        let clubTeams = (store.teams || []).filter((team) => allowedClubIds.has(team.clubId));
-        // Fallback when coach_clubs is empty: teams this coach leads by email.
-        if (!clubTeams.length) {
-          clubTeams = (store.teams || []).filter((team) => {
-            const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
-            return teamEmail && teamEmail === actorEmail;
-          });
+      if (isClubScoped || (actor && actor.role === 'SystemAdmin' && activeClubId)) {
+        const actorEmail = actor ? String(actor.email || '').trim().toLowerCase() : '';
+        const actorId = actor ? actor.id : null;
+        const actorName = actor ? String(actor.name || '').trim().toLowerCase() : '';
+        let clubTeams = store.teams || [];
+        if (isClubScoped) {
+          const allowedClubIds = new Set(
+            (store.coachClubs || [])
+              .filter((entry) => {
+                const id = entry.userId;
+                return String(id) === String(actorId) || String(id).toLowerCase() === actorEmail;
+              })
+              .map((entry) => entry.clubId)
+          );
+          clubTeams = clubTeams.filter((team) => allowedClubIds.has(team.clubId));
+          // Fallback when coach_clubs is empty: teams this coach leads by email.
+          if (!clubTeams.length) {
+            clubTeams = (store.teams || []).filter((team) => {
+              const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
+              return teamEmail && teamEmail === actorEmail;
+            });
+          }
         }
-        if (filters.onlyMine && actor.role === 'Coach') {
+        if (activeClubId) {
+          clubTeams = clubTeams.filter((team) => String(team.clubId) === activeClubId);
+        }
+        if (filters.onlyMine && actor && actor.role === 'Coach') {
           clubTeams = clubTeams.filter((team) => {
             const teamEmail = String(team.leadCoachEmail || '').trim().toLowerCase();
             if (teamEmail && teamEmail === actorEmail) {
@@ -3714,6 +3785,8 @@
     listGames(query) {
       const params = query && typeof query === 'object' ? query : {};
       const teamId = params.teamId != null && params.teamId !== '' ? String(params.teamId) : '';
+      const storedClub = readActiveClubStorage();
+      const clubId = String(params.clubId || (storedClub && storedClub.id) || '').trim();
 
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
@@ -3723,6 +3796,9 @@
         }
         if (teamId) {
           qsParts.push('teamId=' + encodeURIComponent(teamId));
+        }
+        if (clubId) {
+          qsParts.push('clubId=' + encodeURIComponent(clubId));
         }
         const path = '/games' + (qsParts.length ? '?' + qsParts.join('&') : '');
         const response = backendRequest('GET', path);
@@ -3741,6 +3817,20 @@
       if (teamId) {
         games = games.filter(function (game) {
           return String(game.teamId) === teamId;
+        });
+      }
+      if (clubId) {
+        const teamIds = new Set(
+          (store.teams || [])
+            .filter(function (team) {
+              return String(team.clubId) === clubId;
+            })
+            .map(function (team) {
+              return String(team.id);
+            })
+        );
+        games = games.filter(function (game) {
+          return teamIds.has(String(game.teamId));
         });
       }
       games.sort(function (a, b) {
@@ -4463,6 +4553,7 @@
         if (actorEmail) {
           params.set('actorEmail', actorEmail);
         }
+        injectActiveClubId(params);
         const query = params.toString();
         const response = backendRequest('GET', '/clips' + (query ? '?' + query : ''));
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -4474,6 +4565,10 @@
 
       const store = loadStore();
       let allowedClubIds = null;
+      const storedClub = readActiveClubStorage();
+      const activeClubId = String(
+        (options.clubId || (storedClub && storedClub.id) || '')
+      ).trim();
       if (actorEmail) {
         const actor = store.users.find(function (user) {
           return String(user.email || '').toLowerCase() === actorEmail;
@@ -4492,6 +4587,16 @@
                 return entry.clubId;
               })
           );
+          if (activeClubId) {
+            if (!allowedClubIds.has(activeClubId)) {
+              return [];
+            }
+            allowedClubIds = new Set([activeClubId]);
+          }
+        } else if (actor && actor.role === 'SystemAdmin' && actor.status === 'active') {
+          if (activeClubId) {
+            allowedClubIds = new Set([activeClubId]);
+          }
         } else if (!actor || actor.role !== 'SystemAdmin' || actor.status !== 'active') {
           return [];
         }
@@ -4853,9 +4958,14 @@
     listUsers() {
       const session = this.getCurrentUser();
       const actorEmail = session && session.email ? String(session.email).trim().toLowerCase() : '';
+      const storedClub = readActiveClubStorage();
+      const activeClubId = storedClub && storedClub.id ? String(storedClub.id) : '';
       if (shouldUseBackendPlayersMode()) {
         const params = new URLSearchParams();
         if (actorEmail) params.set('actorEmail', actorEmail);
+        if (session && session.role === 'ClubAdmin' && activeClubId) {
+          params.set('clubId', activeClubId);
+        }
         const query = params.toString() ? '?' + params.toString() : '';
         const response = backendRequest('GET', '/users' + query);
         if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
@@ -4890,15 +5000,17 @@
         return Object.assign({}, user, { clubIds: clubIds });
       });
       if (session && session.role === 'ClubAdmin' && session.status === 'active') {
-        const allowed = new Set(
-          store.coachClubs
-            .filter(function (entry) {
-              return String(entry.userId) === String(session.id);
-            })
-            .map(function (entry) {
-              return String(entry.clubId);
-            })
-        );
+        const allowed = activeClubId
+          ? new Set([activeClubId])
+          : new Set(
+              store.coachClubs
+                .filter(function (entry) {
+                  return String(entry.userId) === String(session.id);
+                })
+                .map(function (entry) {
+                  return String(entry.clubId);
+                })
+            );
         users = users.filter(function (user) {
           return (user.clubIds || []).some(function (clubId) {
             return allowed.has(String(clubId));
@@ -5171,10 +5283,12 @@
         const response = backendRequest('POST', '/auth/login', { email, password });
         if (response.status === 200 && response.body && response.body.user) {
           setSessionEmail(response.body.user.email);
+          clearActiveClubStorage();
           return { status: 200, token: response.body.token, role: response.body.role, user: clone(response.body.user) };
         }
 
         setSessionEmail('');
+        clearActiveClubStorage();
         return clone(response.body || { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
       }
 
@@ -5182,14 +5296,164 @@
       const user = store.users.find((entry) => entry.email.toLowerCase() === String(email || '').trim().toLowerCase());
       if (!user || user.status !== 'active' || user.password !== password) {
         setSessionEmail('');
+        clearActiveClubStorage();
         return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
       }
       setSessionEmail(user.email);
+      clearActiveClubStorage();
       return { status: 200, token: 'jwt-' + user.role.toLowerCase(), role: user.role, user: clone(user) };
     },
 
     logout() {
       setSessionEmail('');
+      clearActiveClubStorage();
+    },
+
+    getActiveClub() {
+      return readActiveClubStorage();
+    },
+
+    clearActiveClub() {
+      clearActiveClubStorage();
+    },
+
+    listEligibleClubs(user) {
+      const current = user || this.getCurrentUser();
+      if (!current || current.status !== 'active') {
+        return [];
+      }
+      return this.listClubs(current.role, current.email, 'active') || [];
+    },
+
+    setActiveClub(club) {
+      if (!club || !club.id) {
+        return { ok: false, code: 'validation_error', message: 'Club is required.' };
+      }
+      const eligible = this.listEligibleClubs();
+      const match = eligible.find(function (entry) {
+        return String(entry.id) === String(club.id);
+      });
+      if (!match) {
+        return { ok: false, code: 'forbidden_scope', message: 'You do not have access to that club.' };
+      }
+      writeActiveClubStorage({ id: match.id, name: match.name || club.name || '' });
+      return { ok: true, club: { id: match.id, name: match.name || '' } };
+    },
+
+    ensureActiveClub(options) {
+      const opts = options || {};
+      const user = this.getCurrentUser();
+      if (!user) {
+        if (opts.redirect !== false) {
+          window.location.href = './S0-login.html';
+          return false;
+        }
+        return { ok: false, reason: 'no_session' };
+      }
+
+      const eligible = this.listEligibleClubs(user);
+      const stored = readActiveClubStorage();
+      if (stored && stored.id) {
+        const still = eligible.find(function (club) {
+          return String(club.id) === String(stored.id);
+        });
+        if (still) {
+          writeActiveClubStorage({ id: still.id, name: still.name || stored.name || '' });
+          if (opts.renderHeader !== false) {
+            this.renderSessionHeader();
+          }
+          return opts.redirect === false ? { ok: true, club: still } : true;
+        }
+        clearActiveClubStorage();
+      }
+
+      if (eligible.length === 1 && !opts.forcePick) {
+        writeActiveClubStorage({ id: eligible[0].id, name: eligible[0].name || '' });
+        if (opts.renderHeader !== false) {
+          this.renderSessionHeader();
+        }
+        return opts.redirect === false ? { ok: true, club: eligible[0] } : true;
+      }
+
+      if (eligible.length === 0) {
+        if (opts.redirect !== false) {
+          window.location.href = './S0a-club-select.html?error=no_clubs';
+          return false;
+        }
+        return { ok: false, reason: 'no_clubs' };
+      }
+
+      if (opts.redirect !== false) {
+        const current =
+          opts.returnUrl ||
+          (window.location.pathname.split('/').pop() || '') + (window.location.search || '');
+        const params = new URLSearchParams();
+        if (current) params.set('return', current);
+        if (opts.forcePick) params.set('switch', '1');
+        window.location.href = './S0a-club-select.html' + (params.toString() ? '?' + params.toString() : '');
+        return false;
+      }
+      return { ok: false, reason: 'need_pick', eligible: eligible };
+    },
+
+    continueAfterLogin(user) {
+      const role = user && user.role ? user.role : '';
+      const home = role === 'SystemAdmin' ? './S7-admin-user-management.html' : './S1-player-list.html';
+      const result = this.ensureActiveClub({ redirect: false, renderHeader: false });
+      if (result && result.ok) {
+        window.location.href = home;
+        return;
+      }
+      if (result && result.reason === 'no_clubs') {
+        window.location.href = './S0a-club-select.html?error=no_clubs';
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set('return', home.replace(/^\.\//, ''));
+      window.location.href = './S0a-club-select.html?' + params.toString();
+    },
+
+    renderSessionHeader() {
+      const club = readActiveClubStorage();
+      const user = this.getCurrentUser();
+      const roleBadge = document.getElementById('roleBadge') || document.querySelector('.role-badge');
+      if (!roleBadge || !roleBadge.parentNode) {
+        return;
+      }
+
+      let nameEl = document.querySelector('[data-testid="active-club-name"]');
+      if (!nameEl) {
+        nameEl = document.createElement('span');
+        nameEl.className = 'active-club-name';
+        nameEl.setAttribute('data-testid', 'active-club-name');
+        roleBadge.parentNode.insertBefore(nameEl, roleBadge);
+      }
+      nameEl.textContent = club && club.name ? club.name : '';
+
+      let changeBtn = document.querySelector('[data-testid="change-club"]');
+      if (!changeBtn) {
+        changeBtn = document.createElement('button');
+        changeBtn.type = 'button';
+        changeBtn.className = 'change-club-btn';
+        changeBtn.setAttribute('data-testid', 'change-club');
+        changeBtn.textContent = 'Change club';
+        changeBtn.addEventListener('click', function () {
+          const ret =
+            (window.location.pathname.split('/').pop() || '') + (window.location.search || '');
+          const params = new URLSearchParams();
+          if (ret) params.set('return', ret);
+          params.set('switch', '1');
+          window.location.href = './S0a-club-select.html?' + params.toString();
+        });
+        roleBadge.parentNode.insertBefore(changeBtn, roleBadge);
+      }
+
+      const eligible = this.listEligibleClubs(user);
+      changeBtn.hidden = !(eligible && eligible.length > 1);
+
+      if (user && user.role) {
+        roleBadge.textContent = user.role;
+      }
     }
   };
 

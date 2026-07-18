@@ -97,6 +97,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const roleBadge = document.getElementById('roleBadge');
       const updateCard = document.getElementById('updateCard');
       const missingNotice = document.getElementById('missingNotice');

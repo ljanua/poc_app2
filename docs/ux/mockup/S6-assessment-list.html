@@ -98,6 +98,9 @@
       const isGuest = Boolean(shareToken);
 
       const currentUser = isGuest ? null : MockupApi.getCurrentUser();
+      if (!isGuest) {
+        if (!MockupApi.ensureActiveClub({ redirect: true })) return;
+      }
       document.getElementById('roleMeta').textContent = isGuest
         ? 'Guest View'
         : (currentUser ? currentUser.role : 'Guest');

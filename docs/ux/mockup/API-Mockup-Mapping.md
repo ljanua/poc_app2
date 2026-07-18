@@ -193,9 +193,13 @@ Source plan: `docs/plans/2026-07-13-009-feat-s1-advanced-filter-plan.md`.
 - Mockup API client (`docs/ux/mockup/js/mockup-api-client.js`) keeps an offline seed in lockstep: `clubs` and `coachClubs` are added to `createSeed`, `listClubs` consults `coachClubs` for the offline Coach path, and `createTeam` / `reassignTeamCoach` extend the offline store with `clubId` / `clubName` while mirroring the coach-club join upsert.
 
 ## Session entry behavior
-- S0 login provides authenticated entry for both Coach and SystemAdmin paths.
+- S0 login provides authenticated entry for Coach, ClubAdmin, and SystemAdmin paths.
+- After login, the session binds to **one active club** (`localStorage` key `vantageiq_active_club_id`). Single eligible club auto-binds; multiple clubs require `S0a-club-select.html` before app pages. Deep-links without a valid active club re-run the same gate. Logout clears email + active club.
+- SystemAdmin eligible clubs = all active clubs; Coach/ClubAdmin = `coach_clubs` memberships. Header shows `[data-testid="active-club-name"]` left of the role badge and `[data-testid="change-club"]` when more than one eligible club.
+- Operational list APIs (`GET /players`, `GET /teams`, `GET /clips`, `GET /games`) require `clubId` for authenticated actors and return `403 forbidden_scope` when the actor may not use that club. Missing `clubId` → `400`. SystemAdmin `GET /clubs` (S7a) remains unscoped by active club.
+- Create-user club select on S7 locks to the active club for the session.
 - Quick admin entry in mockup must perform real login semantics (session established) before redirecting to admin screen.
-- Every protected surface (S1, S2, S3, S4, S5, S6, S7) renders an icon-only `exit` button (`[data-testid="exit-button"]`, aria-label "Log out") in the topbar. Clicking it calls `MockupApi.logout()` (clears `vantageiq_current_user_email` from `localStorage`) and navigates to `S0-login.html`. Logout is client-side only — the v1 short-lived JWT expires on its own and there is no server-side revocation endpoint in this release.
+- Every protected surface (S1, S2, S3, S4, S5, S6, S7) renders an icon-only `exit` button (`[data-testid="exit-button"]`, aria-label "Log out") in the topbar. Clicking it calls `MockupApi.logout()` (clears `vantageiq_current_user_email` and `vantageiq_active_club_id` from `localStorage`) and navigates to `S0-login.html`. Logout is client-side only — the v1 short-lived JWT expires on its own and there is no server-side revocation endpoint in this release.
 
 ## Validation expectations
 - Create user: name, email, role, and initial password required.

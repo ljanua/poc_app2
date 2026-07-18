@@ -369,6 +369,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const state = {
         actorRole: null,
         actorEmail: null,

@@ -273,6 +273,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const state = {
         viewRole: 'SystemAdmin',
         selectedUserName: null,
@@ -491,7 +492,14 @@
       function populateCreateClubSelect() {
         const select = document.getElementById('createClubSelect');
         const previous = select.value;
-        const clubs = MockupApi.listClubs(state.viewRole, state.selectedActorEmail, 'active') || [];
+        const activeClub = MockupApi.getActiveClub && MockupApi.getActiveClub();
+        let clubs = MockupApi.listClubs(state.viewRole, state.selectedActorEmail, 'active') || [];
+        // Session lock: create-user assigns only to the active club.
+        if (activeClub && activeClub.id) {
+          clubs = clubs.filter(function (club) {
+            return String(club.id) === String(activeClub.id);
+          });
+        }
         const role = document.getElementById('createRole').value;
         const required = clubRequiredForCreateRole(role);
         const isClubAdmin = state.viewRole === 'ClubAdmin';
@@ -509,7 +517,11 @@
           select.appendChild(opt);
         });
 
-        if (isClubAdmin && clubs.length === 1) {
+        if (activeClub && activeClub.id && clubs.length === 1) {
+          select.value = clubs[0].id;
+          select.disabled = true;
+          select.required = false;
+        } else if (isClubAdmin && clubs.length === 1) {
           select.value = clubs[0].id;
           select.disabled = true;
           select.required = false;
@@ -517,11 +529,11 @@
           select.disabled = false;
           if (previous && clubs.some(function (club) { return club.id === previous; })) {
             select.value = previous;
-          } else {
-            select.value = '';
+          } else if (required && clubs[0]) {
+            select.value = clubs[0].id;
           }
-          syncCreateClubRequirement();
         }
+        syncCreateClubRequirement();
       }
 
       document.getElementById('openCreateUser').addEventListener('click', function () {

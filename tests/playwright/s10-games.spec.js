@@ -161,13 +161,17 @@ test.describe('S10 Games + Match History Performance', () => {
   });
 
   test('SystemAdmin defaults Team filter to first list team (not U19 hardcode)', async ({ page }) => {
+    const { completeClubSelectIfNeeded } = require('./_fixture-utils');
     await page.goto('/S0-login.html');
     await page.evaluate(() => {
       window.localStorage.removeItem('vantageiq_mockup_v2');
+      window.localStorage.removeItem('vantageiq_active_club_id');
     });
     await page.fill('#email', 'maria@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.locator('#loginForm button[type="submit"]').click();
+    await page.waitForURL(/S1-player-list|S7-admin-user-management|S0a-club-select/);
+    await completeClubSelectIfNeeded(page);
     await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management/);
 
     await page.goto('/S10-games.html');

@@ -3,6 +3,7 @@ const { Pool } = require('pg');
 const path = require('node:path');
 const { purgeSoccerPositionOrphans } = require('../../scripts/purge-soccer-position-orphans.js');
 const { purgeQaSkills } = require('../../scripts/purge-qa-skills.js');
+const { completeClubSelectIfNeeded } = require('./_fixture-utils');
 
 try {
   require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
@@ -15,10 +16,13 @@ async function loginAs(page, email) {
   await page.evaluate(() => {
     window.localStorage.removeItem('vantageiq_mockup_v2');
     window.localStorage.removeItem('vantageiq_current_user_email');
+    window.localStorage.removeItem('vantageiq_active_club_id');
   });
   await page.fill('#email', email);
   await page.fill('#password', 'SecurePass123');
   await page.locator('#loginForm button[type="submit"]').click();
+  await page.waitForURL(/S1-player-list|S7-admin-user-management|S0a-club-select/);
+  await completeClubSelectIfNeeded(page);
   await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management\.html|S7-admin-user-management$/);
 }
 

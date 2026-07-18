@@ -1291,6 +1291,37 @@ function isClubScopedActor(actor) {
   );
 }
 
+async function assertActorMayUseClub(actor, clubId) {
+  const id = String(clubId || '').trim();
+  if (!id) {
+    return { ok: false, error: appError(400, 'validation_error', 'clubId is required.') };
+  }
+  if (!actor || actor.status !== 'active') {
+    return { ok: false, error: appError(403, 'forbidden', 'You do not have permission to perform this action.') };
+  }
+  if (actor.role === 'SystemAdmin') {
+    const club = await pool.query(
+      `SELECT id FROM clubs WHERE id = $1 AND COALESCE(status, 'active') = 'active' LIMIT 1`,
+      [id]
+    );
+    if (!club.rows[0]) {
+      return { ok: false, error: appError(403, 'forbidden_scope', 'You do not have access to that club.') };
+    }
+    return { ok: true, clubId: id };
+  }
+  if (isClubScopedActor(actor)) {
+    const membership = await pool.query(
+      `SELECT 1 FROM coach_clubs WHERE user_id = $1 AND club_id = $2 LIMIT 1`,
+      [actor.id, id]
+    );
+    if (!membership.rows[0]) {
+      return { ok: false, error: appError(403, 'forbidden_scope', 'You do not have access to that club.') };
+    }
+    return { ok: true, clubId: id };
+  }
+  return { ok: false, error: appError(403, 'forbidden_scope', 'You do not have access to that club.') };
+}
+
 function isLeadScopedActor(actor) {
   return Boolean(actor && actor.status === 'active' && actor.role === 'Coach');
 }
@@ -1839,6 +1870,7 @@ async function listPlayers(teamName, query, actor, options) {
   const predicates = [];
   const opts = options || {};
   const onlyMine = Boolean(opts.onlyMine);
+  const clubId = String(opts.clubId || '').trim();
 
   if (teamName && teamName !== 'all') {
     values.push(teamName);
@@ -1850,15 +1882,19 @@ async function listPlayers(teamName, query, actor, options) {
     predicates.push(`(LOWER(p.name) LIKE LOWER($${values.length}) OR LOWER(p.position) LIKE LOWER($${values.length}))`);
   }
 
-  // Coach and ClubAdmin are always club-scoped via coach_clubs. onlyMine further
-  // narrows to lead teams for Coach only. SystemAdmin / unknown: no scoping.
-  if (isClubScopedActor(actor)) {
+  // Active club session: scope to a single clubId when provided.
+  if (clubId) {
+    values.push(clubId);
+    predicates.push(`t.club_id = $${values.length}`);
+  } else if (isClubScopedActor(actor)) {
+    // Legacy fallback for callers that have not yet sent clubId — still membership-scoped.
     values.push(actor.id);
     predicates.push(`t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`);
-    if (onlyMine && isLeadScopedActor(actor)) {
-      values.push(actor.id);
-      predicates.push(`t.lead_coach_user_id = $${values.length}`);
-    }
+  }
+
+  if (onlyMine && isLeadScopedActor(actor)) {
+    values.push(actor.id);
+    predicates.push(`t.lead_coach_user_id = $${values.length}`);
   }
 
   const whereSql = predicates.length ? `WHERE ${predicates.join(' AND ')}` : '';
@@ -2910,6 +2946,18 @@ async function handlePlayersApi(req, res, requestUrl) {
       actor = actorResult.rows[0] || null;
     }
 
+    if (actorEmail && actor && (isClubScopedActor(actor) || actor.role === 'SystemAdmin')) {
+      if (!clubId) {
+        sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+        return;
+      }
+      const allowed = await assertActorMayUseClub(actor, clubId);
+      if (!allowed.ok) {
+        sendJson(res, allowed.error.status, allowed.error);
+        return;
+      }
+    }
+
     const where = [];
     const params = [];
     if (clubId) {
@@ -2920,17 +2968,17 @@ async function handlePlayersApi(req, res, requestUrl) {
       params.push(statusFilter);
       where.push(`t.status = $${params.length}`);
     }
-    if (actorEmail) {
+    if (actorEmail && !clubId) {
       if (isClubScopedActor(actor)) {
         params.push(actor.id);
         where.push(
           `t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${params.length})`
         );
       } else if (!actor || actor.role !== 'SystemAdmin') {
-        // actorEmail supplied but the user is unknown, inactive, or not club-scoped.
-        // Treat as "no teams visible" rather than leaking the unfiltered list.
         where.push('FALSE');
       }
+    } else if (actorEmail && clubId && (!actor || (actor.role !== 'SystemAdmin' && !isClubScopedActor(actor)))) {
+      where.push('FALSE');
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -3863,15 +3911,31 @@ async function handlePlayersApi(req, res, requestUrl) {
       whereSql = `WHERE LOWER(email) = LOWER($${params.length})`;
     }
     if (actor && actor.role === 'ClubAdmin' && actor.status === 'active') {
-      params.push(actor.id);
-      const clubFilter = `
-        id IN (
-          SELECT b.user_id FROM coach_clubs a
-          INNER JOIN coach_clubs b ON b.club_id = a.club_id
-          WHERE a.user_id = $${params.length}
-        )
-      `;
-      whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
+      const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
+      if (clubId) {
+        const allowed = await assertActorMayUseClub(actor, clubId);
+        if (!allowed.ok) {
+          sendJson(res, allowed.error.status, allowed.error);
+          return;
+        }
+        params.push(clubId);
+        const clubFilter = `
+          id IN (
+            SELECT user_id FROM coach_clubs WHERE club_id = $${params.length}
+          )
+        `;
+        whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
+      } else {
+        params.push(actor.id);
+        const clubFilter = `
+          id IN (
+            SELECT b.user_id FROM coach_clubs a
+            INNER JOIN coach_clubs b ON b.club_id = a.club_id
+            WHERE a.user_id = $${params.length}
+          )
+        `;
+        whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
+      }
     }
 
     const userRows = await pool.query(`
@@ -4133,6 +4197,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     const playerId = String(requestUrl.searchParams.get('playerId') || '').trim();
     const playerName = normalizeLookup(requestUrl.searchParams.get('playerName') || '');
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
     const where = [];
     const values = [];
     if (teamName !== 'all') {
@@ -4156,11 +4221,18 @@ async function handlePlayersApi(req, res, requestUrl) {
         [actorEmail]
       );
       const actor = actorResult.rows[0] || null;
-      if (isClubScopedActor(actor)) {
-        values.push(actor.id);
-        where.push(
-          `t.club_id IN (SELECT club_id FROM coach_clubs WHERE user_id = $${values.length})`
-        );
+      if (actor && (isClubScopedActor(actor) || actor.role === 'SystemAdmin')) {
+        if (!clubId) {
+          sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+          return;
+        }
+        const allowed = await assertActorMayUseClub(actor, clubId);
+        if (!allowed.ok) {
+          sendJson(res, allowed.error.status, allowed.error);
+          return;
+        }
+        values.push(clubId);
+        where.push(`t.club_id = $${values.length}`);
       } else if (!actor || actor.role !== 'SystemAdmin' || actor.status !== 'active') {
         where.push('FALSE');
       }
@@ -4371,11 +4443,23 @@ async function handlePlayersApi(req, res, requestUrl) {
     const teamName = requestUrl.searchParams.get('teamName') || 'all';
     const query = normalizeComparable(requestUrl.searchParams.get('query') || '');
     const actorEmail = requestUrl.searchParams.get('actorEmail') || '';
+    const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
     // onlyMine further narrows Coach results to teams they lead; club scoping
     // always applies for active Coaches. SystemAdmin bypasses both.
     const onlyMine = String(requestUrl.searchParams.get('onlyMine') || '').toLowerCase() === 'true';
     const actor = await resolveActorForPlayersList(actorEmail);
-    const rows = await listPlayers(teamName, query, actor, { onlyMine });
+    if (actor) {
+      if (!clubId) {
+        sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+        return;
+      }
+      const allowed = await assertActorMayUseClub(actor, clubId);
+      if (!allowed.ok) {
+        sendJson(res, allowed.error.status, allowed.error);
+        return;
+      }
+    }
+    const rows = await listPlayers(teamName, query, actor, { onlyMine, clubId });
     sendJson(res, 200, { data: rows });
     return;
   }
@@ -5541,9 +5625,19 @@ async function handlePlayersApi(req, res, requestUrl) {
   if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/games`) {
     const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
     const teamId = String(requestUrl.searchParams.get('teamId') || '').trim();
+    const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
     const actor = await resolveGameEditor(actorEmail);
     if (!actor) {
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    if (!clubId) {
+      sendJson(res, 400, appError(400, 'validation_error', 'clubId is required.'));
+      return;
+    }
+    const allowed = await assertActorMayUseClub(actor, clubId);
+    if (!allowed.ok) {
+      sendJson(res, allowed.error.status, allowed.error);
       return;
     }
     if (teamId && !(await actorCanAccessTeam(actor, teamId))) {
@@ -5553,18 +5647,13 @@ async function handlePlayersApi(req, res, requestUrl) {
 
     const where = [];
     const params = [];
+    params.push(clubId);
+    where.push(
+      `g.team_id IN (SELECT t.id FROM teams t WHERE t.club_id = $${params.length})`
+    );
     if (teamId) {
       params.push(teamId);
       where.push(`g.team_id = $${params.length}`);
-    } else if (actor.role !== 'SystemAdmin') {
-      params.push(actor.id);
-      where.push(
-        `g.team_id IN (
-          SELECT t.id FROM teams t
-          INNER JOIN coach_clubs cc ON cc.club_id = t.club_id
-          WHERE cc.user_id = $${params.length}
-        )`
-      );
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
     const result = await pool.query(

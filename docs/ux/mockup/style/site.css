@@ -172,8 +172,38 @@ header {
   border-radius: var(--r-full);
 }
 
-.role-badge {
+.active-club-name {
   margin-left: auto;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-club-btn {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 0.35rem 0.65rem;
+  cursor: pointer;
+}
+
+.change-club-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+}
+
+.role-badge {
+  margin-left: 0;
   font-family: var(--font-display);
   font-size: 0.72rem;
   font-weight: 700;

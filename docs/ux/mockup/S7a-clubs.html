@@ -208,6 +208,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const state = {
         viewRole: 'SystemAdmin',
         actorEmail: null,

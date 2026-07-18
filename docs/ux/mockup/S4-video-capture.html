@@ -425,6 +425,7 @@
     }
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const currentUser = MockupApi.getCurrentUser();
       document.getElementById('roleMeta').textContent = currentUser ? currentUser.role : 'Guest';
       MockupApi.applyRoleGatedNav(currentUser);

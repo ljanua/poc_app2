@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S0a: Select Club — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <main class="auth-card">
+      <div class="auth-logo">
+        <img class="brand-logo" src="/data/img/VantagIQ_transp_300_2.png" alt="VantageIQ" data-testid="brand-logo">
+      </div>
+      <p class="auth-subtitle">SELECT CLUB</p>
+      <p class="auth-hint" id="clubSelectHint" style="margin:0 0 1rem;color:var(--text-muted);font-size:0.9rem;">
+        Choose which club to manage for this session.
+      </p>
+
+      <form class="auth-form" id="clubSelectForm" data-testid="club-select-form">
+        <div>
+          <label class="form-label" for="clubSelect">Club</label>
+          <select id="clubSelect" data-testid="club-select" required>
+            <option value="">Select a club…</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" type="submit" data-testid="club-select-submit">Continue</button>
+      </form>
+
+      <p class="error-msg" id="clubSelectError" style="margin-top:0.7rem;" data-testid="club-select-error"></p>
+    </main>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const form = document.getElementById('clubSelectForm');
+      const select = document.getElementById('clubSelect');
+      const errorEl = document.getElementById('clubSelectError');
+      const hintEl = document.getElementById('clubSelectHint');
+      const params = new URLSearchParams(window.location.search);
+      const returnTarget = String(params.get('return') || '').trim();
+      const isSwitch = params.get('switch') === '1';
+      const errorCode = String(params.get('error') || '').trim();
+
+      function showError(message) {
+        errorEl.textContent = message;
+        errorEl.classList.add('show');
+      }
+
+      function resolveReturnUrl() {
+        if (!returnTarget) {
+          const user = MockupApi.getCurrentUser();
+          return user && user.role === 'SystemAdmin'
+            ? './S7-admin-user-management.html'
+            : './S1-player-list.html';
+        }
+        if (/^https?:/i.test(returnTarget) || returnTarget.indexOf('..') !== -1) {
+          return './S1-player-list.html';
+        }
+        return './' + returnTarget.replace(/^\.\//, '');
+      }
+
+      const user = MockupApi.getCurrentUser();
+      if (!user) {
+        window.location.href = './S0-login.html';
+        return;
+      }
+
+      if (errorCode === 'no_clubs') {
+        hintEl.textContent = 'No club assignment';
+        showError('You have no active club assignment. Contact an administrator.');
+        form.hidden = true;
+        return;
+      }
+
+      const eligible = MockupApi.listEligibleClubs(user);
+      if (!eligible.length) {
+        hintEl.textContent = 'No club assignment';
+        showError('You have no active club assignment. Contact an administrator.');
+        form.hidden = true;
+        return;
+      }
+
+      if (eligible.length === 1 && !isSwitch) {
+        MockupApi.setActiveClub(eligible[0]);
+        window.location.href = resolveReturnUrl();
+        return;
+      }
+
+      if (isSwitch) {
+        hintEl.textContent = 'Switch the club for this session.';
+      }
+
+      eligible.forEach(function (club) {
+        const option = document.createElement('option');
+        option.value = club.id;
+        option.textContent = club.name || club.id;
+        select.appendChild(option);
+      });
+
+      const current = MockupApi.getActiveClub();
+      if (current && current.id) {
+        select.value = current.id;
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        errorEl.classList.remove('show');
+        const clubId = select.value;
+        const club = eligible.find(function (entry) {
+          return String(entry.id) === String(clubId);
+        });
+        const result = MockupApi.setActiveClub(club || { id: clubId });
+        if (!result.ok) {
+          showError(result.message || 'Unable to select that club.');
+          return;
+        }
+        window.location.href = resolveReturnUrl();
+      });
+    })();
+  </script>
+</body>
+</html>

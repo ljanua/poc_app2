@@ -184,6 +184,7 @@
     window.__USE_BACKEND__ = window.__USE_BACKEND__ !== false;
 
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const roleBadge = document.getElementById('roleBadge');
       const tableBody = document.querySelector('.data-table tbody');
       const openCreateTeam = document.getElementById('openCreateTeam');
@@ -263,8 +264,15 @@
         state.actorRole = currentUser.role;
         state.actorEmail = currentUser.email;
         state.availableClubs = MockupApi.listClubs(currentUser.role, currentUser.email);
+        const activeClub = MockupApi.getActiveClub && MockupApi.getActiveClub();
+        if (activeClub && activeClub.id) {
+          state.availableClubs = (state.availableClubs || []).filter(function (club) {
+            return String(club.id) === String(activeClub.id);
+          });
+        }
         state.assignedClubIds = state.availableClubs.map(function (club) { return club.id; });
         roleBadge.textContent = currentUser.role;
+        if (MockupApi.renderSessionHeader) MockupApi.renderSessionHeader();
         openCreateTeam.disabled = false;
         openCreateTeam.textContent = 'Create Team';
 

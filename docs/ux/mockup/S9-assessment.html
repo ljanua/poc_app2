@@ -140,6 +140,7 @@
   <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
+      if (!MockupApi.ensureActiveClub({ redirect: true })) return;
       const params = new URLSearchParams(window.location.search);
       const playerId = params.get('playerId');
       const notice = document.getElementById('assessmentNotice');
