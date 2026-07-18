@@ -50,15 +50,14 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#fieldName')).toHaveValue('Rookie Carter');
     await expect(page.locator('#fieldTeam')).toHaveValue('U19 Prime');
     await expect(page.locator('#fieldTrend')).toHaveValue('plateau');
-    // No stats yet: rating and score controls show toggles off and inputs disabled.
+    // No stats yet: rating controls show toggles off and inputs disabled.
     await expect(page.locator('#fieldTotalMinutes')).toHaveValue('0');
     await expect(page.locator('#ctrlCurrentLevel .ctrl-toggle')).not.toBeChecked();
     await expect(page.locator('#ctrlCurrentLevel .ctrl-box')).toBeDisabled();
-    await expect(page.locator('#ctrlAverageScore .ctrl-toggle')).not.toBeChecked();
-    await expect(page.locator('#ctrlAverageScore .ctrl-box')).toBeDisabled();
+    await expect(page.getByTestId('average-score-readonly')).toBeVisible();
   });
 
-  test('saving stats clears the no-stats notice and shows full dashboard on return', async ({ page }) => {
+  test('saving development ratings clears the no-stats notice; match fields stay Game Sheet–owned', async ({ page }) => {
     await page.goto('/S5-player-edit.html?playerId=999');
     await expect(page.locator('#playerEditForm')).toBeVisible();
 
@@ -69,14 +68,11 @@ test.describe('S5 Edit Player', () => {
     await page.locator('#ctrlFitness .ctrl-box').fill('75');
     await page.locator('#ctrlSkillProgress .ctrl-toggle').check();
     await page.locator('#ctrlSkillProgress .ctrl-box').fill('82');
-    await page.locator('#fieldTotalMinutes').fill('120');
-    await page.locator('#fieldAppearances').fill('4');
-    await page.locator('#fieldRecentAvg').fill("30'");
-    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
-    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
-    await page.locator('#ctrlLastMatchScore .ctrl-toggle').check();
-    await page.locator('#ctrlLastMatchScore .ctrl-box').fill('8');
     await page.locator('#fieldLastMatchSummary').fill('Sharp movement off the ball.');
+
+    // Match minutes / scores are display-only on S5.
+    await expect(page.getByTestId('field-total-minutes-readonly')).toBeDisabled();
+    await expect(page.getByTestId('average-score-readonly')).toBeVisible();
 
     await page.locator('#saveEdit').click();
 
@@ -86,16 +82,15 @@ test.describe('S5 Edit Player', () => {
     // The no-stats notice is gone and every stats section title is visible now.
     await expect(page.locator('#noStatsNotice')).toBeHidden();
     await expect(page.getByText('Development Progress')).toBeVisible();
-    await expect(page.getByText('Match Time History')).toBeVisible();
+    await expect(page.getByText('Match History Performance')).toBeVisible();
     await expect(page.getByText('Recent Performance')).toBeVisible();
 
     await page.getByTestId('dashboard-section-toggle-development-progress').click();
-    await page.getByTestId('dashboard-section-toggle-match-time').click();
+    await page.getByTestId('dashboard-section-toggle-match-history').click();
     await page.getByTestId('dashboard-section-toggle-recent-performance').click();
 
     await expect(page.locator('#metricCurrentLevel')).toHaveText('80%');
-    await expect(page.locator('#metricMinutes')).toHaveText('120');
-    await expect(page.locator('#metricAvgScore')).toHaveText('7.5');
+    await expect(page.locator('#metricMinutes')).toHaveText('0');
     await expect(page.locator('#metricLastMatchSub')).toHaveText('Sharp movement off the ball.');
   });
 
@@ -104,7 +99,6 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#playerEditForm')).toBeVisible();
 
     await page.locator('#fieldName').fill('Rookie Carter Jr');
-    await page.locator('#fieldTotalMinutes').fill('60');
     await page.locator('#saveEdit').click();
 
     await expect(page).toHaveURL(/player=Rookie%20Carter%20Jr/);
@@ -169,18 +163,45 @@ test.describe('S5 Edit Player', () => {
     expect(saved).toBe('0%');
   });
 
-  test('score control clears to null when toggle is off (AE4)', async ({ page }) => {
+  test('saving S5 profile does not change match minutes (AE4)', async ({ page }) => {
     await page.goto('/S5-player-edit.html?playerId=999');
-    // Enable score and fill a value, then clear it via the toggle
-    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
-    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
-    await page.locator('#ctrlAverageScore .ctrl-toggle').uncheck();
+    await expect(page.locator('#playerEditForm')).toBeVisible();
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.playerStats = store.playerStats || {};
+      store.playerStats[999] = Object.assign({}, store.playerStats[999] || {}, {
+        totalMinutes: 77,
+        appearances: 2,
+        recentAvg: "45'",
+        averageScore: 6.5,
+        lastMatchScore: 7,
+        currentLevel: '50%',
+        fitness: '50%',
+        skillProgress: '50%',
+        missingDataMessage: null,
+        trend: 'plateau'
+      });
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.reload();
+    await expect(page.locator('#fieldTotalMinutes')).toHaveValue('77');
+
+    await page.locator('#fieldName').fill('Rookie Carter');
     await page.locator('#saveEdit').click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html/);
+
     const saved = await page.evaluate(() => {
       const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
-      return (store.playerStats && store.playerStats[999]) ? store.playerStats[999].averageScore : 'missing';
+      return store.playerStats && store.playerStats[999]
+        ? {
+            totalMinutes: store.playerStats[999].totalMinutes,
+            appearances: store.playerStats[999].appearances,
+            averageScore: store.playerStats[999].averageScore
+          }
+        : null;
     });
-    expect(saved).toBeNull();
+    expect(saved).toEqual({ totalMinutes: 77, appearances: 2, averageScore: 6.5 });
   });
 
   test('saving without any rating recorded keeps the no-stats notice on S2 (R8)', async ({ page }) => {
@@ -192,14 +213,13 @@ test.describe('S5 Edit Player', () => {
     await expect(page.locator('#noStatsNotice')).toBeVisible();
   });
 
-  test('save with score but no rating keeps the no-stats notice (score-only edge case)', async ({ page }) => {
+  test('match score fields on S5 are display-only and do not clear no-stats alone', async ({ page }) => {
     await page.goto('/S5-player-edit.html?playerId=999');
     await expect(page.locator('#playerEditForm')).toBeVisible();
-    await page.locator('#ctrlAverageScore .ctrl-toggle').check();
-    await page.locator('#ctrlAverageScore .ctrl-box').fill('7.5');
+    await expect(page.getByTestId('average-score-readonly')).toBeVisible();
+    await expect(page.getByTestId('last-match-score-readonly')).toBeVisible();
     await page.locator('#saveEdit').click();
     await expect(page).toHaveURL(/S2-player-dashboard\.html\?player=Rookie%20Carter/);
-    // Score recorded but no development ratings: notice stays visible
     await expect(page.locator('#noStatsNotice')).toBeVisible();
   });
 
@@ -225,7 +245,7 @@ test.describe('S5 Edit Player', () => {
     await page.locator('#saveEdit').click();
     // The error notice appears and the URL has not changed.
     await expect(page.locator('#editFormError')).toBeVisible();
-    await expect(page.locator('#editFormError')).toContainText(/set together|blank/i);
+    await expect(page.locator('#editFormError')).toContainText(/birth month cannot be set without a birth year/i);
     expect(page.url()).toContain('S5-player-edit.html');
   });
 

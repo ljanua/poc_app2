@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ideation: Coach match &amp; game performance history</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --text: #e8eef7;
+      --muted: #8b9bb4;
+      --accent: #facc15;
+      --border: #2a3a52;
+      --good: #4ade80;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      padding: 2rem 1.25rem 4rem;
+    }
+    .wrap { max-width: 52rem; margin: 0 auto; }
+    h1 { font-size: 1.75rem; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.2rem; margin: 2.25rem 0 0.75rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+    h3 { font-size: 1.05rem; margin: 0 0 0.5rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .meta span { margin-right: 1rem; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem 1.25rem;
+      margin: 1rem 0;
+    }
+    .card .rank {
+      display: inline-block;
+      background: var(--accent);
+      color: #111;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      margin-right: 0.5rem;
+    }
+    .tags { font-size: 0.8rem; color: var(--muted); margin: 0.4rem 0 0.75rem; }
+    .tags strong { color: var(--good); font-weight: 600; }
+    .jump a { color: var(--accent); text-decoration: none; margin-right: 0.75rem; font-size: 0.9rem; }
+    .jump a:hover { text-decoration: underline; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+    .flow {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+      margin: 0.75rem 0; font-size: 0.85rem;
+    }
+    .flow .box {
+      background: #243044; border: 1px solid var(--border);
+      padding: 0.45rem 0.65rem; border-radius: 6px;
+    }
+    .flow .arrow { color: var(--muted); }
+    ul.axes { padding-left: 1.2rem; }
+    ul.axes li { margin: 0.35rem 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Coach match &amp; game performance history</h1>
+    <div class="meta">
+      <span><strong>Date:</strong> 2026-07-18</span>
+      <span><strong>Topic:</strong> match-game-performance</span>
+      <span><strong>Mode:</strong> repo-grounded</span>
+      <span><strong>Focus:</strong> games list, lineup/subs, minutes, Game_Performance, S2 Match History Performance</span>
+    </div>
+
+    <h2 id="grounding">Grounding context</h2>
+    <p><strong>Codebase:</strong> Mockup-first coach app (S0–S9) with <code>scripts/serve-mockup.js</code> + Postgres. Match data today is only denormalized <code>player_stats</code> aggregates (total minutes, appearances, recent avg, average/last-match scores) shown on S2 <em>Match Time History</em> / <em>Recent Performance</em> and editable on S5 — not a game ledger.</p>
+    <p><strong>Gaps:</strong> No <code>games</code>, lineup, substitution, or per-game rating tables. Scope docs already promise “minutes, appearances, substitutions” (<code>docs/plan/scope/project-scope-plan.md</code>, brainstorm 2026-07-01) but implementation never landed event-level data.</p>
+    <p><strong>Patterns to reuse:</strong> Assessment history (<code>player_skill_ratings_history</code> + S9 write / S2 read), club-scoped coach auth, team assignments, audit trail, rollup scripts (clip stats reconcile).</p>
+    <p><strong>External:</strong> Sideline apps (Pitch Planner, FairSub, Pitch Time, Coach Meister) optimize <em>live fair playing time</em>. VantageIQ’s wedge is development history + game rating into the player dashboard — not competing on sideline timers first.</p>
+    <p class="muted">Learnings in <code>docs/solutions/</code> are infra-only (avatar/birth-month); no match-domain learnings.</p>
+
+    <h2 id="axes">Topic axes</h2>
+    <ul class="axes">
+      <li><strong>Fixture ledger</strong> — upcoming and past games for a team</li>
+      <li><strong>Lineup &amp; substitution capture</strong> — starters, sub in/out, by whom</li>
+      <li><strong>Minutes &amp; season rollup</strong> — per-game minutes → player season totals</li>
+      <li><strong>Game rating → Game_Performance + S2</strong> — per player per game score on the dashboard</li>
+      <li><strong>Coach UX surface</strong> — where entry lives (new screen vs team hub vs live mode)</li>
+    </ul>
+
+    <h2 id="ranked">Ranked ideas</h2>
+    <p class="jump">
+      <a href="#idea-1">1. Post-match Game Sheet</a>
+      <a href="#idea-2">2. Event-sourced minutes</a>
+      <a href="#idea-3">3. Team fixture board</a>
+      <a href="#idea-4">4. Game rating ≠ S9 Assessment</a>
+      <a href="#idea-5">5. Auto-rollup player_stats</a>
+      <a href="#idea-6">6. Phased MVP</a>
+      <a href="#idea-7">7. Pre-match lineup → played</a>
+    </p>
+
+    <article class="card" id="idea-1">
+      <h3><span class="rank">#1</span> Post-match Game Sheet → Game_Performance → S2</h3>
+      <div class="tags">Axis: <strong>Game rating + UX</strong> · Confidence <strong>88%</strong> · Complexity <strong>Medium</strong></div>
+      <p>After the whistle, coach opens a Game Sheet for a fixture: set starters, log substitution events (player out, player in, minute), enter a quick 0–10 (or 0–100) game rating per participant. Persist rows in <code>game_performance</code> (player × game × minutes × rating × start/sub flags). S2 section <strong>Match History Performance</strong> lists recent games with minutes + rating (replace or sit beside today’s aggregate-only Match Time History).</p>
+      <div class="flow">
+        <span class="box">Game fixture</span><span class="arrow">→</span>
+        <span class="box">Sheet: lineup + subs + ratings</span><span class="arrow">→</span>
+        <span class="box">game_performance</span><span class="arrow">→</span>
+        <span class="box">S2 Match History Performance</span>
+      </div>
+      <p><strong>Basis:</strong> <code>direct:</code> S2 already has Match Time / Recent Performance slots fed by <code>player_stats</code> only; Assessment history proves event→timeline UI. <code>external:</code> sideline apps prove demand for minutes; product identity is post-match development record.</p>
+      <p><strong>Rationale:</strong> Closest match to the stated ask; reuses dashboard real estate; creates the source of truth aggregates currently fake/manual.</p>
+      <p><strong>Downsides:</strong> Post-match entry is delayed vs live; coach must remember sub times (mitigate with simple minute picker).</p>
+    </article>
+
+    <article class="card" id="idea-2">
+      <h3><span class="rank">#2</span> Event-sourced minutes from the sub timeline</h3>
+      <div class="tags">Axis: <strong>Minutes &amp; rollup</strong> · Confidence <strong>85%</strong> · Complexity <strong>Medium</strong></div>
+      <p>Do not let coaches type minutes as the primary source. Starters begin at minute 0; each sub event ends one player’s on-pitch interval and starts another’s; final whistle closes open intervals. Displayed minutes = sum of intervals. “Subbed by whom” is the event edge (out → in).</p>
+      <p><strong>Basis:</strong> <code>reasoned:</code> manual minutes drift from the sub story the coach just entered. <code>external:</code> Pitch Planner / FairSub treat the clock + sub taps as ground truth.</p>
+      <p><strong>Rationale:</strong> Makes “who started / who was subbed / by whom / minutes” one coherent model instead of four independent fields.</p>
+      <p><strong>Downsides:</strong> Needs clear rules for half-time, red cards, injury without replacement, and unknown exact minute (allow approximate minute).</p>
+    </article>
+
+    <article class="card" id="idea-3">
+      <h3><span class="rank">#3</span> Team fixture board (upcoming + past)</h3>
+      <div class="tags">Axis: <strong>Fixture ledger</strong> · Confidence <strong>82%</strong> · Complexity <strong>Medium</strong></div>
+      <p>Team-scoped list of games (date, opponent, home/away, status: upcoming / in progress / complete). Entry point from S3 Team Management or a new “Games” nav item. Upcoming rows support pre-lineup; complete rows open the Game Sheet. ClubAdmin sees club-wide fixtures.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> teams + <code>player_team_assignments</code> already anchor roster; games naturally hang off <code>team_id</code>. Scope plan lists match participation history as in-scope.</p>
+      <p><strong>Rationale:</strong> Coaches need a calendar of work, not only player-centric history; without fixtures, Game_Performance has nothing to attach to.</p>
+      <p><strong>Downsides:</strong> Scheduling UX can sprawl (reschedule, cancel, multi-team days) — keep v1 fields minimal.</p>
+    </article>
+
+    <article class="card" id="idea-4">
+      <h3><span class="rank">#4</span> Keep game rating distinct from S9 skill Assessment</h3>
+      <div class="tags">Axis: <strong>Game rating</strong> · Confidence <strong>90%</strong> · Complexity <strong>Low</strong></div>
+      <p>Game rating = holistic match performance (one number per player per game). S9 Assessment = skill-dimension ratings with history. Both can appear on S2 (Assessment History vs Match History Performance) but must not share write paths or overwrite each other.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> S9 + <code>player_skill_ratings_history</code> just shipped; conflating would blur two different coach intents. <code>reasoned:</code> a 7/10 game score is not “Passing = 72”.</p>
+      <p><strong>Rationale:</strong> Prevents schema and UX collision; lets Match History Performance stay scannable.</p>
+      <p><strong>Downsides:</strong> Two rating concepts for coaches to learn — mitigate with clear labels (“Game rating” vs “Skill assessment”).</p>
+    </article>
+
+    <article class="card" id="idea-5">
+      <h3><span class="rank">#5</span> Auto-rollup <code>player_stats</code> from Game_Performance</h3>
+      <div class="tags">Axis: <strong>Minutes &amp; rollup</strong> · Confidence <strong>80%</strong> · Complexity <strong>Medium</strong></div>
+      <p>When a game sheet is saved, recompute season <code>total_minutes</code>, <code>appearances</code>, <code>recent_avg</code>, and optionally average game rating / last match fields on <code>player_stats</code>. Retire S5 as the primary writer for match minutes (display-only or remove), mirroring how Assessment became the skill write path.</p>
+      <p><strong>Basis:</strong> <code>direct:</code> fabricated stats bug history and “source of record” plans already treat <code>player_stats</code> as fragile when not event-backed. Clip reconcile scripts show the rollup pattern.</p>
+      <p><strong>Rationale:</strong> Makes existing S2 aggregate cards truthful; closes the loop from sheet → dashboard without double entry.</p>
+      <p><strong>Downsides:</strong> Migration for seeded demo players; need idempotent recompute and clear “incomplete sheet” behavior.</p>
+    </article>
+
+    <article class="card" id="idea-6">
+      <h3><span class="rank">#6</span> Phased MVP: participation + minutes + rating before full sub graph</h3>
+      <div class="tags">Axis: <strong>UX surface</strong> · Confidence <strong>78%</strong> · Complexity <strong>Low→Medium</strong></div>
+      <p>Ship v1 as: create game → mark who played → enter minutes (or start/end) + game rating → Game_Performance → S2 list. v1.1 adds starters flag and ordered sub events with “replaced by”. Schema can still reserve event tables empty in v1.</p>
+      <p><strong>Basis:</strong> <code>reasoned:</code> full sub graph is the hardest UX; user value of S2 history + ratings arrives earlier. Aligns with Assessment feature’s “partial OK” pragmatism.</p>
+      <p><strong>Rationale:</strong> De-risks delivery while still creating <code>game_performance</code> and the S2 section the user named.</p>
+      <p><strong>Downsides:</strong> Temporary gap vs “by whom” ask — must be an explicit phase, not a silent cut.</p>
+    </article>
+
+    <article class="card" id="idea-7">
+      <h3><span class="rank">#7</span> Pre-match lineup draft that becomes the played sheet</h3>
+      <div class="tags">Axis: <strong>Fixture ledger + lineup</strong> · Confidence <strong>75%</strong> · Complexity <strong>Medium</strong></div>
+      <p>For upcoming games, coach saves a planned XI + bench. At kickoff/status=complete, that draft seeds the Game Sheet (starters pre-checked). Subs during/after edit the same record. Reduces blank-page friction after the match.</p>
+      <p><strong>Basis:</strong> <code>external:</code> Pitch Planner lineup builder → play flow. <code>direct:</code> team roster already known via assignments.</p>
+      <p><strong>Rationale:</strong> Connects “upcoming games” management to the post-match record without two disconnected tools.</p>
+      <p><strong>Downsides:</strong> Planned ≠ actual; need clear “reset from plan” vs “edit after play” states.</p>
+    </article>
+
+    <h2 id="rejected">Rejection summary</h2>
+    <table>
+      <thead>
+        <tr><th>Idea</th><th>Why cut</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Live sideline timer as v1 (Pitch Planner clone)</td><td>High complexity; crowded category; weaker fit for desktop mockup-first stack — better as later mode on same data model</td></tr>
+        <tr><td>Parent fairness reports as primary value</td><td>Subject-replacement toward youth-rec fairness apps; product identity is coach development</td></tr>
+        <tr><td>Voice / whiteboard OCR game logging</td><td>Speculative, weak grounding, high cost</td></tr>
+        <tr><td>Spreadsheet import as first path</td><td>Useful later; doesn’t teach the in-app sheet UX</td></tr>
+        <tr><td>Conflate game rating with S9 skill Assessment</td><td>Duplicates / corrupts a just-shipped write path</td></tr>
+        <tr><td>Soft-link every clip to a game in v1</td><td>Nice compound later; not required for Game_Performance</td></tr>
+        <tr><td>Formation canvas / 40 formations</td><td>Scope overrun vs minutes + rating history</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Filtering used orchestrator arbitration with grounding + web prior art (basis-verifier subagent skipped — degradation noted).</p>
+
+    <h2 id="top">Top pick</h2>
+    <p><strong>#1 Post-match Game Sheet</strong> combined with <strong>#2 event-sourced minutes</strong>, <strong>#3 fixture board</strong>, and <strong>#4/#5</strong> rating separation + rollup is the coherent product shape. Use <strong>#6</strong> only if sequencing risk is high — keep the full sub graph in the brainstorm contract even if implementation phases it.</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S10: Games — VantageIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a class="back-btn" href="./S1-player-list.html">←</a>
+      <div class="header-title">Games</div>
+      <div class="header-meta" id="gamesHeaderMeta">Coach</div>
+      <button class="exit-btn" type="button" data-testid="exit-button" aria-label="Log out" title="Log out">✕</button>
+    </header>
+
+    <div class="content">
+      <div class="notice" id="gamesNotice" hidden></div>
+      <div class="notice" id="gamesError" data-testid="games-error" hidden style="border-color: var(--down);"></div>
+
+      <div id="listView" data-testid="games-list-view">
+        <div class="toolbar" style="gap: 0.75rem; flex-wrap: wrap;">
+          <label class="form-field" style="min-width: 10rem; flex: 1;">
+            <span class="form-label">Team</span>
+            <select id="teamFilter" data-testid="games-team-filter"></select>
+          </label>
+          <button type="button" class="btn btn-primary" id="createGameBtn" data-testid="create-game-button">New Game</button>
+        </div>
+
+        <div class="section" style="margin-top: 1rem;">
+          <div class="section-title">Fixtures</div>
+          <div id="gamesEmpty" class="muted" data-testid="games-empty" hidden>No games yet for this team.</div>
+          <div id="gamesList" data-testid="games-list"></div>
+        </div>
+
+        <form id="createGameForm" data-testid="create-game-form" class="section" hidden style="margin-top: 1rem;">
+          <div class="section-title">Create game</div>
+          <div class="form-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem;">
+            <label class="form-field">
+              <span class="form-label">Opponent</span>
+              <input type="text" id="fieldOpponent" data-testid="game-opponent" required>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Kickoff</span>
+              <input type="datetime-local" id="fieldKickoff" data-testid="game-kickoff" required>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Home / Away</span>
+              <select id="fieldHomeAway" data-testid="game-home-away">
+                <option value="home">Home</option>
+                <option value="away">Away</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Duration (minutes)</span>
+              <input type="number" id="fieldDuration" data-testid="game-duration" min="1" max="180" value="90">
+            </label>
+          </div>
+          <div class="cta-buttons" style="margin-top: 1rem;">
+            <button type="button" class="btn btn-secondary" id="cancelCreateBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary" data-testid="create-game-submit">Create</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="sheetView" data-testid="game-sheet-view" hidden>
+        <div class="player-summary" style="margin-bottom: 1rem;">
+          <div class="player-details">
+            <div class="player-name" id="sheetTitle">Game Sheet</div>
+            <div class="player-meta" id="sheetMeta">—</div>
+          </div>
+        </div>
+        <p class="muted" style="font-size: 0.9rem;">Mark starters, log substitutions (out → in at minute), then rate players 0–10. Minutes are calculated from the sub timeline.</p>
+
+        <div class="section" style="margin-top: 1rem;">
+          <div class="section-title">Starters</div>
+          <div id="startersList" data-testid="starters-list"></div>
+        </div>
+
+        <div class="section" style="margin-top: 1rem;">
+          <div class="section-title">Substitutions</div>
+          <div id="subsList" data-testid="subs-list"></div>
+          <button type="button" class="btn btn-secondary" id="addSubBtn" data-testid="add-sub-button" style="margin-top: 0.5rem;">Add substitution</button>
+        </div>
+
+        <div class="section" style="margin-top: 1rem;">
+          <div class="section-title">Ratings &amp; minutes</div>
+          <div class="table-wrap">
+            <table class="data-table" style="min-width:0;">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Started</th>
+                  <th>Minutes</th>
+                  <th>Rating</th>
+                </tr>
+              </thead>
+              <tbody id="ratingsBody" data-testid="ratings-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="cta-buttons" style="margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" id="backToListBtn" data-testid="sheet-back">Back</button>
+          <button type="button" class="btn btn-primary" id="saveSheetBtn" data-testid="save-game-sheet">Save Game Sheet</button>
+        </div>
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <a class="nav-item" href="./S1-player-list.html"><span class="nav-icon">👥</span><span>Players</span></a>
+      <a class="nav-item" href="./S3-team-management.html"><span class="nav-icon">🧩</span><span>Teams</span></a>
+      <a class="nav-item active" href="./S10-games.html" data-testid="nav-games"><span class="nav-icon">🗓️</span><span>Games</span></a>
+      <a class="nav-item" href="./S4-video-capture.html"><span class="nav-icon">📹</span><span>Capture</span></a>
+      <a class="nav-item" href="./S6-assessment-list.html"><span class="nav-icon">📊</span><span>My Clips</span></a>
+    </nav>
+  </div>
+
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const notice = document.getElementById('gamesNotice');
+      const errorEl = document.getElementById('gamesError');
+      const listView = document.getElementById('listView');
+      const sheetView = document.getElementById('sheetView');
+      const teamFilter = document.getElementById('teamFilter');
+      const gamesList = document.getElementById('gamesList');
+      const gamesEmpty = document.getElementById('gamesEmpty');
+      const createForm = document.getElementById('createGameForm');
+      let currentGameId = null;
+      let currentDurationMinutes = 90;
+      let roster = [];
+      let previewMinutes = {};
+
+      function showError(msg) {
+        errorEl.textContent = msg || '';
+        errorEl.hidden = !msg;
+      }
+      function showNotice(msg) {
+        notice.textContent = msg || '';
+        notice.hidden = !msg;
+      }
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      function fillTeams() {
+        const teams = MockupApi.listTeams() || [];
+        teamFilter.innerHTML = '';
+        teams.forEach(function (team) {
+          const opt = document.createElement('option');
+          opt.value = String(team.id);
+          opt.textContent = team.name;
+          teamFilter.appendChild(opt);
+        });
+        const u19 = teams.find(function (t) { return t.name === 'U19 Prime'; });
+        if (u19) teamFilter.value = String(u19.id);
+      }
+
+      function renderList() {
+        const teamId = teamFilter.value;
+        const response = MockupApi.listGames({ teamId: teamId });
+        const games = (response && response.games) || (response && response.data && response.data.games) || [];
+        gamesList.innerHTML = '';
+        gamesEmpty.hidden = games.length > 0;
+        games.forEach(function (game) {
+          const row = document.createElement('div');
+          row.className = 'assessment-history-event';
+          row.setAttribute('data-testid', 'game-row');
+          const when = game.kickoffAt ? new Date(game.kickoffAt).toLocaleString() : '—';
+          row.innerHTML =
+            '<div class="assessment-history-meta" style="width:100%;">' +
+              '<span>' + escapeHtml(when) + '</span>' +
+              '<span>' + escapeHtml(game.opponent || '') + '</span>' +
+              '<span>' + escapeHtml(game.homeAway || '') + '</span>' +
+              '<span>' + escapeHtml(game.status || '') + '</span>' +
+              '<button type="button" class="btn btn-secondary" data-open-sheet="' + escapeHtml(game.id) + '" data-testid="open-game-sheet">Game Sheet</button>' +
+            '</div>';
+          gamesList.appendChild(row);
+        });
+      }
+
+      function openSheet(gameId) {
+        showError('');
+        const response = MockupApi.getGame(gameId);
+        if (!response || response.status !== 200 || !response.data) {
+          showError((response && response.message) || 'Unable to load game.');
+          return;
+        }
+        currentGameId = gameId;
+        roster = response.data.roster || [];
+        const game = response.data.game;
+        currentDurationMinutes = Number(game.durationMinutes) || 90;
+        document.getElementById('sheetTitle').textContent = 'vs ' + (game.opponent || 'Opponent');
+        document.getElementById('sheetMeta').textContent =
+          (game.homeAway || '') + ' · ' + currentDurationMinutes + "' · " + (game.status || '');
+        const startersList = document.getElementById('startersList');
+        startersList.innerHTML = '';
+        const existingPerf = response.data.performances || [];
+        const startedIds = {};
+        existingPerf.forEach(function (p) {
+          if (p.started) startedIds[String(p.playerId)] = true;
+        });
+        roster.forEach(function (player) {
+          const id = String(player.id);
+          const label = document.createElement('label');
+          label.style.display = 'block';
+          label.style.margin = '0.35rem 0';
+          label.innerHTML =
+            '<input type="checkbox" class="starter-check" data-testid="starter-' + escapeHtml(id) + '" value="' + escapeHtml(id) + '"' +
+            (startedIds[id] ? ' checked' : '') + '> ' + escapeHtml(player.name);
+          startersList.appendChild(label);
+        });
+
+        const subsList = document.getElementById('subsList');
+        subsList.innerHTML = '';
+        (response.data.substitutions || []).forEach(function (sub) {
+          addSubRow(sub.minute, sub.playerOutId, sub.playerInId);
+        });
+        if (!(response.data.substitutions || []).length) {
+          // leave empty until user adds
+        }
+
+        rebuildRatingsTable(existingPerf);
+        listView.hidden = true;
+        sheetView.hidden = false;
+        refreshPreviewMinutes();
+      }
+
+      function playerOptionsHtml(selectedId) {
+        return roster.map(function (player) {
+          const id = String(player.id);
+          return '<option value="' + escapeHtml(id) + '"' +
+            (String(selectedId) === id ? ' selected' : '') + '>' +
+            escapeHtml(player.name) + '</option>';
+        }).join('');
+      }
+
+      function addSubRow(minute, outId, inId) {
+        const row = document.createElement('div');
+        row.className = 'sub-row';
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = '5rem 1fr 1fr auto';
+        row.style.gap = '0.5rem';
+        row.style.marginBottom = '0.5rem';
+        row.innerHTML =
+          '<input type="number" class="sub-minute" min="0" max="180" placeholder="Min" value="' + escapeHtml(minute == null ? '' : minute) + '" data-testid="sub-minute">' +
+          '<select class="sub-out" data-testid="sub-out">' + playerOptionsHtml(outId) + '</select>' +
+          '<select class="sub-in" data-testid="sub-in">' + playerOptionsHtml(inId) + '</select>' +
+          '<button type="button" class="btn btn-secondary remove-sub">✕</button>';
+        row.querySelector('.remove-sub').addEventListener('click', function () {
+          row.remove();
+          refreshPreviewMinutes();
+        });
+        row.querySelectorAll('input, select').forEach(function (el) {
+          el.addEventListener('change', refreshPreviewMinutes);
+        });
+        document.getElementById('subsList').appendChild(row);
+      }
+
+      function readStarters() {
+        return Array.prototype.map.call(document.querySelectorAll('.starter-check:checked'), function (el) {
+          return el.value;
+        });
+      }
+
+      function readSubs() {
+        return Array.prototype.map.call(document.querySelectorAll('.sub-row'), function (row) {
+          return {
+            minute: Number(row.querySelector('.sub-minute').value),
+            playerOutId: row.querySelector('.sub-out').value,
+            playerInId: row.querySelector('.sub-in').value
+          };
+        });
+      }
+
+      function refreshPreviewMinutes() {
+        const starters = readStarters();
+        const subs = readSubs().map(function (sub, index) {
+          return {
+            minute: sub.minute,
+            playerOutId: sub.playerOutId,
+            playerInId: sub.playerInId,
+            seq: index + 1
+          };
+        });
+        previewMinutes = MockupApi.computeGameMinutes({
+          durationMinutes: currentDurationMinutes,
+          starterIds: starters,
+          substitutions: subs
+        }) || {};
+        rebuildRatingsTable(null, starters, false, true);
+      }
+
+      function rebuildRatingsTable(existingPerf, starterOverride, previewOnly, usePreviewMap) {
+        const body = document.getElementById('ratingsBody');
+        body.innerHTML = '';
+        const starters = starterOverride || readStarters();
+        const starterSet = {};
+        starters.forEach(function (id) { starterSet[String(id)] = true; });
+        const perfById = {};
+        (existingPerf || []).forEach(function (p) {
+          perfById[String(p.playerId)] = p;
+        });
+        const involved = {};
+        starters.forEach(function (id) { involved[String(id)] = true; });
+        readSubs().forEach(function (sub) {
+          involved[String(sub.playerOutId)] = true;
+          involved[String(sub.playerInId)] = true;
+        });
+        Object.keys(perfById).forEach(function (id) { involved[id] = true; });
+
+        roster.forEach(function (player) {
+          const id = String(player.id);
+          if (!involved[id]) {
+            return;
+          }
+          const perf = perfById[id] || {};
+          let minutesLabel = '—';
+          if (usePreviewMap && previewMinutes[id] != null) {
+            minutesLabel = String(previewMinutes[id]);
+          } else if (!previewOnly && perf.minutes != null) {
+            minutesLabel = String(perf.minutes);
+          }
+          const tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + escapeHtml(player.name) + '</td>' +
+            '<td>' + (starterSet[id] ? 'Yes' : 'No') + '</td>' +
+            '<td data-testid="preview-minutes-' + escapeHtml(id) + '">' + escapeHtml(minutesLabel) + '</td>' +
+            '<td><input type="number" min="0" max="10" step="0.1" class="rating-input" data-player-id="' + escapeHtml(id) + '" ' +
+              'data-testid="rating-' + escapeHtml(id) + '" value="' +
+              escapeHtml(perf.rating != null ? perf.rating : '') + '"></td>';
+          body.appendChild(tr);
+        });
+      }
+
+      document.getElementById('createGameBtn').addEventListener('click', function () {
+        createForm.hidden = false;
+      });
+      document.getElementById('cancelCreateBtn').addEventListener('click', function () {
+        createForm.hidden = true;
+      });
+      createForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        showError('');
+        const kickoffLocal = document.getElementById('fieldKickoff').value;
+        const kickoffAt = kickoffLocal ? new Date(kickoffLocal).toISOString() : null;
+        const response = MockupApi.createGame({
+          teamId: teamFilter.value,
+          kickoffAt: kickoffAt,
+          opponent: document.getElementById('fieldOpponent').value,
+          homeAway: document.getElementById('fieldHomeAway').value,
+          durationMinutes: Number(document.getElementById('fieldDuration').value) || 90
+        });
+        if (!response || response.status >= 400) {
+          showError((response && response.message) || 'Unable to create game.');
+          return;
+        }
+        createForm.hidden = true;
+        createForm.reset();
+        document.getElementById('fieldDuration').value = '90';
+        renderList();
+      });
+
+      teamFilter.addEventListener('change', renderList);
+      gamesList.addEventListener('click', function (event) {
+        const btn = event.target.closest('[data-open-sheet]');
+        if (btn) openSheet(btn.getAttribute('data-open-sheet'));
+      });
+      document.getElementById('addSubBtn').addEventListener('click', function () {
+        addSubRow('', roster[0] && roster[0].id, roster[1] && roster[1].id);
+        refreshPreviewMinutes();
+      });
+      document.getElementById('startersList').addEventListener('change', refreshPreviewMinutes);
+      document.getElementById('backToListBtn').addEventListener('click', function () {
+        sheetView.hidden = true;
+        listView.hidden = false;
+        currentGameId = null;
+        renderList();
+      });
+      document.getElementById('saveSheetBtn').addEventListener('click', function () {
+        showError('');
+        const ratings = Array.prototype.map.call(document.querySelectorAll('.rating-input'), function (input) {
+          const raw = String(input.value || '').trim();
+          return {
+            playerId: input.getAttribute('data-player-id'),
+            rating: raw === '' ? null : Number(raw)
+          };
+        });
+        const response = MockupApi.saveGameSheet(currentGameId, {
+          starters: readStarters(),
+          substitutions: readSubs(),
+          ratings: ratings
+        });
+        if (!response || response.status >= 400) {
+          showError((response && response.message) || 'Unable to save game sheet.');
+          return;
+        }
+        showNotice('Game sheet saved.');
+        openSheet(currentGameId);
+      });
+
+      document.querySelector('[data-testid="exit-button"]').addEventListener('click', function () {
+        MockupApi.logout();
+        window.location.href = './S0-login.html';
+      });
+
+      MockupApi.applyRoleGatedNav && MockupApi.applyRoleGatedNav();
+      fillTeams();
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('gameId')) {
+        openSheet(params.get('gameId'));
+      } else {
+        renderList();
+      }
+    })();
+  </script>
+</body>
+</html>

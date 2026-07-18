@@ -29,15 +29,15 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByText('Player Development')).toBeVisible();
   });
 
-  test('shows key development, match time, and performance sections', async ({ page }) => {
+  test('shows key development, match history, and performance sections', async ({ page }) => {
     await expect(page.getByText('Development Progress')).toBeVisible();
-    await expect(page.getByText('Match Time History')).toBeVisible();
+    await expect(page.getByText('Match History Performance')).toBeVisible();
     await expect(page.getByText('Recent Performance')).toBeVisible();
     await expect(page.getByText('Video Assessments')).toBeVisible();
 
     // Sections default collapsed; bodies stay hidden until expanded.
     await expect(page.locator('#body-development-progress')).toBeHidden();
-    await expect(page.locator('#body-match-time')).toBeHidden();
+    await expect(page.locator('#body-match-history')).toBeHidden();
     await expect(page.locator('#body-recent-performance')).toBeHidden();
     await expect(page.getByText('Current Level')).toBeHidden();
     await expect(page.getByText('Total Minutes')).toBeHidden();
@@ -253,7 +253,7 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.locator('#noStatsNotice')).toContainText('Performance metrics are not available yet.');
 
     await expect(page.getByText('Development Progress')).toBeHidden();
-    await expect(page.getByText('Match Time History')).toBeHidden();
+    await expect(page.getByText('Match History Performance')).toBeHidden();
     await expect(page.getByText('Recent Performance')).toBeHidden();
     await expect(page.getByText('Skill Ratings')).toBeHidden();
     await expect(page.getByText('Video Assessments')).toBeHidden();

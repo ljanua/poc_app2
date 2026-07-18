@@ -322,52 +322,50 @@
           </div>
         </div>
 
-        <div class="section">
+        <div class="section" data-testid="match-time-readonly-section">
           <div class="section-title">Match Time History</div>
+          <p class="muted" style="font-size: 0.9rem; color: var(--text-muted); margin: 0 0 0.75rem;">
+            Display-only. Record match minutes and ratings from Games → Game Sheet.
+          </p>
           <div class="form-grid">
             <div class="form-field">
               <label class="form-label" for="fieldTotalMinutes">Total Minutes</label>
-              <input id="fieldTotalMinutes" type="number" min="0" step="1">
+              <input id="fieldTotalMinutes" type="number" min="0" step="1" readonly disabled data-testid="field-total-minutes-readonly">
             </div>
             <div class="form-field">
               <label class="form-label" for="fieldAppearances">Appearances</label>
-              <input id="fieldAppearances" type="number" min="0" step="1">
+              <input id="fieldAppearances" type="number" min="0" step="1" readonly disabled data-testid="field-appearances-readonly">
             </div>
             <div class="form-field">
               <label class="form-label" for="fieldRecentAvg">Recent Avg</label>
-              <input id="fieldRecentAvg" type="text" placeholder="e.g. 90'">
+              <input id="fieldRecentAvg" type="text" placeholder="e.g. 90'" readonly disabled data-testid="field-recent-avg-readonly">
             </div>
           </div>
         </div>
 
         <div class="section">
           <div class="section-title">Recent Performance</div>
+          <p class="muted" style="font-size: 0.9rem; color: var(--text-muted); margin: 0 0 0.75rem;">
+            Average and last-match scores are display-only (from Game Sheet ratings). Summary note remains editable.
+          </p>
           <div class="form-grid">
-            <div class="form-field" id="ctrlAverageScore">
+            <div class="form-field" id="ctrlAverageScore" data-testid="average-score-readonly">
               <div class="ctrl-header">
                 <span class="form-label">Average Score</span>
-                <label class="ctrl-toggle-label">
-                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Average Score">
-                  <span>Record</span>
-                </label>
               </div>
-              <div class="ctrl-row">
+              <div class="ctrl-row ctrl-disabled">
                 <input type="range" class="ctrl-slider" min="0" max="10" step="0.1" aria-label="Average Score slider" disabled>
-                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Average Score value" disabled>
+                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Average Score value" disabled readonly>
                 <span class="ctrl-suffix"></span>
               </div>
             </div>
-            <div class="form-field" id="ctrlLastMatchScore">
+            <div class="form-field" id="ctrlLastMatchScore" data-testid="last-match-score-readonly">
               <div class="ctrl-header">
                 <span class="form-label">Last Match Score</span>
-                <label class="ctrl-toggle-label">
-                  <input type="checkbox" class="ctrl-toggle" aria-label="Record Last Match Score">
-                  <span>Record</span>
-                </label>
               </div>
-              <div class="ctrl-row">
+              <div class="ctrl-row ctrl-disabled">
                 <input type="range" class="ctrl-slider" min="0" max="10" step="0.1" aria-label="Last Match Score slider" disabled>
-                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Last Match Score value" disabled>
+                <input type="number" class="ctrl-box" min="0" max="10" step="0.1" aria-label="Last Match Score value" disabled readonly>
                 <span class="ctrl-suffix"></span>
               </div>
             </div>
@@ -413,6 +411,10 @@
       <a class="nav-item" href="./S3-team-management.html">
         <span class="nav-icon">🧩</span>
         <span>Teams</span>
+      </a>
+      <a class="nav-item" href="./S10-games.html" data-testid="nav-games">
+        <span class="nav-icon">???</span>
+        <span>Games</span>
       </a>
       <a class="nav-item" href="./S4-video-capture.html">
         <span class="nav-icon">📹</span>
@@ -587,6 +589,43 @@
         };
       }
 
+      // Display-only score control (Game Sheet is the write path for match scores).
+      function buildReadOnlyScoreControl(containerId, opts) {
+        var container = document.getElementById(containerId);
+        if (!container) { return { getState: function () { return null; }, setState: function () {} }; }
+        var slider = container.querySelector('.ctrl-slider');
+        var box = container.querySelector('.ctrl-box');
+        var midpoint = opts.midpoint !== undefined ? opts.midpoint : (opts.min + opts.max) / 2;
+
+        function clamp(v) {
+          return Math.min(opts.max, Math.max(opts.min, v));
+        }
+
+        function roundToStep(v) {
+          var inv = 1 / opts.step;
+          return Math.round(v * inv) / inv;
+        }
+
+        return {
+          getState: function () {
+            var raw = String(box.value || '').trim();
+            if (raw === '') { return null; }
+            var num = Number(raw);
+            return Number.isFinite(num) ? roundToStep(clamp(num)) : null;
+          },
+          setState: function (v) {
+            if (v === null || v === undefined || Number.isNaN(Number(v))) {
+              slider.value = midpoint;
+              box.value = '';
+            } else {
+              var num = roundToStep(clamp(Number(v)));
+              slider.value = num;
+              box.value = num;
+            }
+          }
+        };
+      }
+
       function parseRating(str) {
         if (str === null || str === undefined || str === 'N/A' || str === '') { return null; }
         var num = parseFloat(String(str));
@@ -601,8 +640,8 @@
         currentLevel: buildSliderControl('ctrlCurrentLevel', { min: 0, max: 100, step: 1, midpoint: 50 }),
         fitness: buildSliderControl('ctrlFitness', { min: 0, max: 100, step: 1, midpoint: 50 }),
         skillProgress: buildSliderControl('ctrlSkillProgress', { min: 0, max: 100, step: 1, midpoint: 50 }),
-        averageScore: buildSliderControl('ctrlAverageScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 }),
-        lastMatchScore: buildSliderControl('ctrlLastMatchScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 })
+        averageScore: buildReadOnlyScoreControl('ctrlAverageScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 }),
+        lastMatchScore: buildReadOnlyScoreControl('ctrlLastMatchScore', { min: 0, max: 10, step: 0.1, midpoint: 5.0 })
       };
 
       function isAnySkillRow(row) {
@@ -823,11 +862,7 @@
           currentLevel: formatRating(controls.currentLevel.getState()),
           fitness: formatRating(controls.fitness.getState()),
           skillProgress: formatRating(controls.skillProgress.getState()),
-          totalMinutes: value('fieldTotalMinutes'),
-          appearances: value('fieldAppearances'),
-          recentAvg: value('fieldRecentAvg'),
-          averageScore: controls.averageScore.getState(),
-          lastMatchScore: controls.lastMatchScore.getState(),
+          // Match minutes / game scores are Game Sheet–owned; omit so PATCH preserves them.
           lastMatchSummary: value('fieldLastMatchSummary'),
           clipSubmittedCount: value('fieldClipSubmitted'),
           clipAssessedCount: value('fieldClipAssessed'),

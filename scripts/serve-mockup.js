@@ -8,6 +8,11 @@ const { createClipUpload, reprocessClip, deleteClip, toClipResponse, listSegment
 const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJpegFile } = require('./video-processing/clip-media');
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { recordSkillAssessment } = require('./player-skill-assessment');
+const {
+  computeMinutesFromSheet,
+  validateSheet,
+  buildPlayerStatsRollup
+} = require('./game-sheet-minutes');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
 const { generateShareToken, hashShareToken } = require('./share-token');
 const { suggestSkillAbbreviation, normalizeSkillAbbreviation, validateSkillAbbreviation } = require('./skills/suggest-abbreviation');
@@ -1633,6 +1638,54 @@ async function ensureDatabase() {
       ON player_skill_ratings_history(skill_id);
   `);
 
+  // Feature Games: fixtures, substitutions, game_performance.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS games (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      kickoff_at TIMESTAMPTZ NOT NULL,
+      opponent TEXT NOT NULL,
+      home_away TEXT NOT NULL DEFAULT 'home' CHECK (home_away IN ('home', 'away')),
+      duration_minutes SMALLINT NOT NULL DEFAULT 90 CHECK (duration_minutes > 0 AND duration_minutes <= 180),
+      status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'complete')),
+      created_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_games_team_kickoff
+      ON games(team_id, kickoff_at DESC);
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS game_substitutions (
+      id TEXT PRIMARY KEY,
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      seq SMALLINT NOT NULL,
+      minute SMALLINT NOT NULL CHECK (minute >= 0),
+      player_out_id TEXT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+      player_in_id TEXT NOT NULL REFERENCES players(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (game_id, seq)
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS game_performance (
+      game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+      player_id TEXT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      started BOOLEAN NOT NULL DEFAULT FALSE,
+      minutes SMALLINT NOT NULL DEFAULT 0 CHECK (minutes >= 0),
+      rating NUMERIC(3,1) CHECK (rating IS NULL OR (rating >= 0 AND rating <= 10)),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (game_id, player_id)
+    );
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_game_performance_player_id
+      ON game_performance(player_id);
+  `);
+
   // Feature 037: skill abbreviation (additive; skills table comes from migrations/deploy).
   try {
     await pool.query(`ALTER TABLE skills ADD COLUMN IF NOT EXISTS abbreviation TEXT;`);
@@ -2110,6 +2163,116 @@ async function resolvePlayerHistoryViewer(actorEmail, playerId) {
   return resolveShareEditorForPlayer(actorEmail, playerId);
 }
 
+async function resolveGameEditor(actorEmail) {
+  const actor = await resolveActorUserByEmail(actorEmail);
+  if (!actor || actor.status !== 'active') {
+    return null;
+  }
+  if (actor.role === 'SystemAdmin' || isClubScopedActor(actor)) {
+    return actor;
+  }
+  return null;
+}
+
+async function actorCanAccessTeam(actor, teamId) {
+  if (!actor || !teamId) {
+    return false;
+  }
+  if (actor.role === 'SystemAdmin') {
+    const team = await pool.query(`SELECT id FROM teams WHERE id = $1 LIMIT 1`, [teamId]);
+    return Boolean(team.rows[0]);
+  }
+  const result = await pool.query(
+    `
+      SELECT 1
+      FROM teams t
+      INNER JOIN coach_clubs cc ON cc.club_id = t.club_id
+      WHERE t.id = $1 AND cc.user_id = $2
+      LIMIT 1
+    `,
+    [teamId, actor.id]
+  );
+  return Boolean(result.rows[0]);
+}
+
+function toGamePayload(row) {
+  return {
+    id: row.id,
+    teamId: row.teamId || row.team_id,
+    kickoffAt: row.kickoffAt || row.kickoff_at,
+    opponent: row.opponent,
+    homeAway: row.homeAway || row.home_away,
+    durationMinutes: Number(row.durationMinutes != null ? row.durationMinutes : row.duration_minutes),
+    status: row.status,
+    createdByUserId: row.createdByUserId || row.created_by_user_id || null,
+    createdAt: row.createdAt || row.created_at,
+    updatedAt: row.updatedAt || row.updated_at
+  };
+}
+
+async function listRosterPlayersForTeam(teamId) {
+  const result = await pool.query(
+    `
+      SELECT p.id, p.name, p.position, p.trend
+      FROM players p
+      JOIN player_team_assignments a ON a.player_id = p.id
+      WHERE a.team_id = $1
+      ORDER BY p.name ASC
+    `,
+    [teamId]
+  );
+  return result.rows;
+}
+
+async function applyGameStatsRollupDb(client, playerId) {
+  const rowsResult = await client.query(
+    `
+      SELECT
+        gp.minutes,
+        gp.rating,
+        g.kickoff_at AS "kickoffAt"
+      FROM game_performance gp
+      JOIN games g ON g.id = gp.game_id
+      WHERE gp.player_id = $1 AND g.status = 'complete'
+    `,
+    [playerId]
+  );
+  const rollup = buildPlayerStatsRollup(rowsResult.rows, 5);
+  const playerTrend = await client.query(`SELECT trend FROM players WHERE id = $1`, [playerId]);
+  const trend = (playerTrend.rows[0] && playerTrend.rows[0].trend) || 'plateau';
+  await client.query(
+    `
+      INSERT INTO player_stats (
+        player_id, trend, total_minutes, appearances, recent_avg, average_score, last_match_score,
+        missing_data_message, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      ON CONFLICT (player_id) DO UPDATE SET
+        total_minutes = EXCLUDED.total_minutes,
+        appearances = EXCLUDED.appearances,
+        recent_avg = EXCLUDED.recent_avg,
+        average_score = EXCLUDED.average_score,
+        last_match_score = EXCLUDED.last_match_score,
+        missing_data_message = CASE
+          WHEN $9::boolean THEN NULL
+          ELSE player_stats.missing_data_message
+        END,
+        updated_at = NOW()
+    `,
+    [
+      playerId,
+      trend,
+      rollup.totalMinutes,
+      rollup.appearances,
+      rollup.recentAvg || 'N/A',
+      rollup.averageScore,
+      rollup.lastMatchScore,
+      rollup.hasGames ? null : 'Performance metrics are not available yet.',
+      rollup.hasGames
+    ]
+  );
+}
+
 async function findActiveShareByToken(rawToken) {
   const token = String(rawToken || '').trim();
   if (!token) {
@@ -2270,19 +2433,38 @@ function parseUpdateProfilePayload(payload) {
     return { error: 'Growth status must be on_track, watch, at_risk, or empty.' };
   }
 
-  const totalMinutes = toCountValue(payload.totalMinutes, 0);
-  const appearances = toCountValue(payload.appearances, 0);
   const clipSubmittedCount = toCountValue(payload.clipSubmittedCount, 0);
   const clipAssessedCount = toCountValue(payload.clipAssessedCount, 0);
   const clipPendingCount = toCountValue(payload.clipPendingCount, 0);
-  if ([totalMinutes, appearances, clipSubmittedCount, clipAssessedCount, clipPendingCount].some((value) => Number.isNaN(value))) {
-    return { error: 'Minutes, appearances, and clip counts must be non-negative whole numbers.' };
+  if ([clipSubmittedCount, clipAssessedCount, clipPendingCount].some((value) => Number.isNaN(value))) {
+    return { error: 'Clip counts must be non-negative whole numbers.' };
   }
 
-  const averageScore = toNullableNumber(payload.averageScore);
-  const lastMatchScore = toNullableNumber(payload.lastMatchScore);
-  if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
-    return { error: 'Scores must be numeric or left blank.' };
+  const gameStatsProvided = Boolean(
+    payload &&
+    (payload.totalMinutes !== undefined ||
+      payload.appearances !== undefined ||
+      payload.recentAvg !== undefined ||
+      payload.averageScore !== undefined ||
+      payload.lastMatchScore !== undefined)
+  );
+  let totalMinutes = 0;
+  let appearances = 0;
+  let recentAvg = 'N/A';
+  let averageScore = null;
+  let lastMatchScore = null;
+  if (gameStatsProvided) {
+    totalMinutes = toCountValue(payload.totalMinutes, 0);
+    appearances = toCountValue(payload.appearances, 0);
+    if ([totalMinutes, appearances].some((value) => Number.isNaN(value))) {
+      return { error: 'Minutes and appearances must be non-negative whole numbers.' };
+    }
+    recentAvg = toNullableString(payload.recentAvg) || 'N/A';
+    averageScore = toNullableNumber(payload.averageScore);
+    lastMatchScore = toNullableNumber(payload.lastMatchScore);
+    if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
+      return { error: 'Scores must be numeric or left blank.' };
+    }
   }
 
   const currentLevelChange = parseMetricChange(payload.currentLevelChange);
@@ -2320,9 +2502,10 @@ function parseUpdateProfilePayload(payload) {
       currentLevel,
       fitness,
       skillProgress,
+      gameStatsProvided,
       totalMinutes,
       appearances,
-      recentAvg: toNullableString(payload.recentAvg) || 'N/A',
+      recentAvg,
       averageScore,
       trend,
       lastMatchScore,
@@ -4746,7 +4929,16 @@ async function handlePlayersApi(req, res, requestUrl) {
         [team.id, playerId]
       );
 
-      await upsertPlayerStats(client, playerId, parsed.stats);
+      const statsForUpsert = Object.assign({}, parsed.stats);
+      delete statsForUpsert.gameStatsProvided;
+      if (!parsed.stats.gameStatsProvided) {
+        statsForUpsert.totalMinutes = Number(existing.totalMinutes || 0);
+        statsForUpsert.appearances = Number(existing.appearances || 0);
+        statsForUpsert.recentAvg = existing.recentAvg != null ? existing.recentAvg : 'N/A';
+        statsForUpsert.averageScore = existing.averageScore !== undefined ? existing.averageScore : null;
+        statsForUpsert.lastMatchScore = existing.lastMatchScore !== undefined ? existing.lastMatchScore : null;
+      }
+      await upsertPlayerStats(client, playerId, statsForUpsert);
 
       // Replace-on-position-change: when the coach changes the player's
       // position, wipe old ratings and seed NULL rows for the new position's
@@ -5221,6 +5413,507 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
     sendJson(res, 204, null);
+    return;
+  }
+
+  // --- Games API ---
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/games`) {
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const teamId = String(requestUrl.searchParams.get('teamId') || '').trim();
+    const actor = await resolveGameEditor(actorEmail);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    if (teamId && !(await actorCanAccessTeam(actor, teamId))) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const where = [];
+    const params = [];
+    if (teamId) {
+      params.push(teamId);
+      where.push(`g.team_id = $${params.length}`);
+    } else if (actor.role !== 'SystemAdmin') {
+      params.push(actor.id);
+      where.push(
+        `g.team_id IN (
+          SELECT t.id FROM teams t
+          INNER JOIN coach_clubs cc ON cc.club_id = t.club_id
+          WHERE cc.user_id = $${params.length}
+        )`
+      );
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const result = await pool.query(
+      `
+        SELECT
+          g.id,
+          g.team_id AS "teamId",
+          g.kickoff_at AS "kickoffAt",
+          g.opponent,
+          g.home_away AS "homeAway",
+          g.duration_minutes AS "durationMinutes",
+          g.status,
+          g.created_by_user_id AS "createdByUserId",
+          g.created_at AS "createdAt",
+          g.updated_at AS "updatedAt"
+        FROM games g
+        ${whereSql}
+        ORDER BY g.kickoff_at DESC
+      `,
+      params
+    );
+    sendJson(res, 200, { data: { games: result.rows.map(toGamePayload) } });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/games`) {
+    const body = await readJsonBody(req);
+    const actorEmail = String((body && body.actorEmail) || '').trim().toLowerCase();
+    const actor = await resolveGameEditor(actorEmail);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const teamId = String((body && body.teamId) || '').trim();
+    if (!teamId || !(await actorCanAccessTeam(actor, teamId))) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const opponent = normalizeLookup(body && body.opponent);
+    if (!opponent) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Opponent is required.'));
+      return;
+    }
+    const kickoffAt = String((body && body.kickoffAt) || '').trim();
+    if (!kickoffAt || Number.isNaN(Date.parse(kickoffAt))) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Kickoff date and time are required.'));
+      return;
+    }
+    const homeAway = String((body && body.homeAway) || 'home').trim().toLowerCase();
+    if (homeAway !== 'home' && homeAway !== 'away') {
+      sendJson(res, 400, appError(400, 'validation_error', 'Home/away must be home or away.'));
+      return;
+    }
+    const durationMinutes = Math.round(Number(body && body.durationMinutes != null ? body.durationMinutes : 90));
+    if (!Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 180) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Duration must be an integer from 1 to 180 minutes.'));
+      return;
+    }
+    const gameId = `game_${Date.now().toString(36)}_${Math.floor(Math.random() * 10000)}`;
+    const insert = await pool.query(
+      `
+        INSERT INTO games (
+          id, team_id, kickoff_at, opponent, home_away, duration_minutes, status, created_by_user_id
+        ) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, 'upcoming', $7)
+        RETURNING
+          id,
+          team_id AS "teamId",
+          kickoff_at AS "kickoffAt",
+          opponent,
+          home_away AS "homeAway",
+          duration_minutes AS "durationMinutes",
+          status,
+          created_by_user_id AS "createdByUserId",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+      `,
+      [gameId, teamId, kickoffAt, opponent, homeAway, durationMinutes, actor.id]
+    );
+    sendJson(res, 201, { data: { game: toGamePayload(insert.rows[0]) } });
+    return;
+  }
+
+  const gameSheetMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/games/([^/]+)/sheet$`));
+  if (req.method === 'PUT' && gameSheetMatch) {
+    const gameId = decodeURIComponent(gameSheetMatch[1] || '');
+    const body = await readJsonBody(req);
+    const actorEmail = String((body && body.actorEmail) || '').trim().toLowerCase();
+    const actor = await resolveGameEditor(actorEmail);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const gameResult = await pool.query(
+      `
+        SELECT
+          id,
+          team_id AS "teamId",
+          kickoff_at AS "kickoffAt",
+          opponent,
+          home_away AS "homeAway",
+          duration_minutes AS "durationMinutes",
+          status,
+          created_by_user_id AS "createdByUserId",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM games WHERE id = $1
+      `,
+      [gameId]
+    );
+    const game = gameResult.rows[0];
+    if (!game) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected game was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (!(await actorCanAccessTeam(actor, game.teamId))) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+
+    const starters = body && Array.isArray(body.starters) ? body.starters : null;
+    const substitutions = body && Array.isArray(body.substitutions) ? body.substitutions : [];
+    const ratings = body && Array.isArray(body.ratings) ? body.ratings : [];
+    if (!starters) {
+      sendJson(res, 400, appError(400, 'validation_error', 'starters must be an array of player ids.'));
+      return;
+    }
+
+    const validation = validateSheet({
+      durationMinutes: game.durationMinutes,
+      starterIds: starters,
+      substitutions
+    });
+    if (validation.error) {
+      sendJson(res, 400, appError(400, 'validation_error', validation.error));
+      return;
+    }
+
+    const roster = await listRosterPlayersForTeam(game.teamId);
+    const rosterIds = new Set(roster.map((row) => String(row.id)));
+    const starterIds = starters.map((id) => String(id).trim()).filter(Boolean);
+    for (const starterId of starterIds) {
+      if (!rosterIds.has(starterId)) {
+        sendJson(res, 400, appError(400, 'validation_error', 'All starters must belong to the game team roster.'));
+        return;
+      }
+    }
+    for (const sub of substitutions) {
+      const outId = String(sub.playerOutId || '').trim();
+      const inId = String(sub.playerInId || '').trim();
+      if (!rosterIds.has(outId) || !rosterIds.has(inId)) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Substitution players must belong to the game team roster.'));
+        return;
+      }
+    }
+
+    const ratingsByPlayer = {};
+    for (const entry of ratings) {
+      const playerId = String((entry && entry.playerId) || '').trim();
+      if (!playerId) continue;
+      if (entry.rating === null || entry.rating === undefined || entry.rating === '') {
+        ratingsByPlayer[playerId] = null;
+        continue;
+      }
+      const rating = Number(entry.rating);
+      if (!Number.isFinite(rating) || rating < 0 || rating > 10) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Game rating must be a number from 0 to 10.'));
+        return;
+      }
+      ratingsByPlayer[playerId] = Math.round(rating * 10) / 10;
+    }
+
+    const subsWithSeq = substitutions.map((sub, index) => ({
+      minute: sub.minute,
+      playerOutId: String(sub.playerOutId || '').trim(),
+      playerInId: String(sub.playerInId || '').trim(),
+      seq: index + 1
+    }));
+    const minutesByPlayer = computeMinutesFromSheet({
+      durationMinutes: game.durationMinutes,
+      starterIds,
+      substitutions: subsWithSeq
+    });
+    const starterSet = new Set(starterIds);
+
+    const previousPlayers = await pool.query(
+      `SELECT player_id AS "playerId" FROM game_performance WHERE game_id = $1`,
+      [gameId]
+    );
+    const touched = new Set(previousPlayers.rows.map((row) => String(row.playerId)));
+    Object.keys(minutesByPlayer).forEach((id) => touched.add(id));
+    Object.keys(ratingsByPlayer).forEach((id) => touched.add(id));
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM game_substitutions WHERE game_id = $1`, [gameId]);
+      await client.query(`DELETE FROM game_performance WHERE game_id = $1`, [gameId]);
+
+      const subBase = Date.now().toString(36);
+      for (let i = 0; i < subsWithSeq.length; i += 1) {
+        const sub = subsWithSeq[i];
+        await client.query(
+          `
+            INSERT INTO game_substitutions (id, game_id, seq, minute, player_out_id, player_in_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `,
+          [`gsub_${subBase}_${i}`, gameId, sub.seq, sub.minute, sub.playerOutId, sub.playerInId]
+        );
+      }
+
+      for (const playerId of Object.keys(minutesByPlayer)) {
+        const rating = Object.prototype.hasOwnProperty.call(ratingsByPlayer, playerId)
+          ? ratingsByPlayer[playerId]
+          : null;
+        await client.query(
+          `
+            INSERT INTO game_performance (game_id, player_id, started, minutes, rating, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+          `,
+          [gameId, playerId, starterSet.has(playerId), minutesByPlayer[playerId], rating]
+        );
+      }
+
+      await client.query(
+        `UPDATE games SET status = 'complete', updated_at = NOW() WHERE id = $1`,
+        [gameId]
+      );
+
+      for (const playerId of touched) {
+        await applyGameStatsRollupDb(client, playerId);
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const refreshed = await pool.query(
+      `
+        SELECT
+          id,
+          team_id AS "teamId",
+          kickoff_at AS "kickoffAt",
+          opponent,
+          home_away AS "homeAway",
+          duration_minutes AS "durationMinutes",
+          status,
+          created_by_user_id AS "createdByUserId",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM games WHERE id = $1
+      `,
+      [gameId]
+    );
+    const subsResult = await pool.query(
+      `
+        SELECT id, game_id AS "gameId", seq, minute,
+          player_out_id AS "playerOutId", player_in_id AS "playerInId"
+        FROM game_substitutions WHERE game_id = $1 ORDER BY seq ASC
+      `,
+      [gameId]
+    );
+    const perfResult = await pool.query(
+      `
+        SELECT game_id AS "gameId", player_id AS "playerId", started, minutes, rating
+        FROM game_performance WHERE game_id = $1
+      `,
+      [gameId]
+    );
+    sendJson(res, 200, {
+      data: {
+        game: toGamePayload(refreshed.rows[0]),
+        substitutions: subsResult.rows,
+        performances: perfResult.rows,
+        minutesByPlayer
+      }
+    });
+    return;
+  }
+
+  const gameIdMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/games/([^/]+)$`));
+  if (gameIdMatch && (req.method === 'GET' || req.method === 'PATCH')) {
+    const gameId = decodeURIComponent(gameIdMatch[1] || '');
+    if (req.method === 'GET') {
+      const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+      const actor = await resolveGameEditor(actorEmail);
+      if (!actor) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
+      const gameResult = await pool.query(
+        `
+          SELECT
+            id,
+            team_id AS "teamId",
+            kickoff_at AS "kickoffAt",
+            opponent,
+            home_away AS "homeAway",
+            duration_minutes AS "durationMinutes",
+            status,
+            created_by_user_id AS "createdByUserId",
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+          FROM games WHERE id = $1
+        `,
+        [gameId]
+      );
+      const game = gameResult.rows[0];
+      if (!game) {
+        sendJson(res, 404, appError(404, 'not_found', 'The selected game was not found anymore. Refresh and try again.'));
+        return;
+      }
+      if (!(await actorCanAccessTeam(actor, game.teamId))) {
+        sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+        return;
+      }
+      const roster = await listRosterPlayersForTeam(game.teamId);
+      const substitutions = await pool.query(
+        `
+          SELECT id, game_id AS "gameId", seq, minute,
+            player_out_id AS "playerOutId", player_in_id AS "playerInId"
+          FROM game_substitutions WHERE game_id = $1 ORDER BY seq ASC
+        `,
+        [gameId]
+      );
+      const performances = await pool.query(
+        `
+          SELECT game_id AS "gameId", player_id AS "playerId", started, minutes, rating
+          FROM game_performance WHERE game_id = $1
+        `,
+        [gameId]
+      );
+      sendJson(res, 200, {
+        data: {
+          game: toGamePayload(game),
+          roster,
+          substitutions: substitutions.rows,
+          performances: performances.rows
+        }
+      });
+      return;
+    }
+
+    const body = await readJsonBody(req);
+    const actorEmail = String((body && body.actorEmail) || requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const actor = await resolveGameEditor(actorEmail);
+    if (!actor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const gameResult = await pool.query(
+      `SELECT id, team_id AS "teamId" FROM games WHERE id = $1`,
+      [gameId]
+    );
+    const game = gameResult.rows[0];
+    if (!game) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected game was not found anymore. Refresh and try again.'));
+      return;
+    }
+    if (!(await actorCanAccessTeam(actor, game.teamId))) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const fields = [];
+    const params = [];
+    if (body.opponent !== undefined) {
+      const opponent = normalizeLookup(body.opponent);
+      if (!opponent) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Opponent is required.'));
+        return;
+      }
+      params.push(opponent);
+      fields.push(`opponent = $${params.length}`);
+    }
+    if (body.kickoffAt !== undefined) {
+      const kickoffAt = String(body.kickoffAt || '').trim();
+      if (!kickoffAt || Number.isNaN(Date.parse(kickoffAt))) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Kickoff date and time are required.'));
+        return;
+      }
+      params.push(kickoffAt);
+      fields.push(`kickoff_at = $${params.length}::timestamptz`);
+    }
+    if (body.homeAway !== undefined) {
+      const homeAway = String(body.homeAway || '').trim().toLowerCase();
+      if (homeAway !== 'home' && homeAway !== 'away') {
+        sendJson(res, 400, appError(400, 'validation_error', 'Home/away must be home or away.'));
+        return;
+      }
+      params.push(homeAway);
+      fields.push(`home_away = $${params.length}`);
+    }
+    if (body.durationMinutes !== undefined) {
+      const durationMinutes = Math.round(Number(body.durationMinutes));
+      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 180) {
+        sendJson(res, 400, appError(400, 'validation_error', 'Duration must be an integer from 1 to 180 minutes.'));
+        return;
+      }
+      params.push(durationMinutes);
+      fields.push(`duration_minutes = $${params.length}`);
+    }
+    if (body.status !== undefined) {
+      const status = String(body.status || '').trim().toLowerCase();
+      if (status !== 'upcoming' && status !== 'complete') {
+        sendJson(res, 400, appError(400, 'validation_error', 'Status must be upcoming or complete.'));
+        return;
+      }
+      params.push(status);
+      fields.push(`status = $${params.length}`);
+    }
+    if (!fields.length) {
+      sendJson(res, 400, appError(400, 'validation_error', 'No game fields to update.'));
+      return;
+    }
+    fields.push('updated_at = NOW()');
+    params.push(gameId);
+    const updated = await pool.query(
+      `
+        UPDATE games SET ${fields.join(', ')}
+        WHERE id = $${params.length}
+        RETURNING
+          id,
+          team_id AS "teamId",
+          kickoff_at AS "kickoffAt",
+          opponent,
+          home_away AS "homeAway",
+          duration_minutes AS "durationMinutes",
+          status,
+          created_by_user_id AS "createdByUserId",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+      `,
+      params
+    );
+    sendJson(res, 200, { data: { game: toGamePayload(updated.rows[0]) } });
+    return;
+  }
+
+  const matchHistoryMatch = requestUrl.pathname.match(
+    new RegExp(`^${apiPrefix}/players/([^/]+)/match-history$`)
+  );
+  if (req.method === 'GET' && matchHistoryMatch) {
+    const playerId = decodeURIComponent(matchHistoryMatch[1] || '');
+    const actorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim().toLowerCase();
+    const viewer = await resolvePlayerHistoryViewer(actorEmail, playerId);
+    if (!viewer) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const result = await pool.query(
+      `
+        SELECT
+          g.id AS "gameId",
+          g.kickoff_at AS "kickoffAt",
+          g.opponent,
+          g.home_away AS "homeAway",
+          gp.minutes,
+          gp.rating,
+          gp.started
+        FROM game_performance gp
+        JOIN games g ON g.id = gp.game_id
+        WHERE gp.player_id = $1 AND g.status = 'complete'
+        ORDER BY g.kickoff_at DESC
+      `,
+      [playerId]
+    );
+    sendJson(res, 200, { data: { events: result.rows } });
     return;
   }
 

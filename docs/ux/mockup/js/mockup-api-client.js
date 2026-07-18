@@ -360,7 +360,10 @@
           updatedBy: 'video-assessment',
           assessedAt: '2026-06-01T15:30:00.000Z'
         }
-      ]
+      ],
+      games: [],
+      gameSubstitutions: [],
+      gamePerformances: []
     };
   }
 
@@ -378,6 +381,15 @@
       }
       if (!Array.isArray(parsed.assessmentHistory)) {
         parsed.assessmentHistory = [];
+      }
+      if (!Array.isArray(parsed.games)) {
+        parsed.games = [];
+      }
+      if (!Array.isArray(parsed.gameSubstitutions)) {
+        parsed.gameSubstitutions = [];
+      }
+      if (!Array.isArray(parsed.gamePerformances)) {
+        parsed.gamePerformances = [];
       }
       return parsed;
     } catch (error) {
@@ -1081,19 +1093,38 @@
       return { error: 'Growth status must be on_track, watch, at_risk, or empty.' };
     }
 
-    const totalMinutes = toCountValue(payload && payload.totalMinutes, 0);
-    const appearances = toCountValue(payload && payload.appearances, 0);
     const clipSubmittedCount = toCountValue(payload && payload.clipSubmittedCount, 0);
     const clipAssessedCount = toCountValue(payload && payload.clipAssessedCount, 0);
     const clipPendingCount = toCountValue(payload && payload.clipPendingCount, 0);
-    if ([totalMinutes, appearances, clipSubmittedCount, clipAssessedCount, clipPendingCount].some(function (value) { return Number.isNaN(value); })) {
-      return { error: 'Minutes, appearances, and clip counts must be non-negative whole numbers.' };
+    if ([clipSubmittedCount, clipAssessedCount, clipPendingCount].some(function (value) { return Number.isNaN(value); })) {
+      return { error: 'Clip counts must be non-negative whole numbers.' };
     }
 
-    const averageScore = toNullableNumberValue(payload && payload.averageScore);
-    const lastMatchScore = toNullableNumberValue(payload && payload.lastMatchScore);
-    if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
-      return { error: 'Scores must be numeric or left blank.' };
+    const gameStatsProvided = Boolean(
+      payload &&
+      (payload.totalMinutes !== undefined ||
+        payload.appearances !== undefined ||
+        payload.recentAvg !== undefined ||
+        payload.averageScore !== undefined ||
+        payload.lastMatchScore !== undefined)
+    );
+    let totalMinutes = 0;
+    let appearances = 0;
+    let recentAvg = 'N/A';
+    let averageScore = null;
+    let lastMatchScore = null;
+    if (gameStatsProvided) {
+      totalMinutes = toCountValue(payload.totalMinutes, 0);
+      appearances = toCountValue(payload.appearances, 0);
+      if ([totalMinutes, appearances].some(function (value) { return Number.isNaN(value); })) {
+        return { error: 'Minutes and appearances must be non-negative whole numbers.' };
+      }
+      recentAvg = toNullableStringValue(payload.recentAvg) || 'N/A';
+      averageScore = toNullableNumberValue(payload.averageScore);
+      lastMatchScore = toNullableNumberValue(payload.lastMatchScore);
+      if (Number.isNaN(averageScore) || Number.isNaN(lastMatchScore)) {
+        return { error: 'Scores must be numeric or left blank.' };
+      }
     }
 
     const currentLevelChange = parseMetricChangeValue(payload && payload.currentLevelChange);
@@ -1133,9 +1164,10 @@
         currentLevel: currentLevel,
         fitness: fitness,
         skillProgress: skillProgress,
+        gameStatsProvided: gameStatsProvided,
         totalMinutes: totalMinutes,
         appearances: appearances,
-        recentAvg: toNullableStringValue(payload && payload.recentAvg) || 'N/A',
+        recentAvg: recentAvg,
         averageScore: averageScore,
         trend: trend,
         lastMatchScore: lastMatchScore,
@@ -1149,6 +1181,321 @@
         skillProgressChange: skillProgressChange
       }
     };
+  }
+
+  // Inline mirror of scripts/game-sheet-minutes.js (browser cannot require Node modules).
+  function computeMinutesFromSheet(params) {
+    const durationMinutes = params && params.durationMinutes;
+    const starterIds = params && params.starterIds;
+    const substitutions = params && params.substitutions;
+    const duration = Math.max(0, Math.round(Number(durationMinutes) || 0));
+    const starters = Array.isArray(starterIds)
+      ? starterIds.map(function (id) { return String(id); }).filter(Boolean)
+      : [];
+    const subs = Array.isArray(substitutions) ? substitutions.slice() : [];
+
+    subs.sort(function (a, b) {
+      const ma = Number(a.minute);
+      const mb = Number(b.minute);
+      if (ma !== mb) {
+        return ma - mb;
+      }
+      return (Number(a.seq) || 0) - (Number(b.seq) || 0);
+    });
+
+    const onPitch = {};
+    starters.forEach(function (playerId) {
+      onPitch[playerId] = true;
+    });
+    const intervals = {};
+
+    function ensure(playerId) {
+      if (!intervals[playerId]) {
+        intervals[playerId] = [];
+      }
+    }
+
+    starters.forEach(function (playerId) {
+      ensure(playerId);
+      intervals[playerId].push({ start: 0, end: null });
+    });
+
+    function closeOpen(playerId, atMinute) {
+      const list = intervals[playerId];
+      if (!list || !list.length) {
+        return;
+      }
+      const last = list[list.length - 1];
+      if (last.end === null) {
+        last.end = atMinute;
+      }
+    }
+
+    function openInterval(playerId, atMinute) {
+      ensure(playerId);
+      intervals[playerId].push({ start: atMinute, end: null });
+    }
+
+    for (let i = 0; i < subs.length; i += 1) {
+      const sub = subs[i];
+      const minute = Math.max(0, Math.min(duration, Math.round(Number(sub.minute) || 0)));
+      const outId = String(sub.playerOutId || '').trim();
+      const inId = String(sub.playerInId || '').trim();
+      if (!outId || !inId || outId === inId) {
+        continue;
+      }
+      if (!onPitch[outId]) {
+        continue;
+      }
+      if (onPitch[inId]) {
+        continue;
+      }
+      closeOpen(outId, minute);
+      onPitch[outId] = false;
+      onPitch[inId] = true;
+      openInterval(inId, minute);
+    }
+
+    Object.keys(onPitch).forEach(function (playerId) {
+      if (onPitch[playerId]) {
+        closeOpen(playerId, duration);
+      }
+    });
+
+    Object.keys(intervals).forEach(function (playerId) {
+      intervals[playerId].forEach(function (iv) {
+        if (iv.end === null) {
+          iv.end = duration;
+        }
+      });
+    });
+
+    const minutesByPlayer = {};
+    Object.keys(intervals).forEach(function (playerId) {
+      let total = 0;
+      intervals[playerId].forEach(function (iv) {
+        const start = Number(iv.start) || 0;
+        const end = Number(iv.end);
+        if (Number.isFinite(end) && end > start) {
+          total += end - start;
+        }
+      });
+      if (total > 0 || starters.indexOf(playerId) !== -1) {
+        minutesByPlayer[playerId] = Math.min(duration, Math.max(0, Math.round(total)));
+      }
+    });
+
+    return minutesByPlayer;
+  }
+
+  function validateGameSheet(params) {
+    const durationMinutes = params && params.durationMinutes;
+    const starterIds = params && params.starterIds;
+    const substitutions = params && params.substitutions;
+    const duration = Math.round(Number(durationMinutes) || 0);
+    if (!Number.isInteger(duration) || duration <= 0 || duration > 180) {
+      return { error: 'durationMinutes must be an integer from 1 to 180.' };
+    }
+    const starters = Array.isArray(starterIds)
+      ? starterIds.map(function (id) { return String(id).trim(); }).filter(Boolean)
+      : [];
+    if (!starters.length) {
+      return { error: 'At least one starter is required.' };
+    }
+    const starterSet = {};
+    for (let s = 0; s < starters.length; s += 1) {
+      if (starterSet[starters[s]]) {
+        return { error: 'Duplicate starters are not allowed.' };
+      }
+      starterSet[starters[s]] = true;
+    }
+
+    const onPitch = {};
+    starters.forEach(function (playerId) {
+      onPitch[playerId] = true;
+    });
+    const subs = Array.isArray(substitutions) ? substitutions : [];
+    for (let i = 0; i < subs.length; i += 1) {
+      const sub = subs[i];
+      const minute = Number(sub.minute);
+      if (!Number.isInteger(minute) || minute < 0 || minute > duration) {
+        return { error: 'Each substitution minute must be an integer between 0 and durationMinutes.' };
+      }
+      const outId = String(sub.playerOutId || '').trim();
+      const inId = String(sub.playerInId || '').trim();
+      if (!outId || !inId) {
+        return { error: 'Each substitution requires playerOutId and playerInId.' };
+      }
+      if (outId === inId) {
+        return { error: 'Substitution playerOutId and playerInId must differ.' };
+      }
+      if (!onPitch[outId]) {
+        return { error: 'Cannot substitute out a player who is not on the pitch.' };
+      }
+      if (onPitch[inId]) {
+        return { error: 'Cannot substitute in a player who is already on the pitch.' };
+      }
+      onPitch[outId] = false;
+      onPitch[inId] = true;
+    }
+
+    return { ok: true };
+  }
+
+  function buildPlayerStatsRollupFromGames(rows, recentWindow) {
+    const list = Array.isArray(rows) ? rows.slice() : [];
+    const windowSize = recentWindow || 5;
+    let totalMinutes = 0;
+    let appearances = 0;
+    const ratings = [];
+    list.forEach(function (row) {
+      const mins = Number(row.minutes) || 0;
+      if (mins > 0) {
+        appearances += 1;
+        totalMinutes += mins;
+      }
+      if (row.rating !== null && row.rating !== undefined && row.rating !== '') {
+        const r = Number(row.rating);
+        if (Number.isFinite(r)) {
+          ratings.push({ rating: r, kickoffAt: row.kickoffAt });
+        }
+      }
+    });
+
+    list.sort(function (a, b) {
+      return String(b.kickoffAt || '').localeCompare(String(a.kickoffAt || ''));
+    });
+    const recent = list.slice(0, windowSize).filter(function (row) {
+      return (Number(row.minutes) || 0) > 0;
+    });
+    let recentAvg = null;
+    if (recent.length) {
+      const sum = recent.reduce(function (acc, row) {
+        return acc + (Number(row.minutes) || 0);
+      }, 0);
+      recentAvg = String(Math.round(sum / recent.length)) + "'";
+    }
+
+    let averageScore = null;
+    let lastMatchScore = null;
+    if (ratings.length) {
+      const ratingSum = ratings.reduce(function (acc, entry) {
+        return acc + entry.rating;
+      }, 0);
+      averageScore = Math.round((ratingSum / ratings.length) * 10) / 10;
+      ratings.sort(function (a, b) {
+        return String(b.kickoffAt || '').localeCompare(String(a.kickoffAt || ''));
+      });
+      lastMatchScore = ratings[0].rating;
+    }
+
+    return {
+      totalMinutes: totalMinutes,
+      appearances: appearances,
+      recentAvg: recentAvg || 'N/A',
+      averageScore: averageScore,
+      lastMatchScore: lastMatchScore,
+      hasGames: appearances > 0
+    };
+  }
+
+  function findTeamById(store, teamId) {
+    return (store.teams || []).find(function (team) {
+      return String(team.id) === String(teamId);
+    }) || null;
+  }
+
+  function listRosterForTeam(store, teamId) {
+    const team = findTeamById(store, teamId);
+    if (!team) {
+      return [];
+    }
+    const normalizedTeamName = normalizeTeamName(team.name);
+    return (store.players || []).filter(function (player) {
+      return normalizeTeamName(player.teamName) === normalizedTeamName;
+    });
+  }
+
+  function requireActiveGameEditor(store) {
+    const actor = getSessionUser(store);
+    if (!actor || actor.status !== 'active') {
+      return {
+        ok: false,
+        response: { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' }
+      };
+    }
+    if (actor.role !== 'Coach' && actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin') {
+      return {
+        ok: false,
+        response: { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' }
+      };
+    }
+    return { ok: true, actor: actor };
+  }
+
+  function listCompletedGameRowsForPlayer(store, playerId) {
+    const performances = (store.gamePerformances || []).filter(function (row) {
+      return String(row.playerId) === String(playerId);
+    });
+    const gamesById = {};
+    (store.games || []).forEach(function (game) {
+      gamesById[String(game.id)] = game;
+    });
+    const rows = [];
+    performances.forEach(function (perf) {
+      const game = gamesById[String(perf.gameId)];
+      if (!game || game.status !== 'complete') {
+        return;
+      }
+      rows.push({
+        minutes: perf.minutes,
+        rating: perf.rating,
+        kickoffAt: game.kickoffAt
+      });
+    });
+    rows.sort(function (a, b) {
+      return String(b.kickoffAt || '').localeCompare(String(a.kickoffAt || ''));
+    });
+    return rows;
+  }
+
+  function applyGameStatsRollupToPlayer(store, playerId) {
+    const player = (store.players || []).find(function (entry) {
+      return String(entry.id) === String(playerId);
+    });
+    if (!player) {
+      return;
+    }
+
+    const rollup = buildPlayerStatsRollupFromGames(listCompletedGameRowsForPlayer(store, playerId));
+    store.playerStats = store.playerStats || {};
+    const existing = getStoredStats(store, playerId) || {};
+    const clips = (store.clips || []).filter(function (clip) {
+      return String(clip.playerId) === String(playerId);
+    });
+    const assessed = clips.filter(function (clip) { return isClipCompleteStatus(clip.status); });
+    const pending = clips.filter(function (clip) { return isClipPendingStatus(clip.status); });
+
+    store.playerStats[player.id] = Object.assign({}, existing, {
+      growthStatus: existing.growthStatus || growthStatusForTrend(player.trend),
+      currentLevel: existing.currentLevel != null ? existing.currentLevel : 'N/A',
+      fitness: existing.fitness != null ? existing.fitness : 'N/A',
+      skillProgress: existing.skillProgress != null ? existing.skillProgress : 'N/A',
+      totalMinutes: rollup.totalMinutes,
+      appearances: rollup.appearances,
+      recentAvg: rollup.recentAvg,
+      averageScore: rollup.averageScore,
+      lastMatchScore: rollup.lastMatchScore,
+      trend: player.trend,
+      lastMatchSummary: existing.lastMatchSummary || null,
+      clipSubmittedCount: existing.clipSubmittedCount != null ? existing.clipSubmittedCount : clips.length,
+      clipAssessedCount: existing.clipAssessedCount != null ? existing.clipAssessedCount : assessed.length,
+      clipPendingCount: existing.clipPendingCount != null ? existing.clipPendingCount : pending.length,
+      missingDataMessage: rollup.hasGames ? null : (existing.missingDataMessage || 'Performance metrics are not available yet.'),
+      currentLevelChange: existing.currentLevelChange || null,
+      fitnessChange: existing.fitnessChange || null,
+      skillProgressChange: existing.skillProgressChange || null
+    });
   }
 
   const MockupApi = {
@@ -3246,6 +3593,422 @@
       return { status: 200, data: { events: clone(events) }, events: clone(events) };
     },
 
+    listGames(query) {
+      const params = query && typeof query === 'object' ? query : {};
+      const teamId = params.teamId != null && params.teamId !== '' ? String(params.teamId) : '';
+
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const qsParts = [];
+        if (actorEmail) {
+          qsParts.push('actorEmail=' + encodeURIComponent(actorEmail));
+        }
+        if (teamId) {
+          qsParts.push('teamId=' + encodeURIComponent(teamId));
+        }
+        const path = '/games' + (qsParts.length ? '?' + qsParts.join('&') : '');
+        const response = backendRequest('GET', path);
+        if (response.status === 200 && response.body && response.body.data) {
+          const games = clone(Array.isArray(response.body.data.games) ? response.body.data.games : response.body.data);
+          return { status: 200, code: 'ok', data: { games: games }, games: games };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      let games = (store.games || []).slice();
+      if (teamId) {
+        games = games.filter(function (game) {
+          return String(game.teamId) === teamId;
+        });
+      }
+      games.sort(function (a, b) {
+        return String(b.kickoffAt || '').localeCompare(String(a.kickoffAt || ''));
+      });
+      return { status: 200, code: 'ok', data: { games: clone(games) }, games: clone(games) };
+    },
+
+    createGame(payload) {
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest('POST', '/games', Object.assign({}, payload || {}, {
+          actorEmail: actorEmail
+        }));
+        if ((response.status === 200 || response.status === 201) && response.body && response.body.data) {
+          const game = clone(response.body.data.game || response.body.data);
+          return { status: response.status, code: response.status === 201 ? 'created' : 'ok', data: { game: game }, game: game };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      const editor = requireActiveGameEditor(store);
+      if (!editor.ok) {
+        return editor.response;
+      }
+
+      const teamId = payload && payload.teamId;
+      const team = findTeamById(store, teamId);
+      if (!team) {
+        return { status: 400, code: 'validation_error', message: 'Please select a valid team.' };
+      }
+
+      const opponent = normalizeLookup(payload && payload.opponent);
+      if (!opponent || opponent.length < 1) {
+        return { status: 400, code: 'validation_error', message: 'Opponent is required.' };
+      }
+
+      const kickoffAt = String(payload && payload.kickoffAt || '').trim();
+      if (!kickoffAt) {
+        return { status: 400, code: 'validation_error', message: 'Kickoff date and time are required.' };
+      }
+
+      const homeAway = String(payload && payload.homeAway || 'home').trim().toLowerCase();
+      if (homeAway !== 'home' && homeAway !== 'away') {
+        return { status: 400, code: 'validation_error', message: 'Home/away must be home or away.' };
+      }
+
+      const durationMinutes = Math.round(Number(payload && payload.durationMinutes != null ? payload.durationMinutes : 90));
+      if (!Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 180) {
+        return { status: 400, code: 'validation_error', message: 'Duration must be an integer from 1 to 180 minutes.' };
+      }
+
+      const nowIso = new Date().toISOString();
+      const created = {
+        id: 'game_' + Date.now().toString(36),
+        teamId: team.id,
+        kickoffAt: kickoffAt,
+        opponent: opponent,
+        homeAway: homeAway,
+        durationMinutes: durationMinutes,
+        status: 'upcoming',
+        createdBy: editor.actor.email,
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      store.games = store.games || [];
+      store.games.push(created);
+      saveStore(store);
+      return { status: 201, code: 'created', data: { game: clone(created) }, game: clone(created) };
+    },
+
+    getGame(gameId) {
+      const id = String(gameId || '').trim();
+      if (!id) {
+        return { status: 400, code: 'validation_error', message: 'Game id is required.' };
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const path = '/games/' + encodeURIComponent(id) + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '');
+        const response = backendRequest('GET', path);
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', data: clone(response.body.data) };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      const game = (store.games || []).find(function (entry) {
+        return String(entry.id) === id;
+      });
+      if (!game) {
+        return { status: 404, code: 'not_found', message: 'The selected game was not found anymore. Refresh and try again.' };
+      }
+
+      const roster = listRosterForTeam(store, game.teamId);
+      const substitutions = (store.gameSubstitutions || []).filter(function (entry) {
+        return String(entry.gameId) === id;
+      }).sort(function (a, b) {
+        const ma = Number(a.minute);
+        const mb = Number(b.minute);
+        if (ma !== mb) {
+          return ma - mb;
+        }
+        return (Number(a.seq) || 0) - (Number(b.seq) || 0);
+      });
+      const performances = (store.gamePerformances || []).filter(function (entry) {
+        return String(entry.gameId) === id;
+      });
+
+      return {
+        status: 200,
+        code: 'ok',
+        data: {
+          game: clone(game),
+          roster: clone(roster),
+          substitutions: clone(substitutions),
+          performances: clone(performances)
+        }
+      };
+    },
+
+    saveGameSheet(gameId, payload) {
+      const id = String(gameId || '').trim();
+      if (!id) {
+        return { status: 400, code: 'validation_error', message: 'Game id is required.' };
+      }
+
+      const starters = payload && Array.isArray(payload.starters) ? payload.starters : null;
+      const substitutions = payload && Array.isArray(payload.substitutions) ? payload.substitutions : [];
+      const ratings = payload && Array.isArray(payload.ratings) ? payload.ratings : [];
+
+      if (!starters) {
+        return { status: 400, code: 'validation_error', message: 'starters must be an array of player ids.' };
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const response = backendRequest(
+          'PUT',
+          '/games/' + encodeURIComponent(id) + '/sheet',
+          {
+            actorEmail: actorEmail,
+            starters: starters,
+            substitutions: substitutions,
+            ratings: ratings
+          }
+        );
+        if (response.status === 200 && response.body && response.body.data) {
+          return { status: 200, code: 'ok', data: clone(response.body.data) };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      const editor = requireActiveGameEditor(store);
+      if (!editor.ok) {
+        return editor.response;
+      }
+
+      const game = (store.games || []).find(function (entry) {
+        return String(entry.id) === id;
+      });
+      if (!game) {
+        return { status: 404, code: 'not_found', message: 'The selected game was not found anymore. Refresh and try again.' };
+      }
+
+      const previousPlayerIds = {};
+      (store.gamePerformances || []).forEach(function (entry) {
+        if (String(entry.gameId) === id) {
+          previousPlayerIds[String(entry.playerId)] = true;
+        }
+      });
+
+      const validation = validateGameSheet({
+        durationMinutes: game.durationMinutes,
+        starterIds: starters,
+        substitutions: substitutions
+      });
+      if (validation.error) {
+        return { status: 400, code: 'validation_error', message: validation.error };
+      }
+
+      const roster = listRosterForTeam(store, game.teamId);
+      const rosterIds = {};
+      roster.forEach(function (player) {
+        rosterIds[String(player.id)] = true;
+      });
+
+      const starterIds = starters.map(function (playerId) { return String(playerId).trim(); }).filter(Boolean);
+      for (let si = 0; si < starterIds.length; si += 1) {
+        if (!rosterIds[starterIds[si]]) {
+          return { status: 400, code: 'validation_error', message: 'All starters must belong to the game team roster.' };
+        }
+      }
+
+      for (let sj = 0; sj < substitutions.length; sj += 1) {
+        const sub = substitutions[sj];
+        const outId = String(sub.playerOutId || '').trim();
+        const inId = String(sub.playerInId || '').trim();
+        if (!rosterIds[outId] || !rosterIds[inId]) {
+          return { status: 400, code: 'validation_error', message: 'Substitution players must belong to the game team roster.' };
+        }
+      }
+
+      const ratingsByPlayer = {};
+      for (let ri = 0; ri < ratings.length; ri += 1) {
+        const entry = ratings[ri];
+        const playerId = String((entry && entry.playerId) || '').trim();
+        if (!playerId) {
+          continue;
+        }
+        if (entry.rating === null || entry.rating === undefined || entry.rating === '') {
+          ratingsByPlayer[playerId] = null;
+          continue;
+        }
+        const rating = Number(entry.rating);
+        if (!Number.isFinite(rating) || rating < 0 || rating > 10) {
+          return { status: 400, code: 'validation_error', message: 'Game rating must be a number from 0 to 10.' };
+        }
+        ratingsByPlayer[playerId] = Math.round(rating * 10) / 10;
+      }
+
+      const subsWithSeq = substitutions.map(function (sub, index) {
+        return {
+          minute: sub.minute,
+          playerOutId: String(sub.playerOutId || '').trim(),
+          playerInId: String(sub.playerInId || '').trim(),
+          seq: index + 1
+        };
+      });
+
+      const minutesByPlayer = computeMinutesFromSheet({
+        durationMinutes: game.durationMinutes,
+        starterIds: starterIds,
+        substitutions: subsWithSeq
+      });
+
+      const starterSet = {};
+      starterIds.forEach(function (playerId) {
+        starterSet[playerId] = true;
+      });
+
+      const touchedPlayerIds = {};
+      Object.keys(minutesByPlayer).forEach(function (playerId) {
+        touchedPlayerIds[playerId] = true;
+      });
+      Object.keys(ratingsByPlayer).forEach(function (playerId) {
+        touchedPlayerIds[playerId] = true;
+      });
+
+      store.gameSubstitutions = (store.gameSubstitutions || []).filter(function (entry) {
+        return String(entry.gameId) !== id;
+      });
+      const subBase = Date.now().toString(36);
+      subsWithSeq.forEach(function (sub, index) {
+        store.gameSubstitutions.push({
+          id: 'gsub_' + subBase + '_' + index,
+          gameId: id,
+          seq: sub.seq,
+          minute: sub.minute,
+          playerOutId: sub.playerOutId,
+          playerInId: sub.playerInId
+        });
+      });
+
+      store.gamePerformances = (store.gamePerformances || []).filter(function (entry) {
+        return String(entry.gameId) !== id;
+      });
+      Object.keys(minutesByPlayer).forEach(function (playerId) {
+        store.gamePerformances.push({
+          gameId: id,
+          playerId: playerId,
+          started: !!starterSet[playerId],
+          minutes: minutesByPlayer[playerId],
+          rating: Object.prototype.hasOwnProperty.call(ratingsByPlayer, playerId)
+            ? ratingsByPlayer[playerId]
+            : null
+        });
+      });
+
+      game.status = 'complete';
+      game.updatedAt = new Date().toISOString();
+
+      Object.keys(touchedPlayerIds).forEach(function (playerId) {
+        previousPlayerIds[playerId] = true;
+      });
+      Object.keys(previousPlayerIds).forEach(function (playerId) {
+        applyGameStatsRollupToPlayer(store, playerId);
+      });
+
+      saveStore(store);
+
+      const performances = (store.gamePerformances || []).filter(function (entry) {
+        return String(entry.gameId) === id;
+      });
+      const savedSubs = (store.gameSubstitutions || []).filter(function (entry) {
+        return String(entry.gameId) === id;
+      });
+
+      return {
+        status: 200,
+        code: 'ok',
+        data: {
+          game: clone(game),
+          substitutions: clone(savedSubs),
+          performances: clone(performances),
+          minutesByPlayer: clone(minutesByPlayer)
+        }
+      };
+    },
+
+    listMatchHistory(playerId) {
+      const id = String(playerId || '').trim();
+      if (!id) {
+        return { status: 400, code: 'validation_error', message: 'Player id is required.' };
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
+        const path = '/players/' + encodeURIComponent(id) + '/match-history'
+          + (actorEmail ? '?actorEmail=' + encodeURIComponent(actorEmail) : '');
+        const response = backendRequest('GET', path);
+        if (response.status === 200 && response.body && response.body.data) {
+          const events = clone(response.body.data.events || []);
+          return { status: 200, code: 'ok', data: { events: events }, events: events };
+        }
+        if (response.status !== 0 && response.status !== 503) {
+          return clone(Object.assign({ status: response.status }, response.body || {}));
+        }
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+
+      const store = loadStore();
+      const player = (store.players || []).find(function (entry) {
+        return String(entry.id) === id;
+      });
+      if (!player) {
+        return { status: 404, code: 'not_found', message: 'The selected player was not found anymore. Refresh and try again.' };
+      }
+
+      const gamesById = {};
+      (store.games || []).forEach(function (game) {
+        gamesById[String(game.id)] = game;
+      });
+
+      const events = (store.gamePerformances || []).filter(function (perf) {
+        return String(perf.playerId) === id;
+      }).map(function (perf) {
+        const game = gamesById[String(perf.gameId)];
+        if (!game || game.status !== 'complete') {
+          return null;
+        }
+        return {
+          gameId: game.id,
+          kickoffAt: game.kickoffAt,
+          opponent: game.opponent,
+          homeAway: game.homeAway,
+          minutes: Number(perf.minutes) || 0,
+          rating: perf.rating === null || perf.rating === undefined ? null : Number(perf.rating),
+          started: !!perf.started
+        };
+      }).filter(Boolean);
+
+      events.sort(function (a, b) {
+        return String(b.kickoffAt || '').localeCompare(String(a.kickoffAt || ''));
+      });
+
+      return { status: 200, code: 'ok', data: { events: clone(events) }, events: clone(events) };
+    },
+
+    computeGameMinutes(params) {
+      return computeMinutesFromSheet(params || {});
+    },
+
     updatePlayerProfile(playerId, payload) {
       if (shouldUseBackendPlayersMode()) {
         const actorEmail = String(localStorage.getItem(SESSION_KEY) || '').trim().toLowerCase();
@@ -3319,7 +4082,17 @@
       }
 
       store.playerStats = store.playerStats || {};
-      store.playerStats[player.id] = clone(parsed.stats);
+      const existingStats = store.playerStats[player.id] || {};
+      const nextStats = clone(parsed.stats);
+      delete nextStats.gameStatsProvided;
+      if (!parsed.stats.gameStatsProvided) {
+        nextStats.totalMinutes = Number(existingStats.totalMinutes || 0);
+        nextStats.appearances = Number(existingStats.appearances || 0);
+        nextStats.recentAvg = existingStats.recentAvg != null ? existingStats.recentAvg : 'N/A';
+        nextStats.averageScore = existingStats.averageScore !== undefined ? existingStats.averageScore : null;
+        nextStats.lastMatchScore = existingStats.lastMatchScore !== undefined ? existingStats.lastMatchScore : null;
+      }
+      store.playerStats[player.id] = nextStats;
 
       if (String(player.position || '') !== previousPosition) {
         const sportId = team.sportId || 'sport_soccer';
