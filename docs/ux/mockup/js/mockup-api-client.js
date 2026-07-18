@@ -3658,6 +3658,79 @@
       };
     },
 
+    deleteClip(clipId, payload) {
+      const id = String(clipId || '').trim();
+      const actorEmail = String((payload && payload.actorEmail) || '').trim().toLowerCase();
+      if (!id) {
+        return { status: 400, code: 'validation_error', message: 'Clip id is required.' };
+      }
+      if (!actorEmail) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('DELETE', '/clips/' + encodeURIComponent(id), {
+          actorEmail: actorEmail
+        });
+        if (response.status === 204 || (response.status >= 200 && response.status < 300)) {
+          return { status: 204, code: 'deleted', message: 'Clip deleted.' };
+        }
+        const errorBody = response.body || {};
+        return {
+          status: response.status || 500,
+          code: errorBody.code || 'unknown',
+          message: errorBody.message || 'Delete failed. Please try again.'
+        };
+      }
+
+      const store = loadStore();
+      const actor = (store.users || []).find(function (user) {
+        return String(user.email || '').toLowerCase() === actorEmail;
+      });
+      if (
+        !actor ||
+        actor.status !== 'active' ||
+        (actor.role !== 'Coach' && actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')
+      ) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const clipIndex = (store.clips || []).findIndex(function (entry) {
+        return String(entry.id) === id;
+      });
+      if (clipIndex < 0) {
+        return { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' };
+      }
+      const clip = store.clips[clipIndex];
+
+      if (actor.role === 'Coach' || actor.role === 'ClubAdmin') {
+        const player = (store.players || []).find(function (entry) {
+          return String(entry.id) === String(clip.playerId);
+        });
+        const team = player
+          ? (store.teams || []).find(function (entry) {
+              return entry.name === player.teamName;
+            })
+          : null;
+        const allowed = new Set(
+          (store.coachClubs || [])
+            .filter(function (entry) {
+              return String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email);
+            })
+            .map(function (entry) {
+              return String(entry.clubId);
+            })
+        );
+        if (!team || !allowed.has(String(team.clubId))) {
+          return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+        }
+      }
+
+      store.clips.splice(clipIndex, 1);
+      saveStore(store);
+      return { status: 204, code: 'deleted', message: 'Clip deleted.' };
+    },
+
     listUsers() {
       const session = this.getCurrentUser();
       const actorEmail = session && session.email ? String(session.email).trim().toLowerCase() : '';

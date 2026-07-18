@@ -380,6 +380,19 @@ header {
   box-shadow: none;
 }
 
+.view-btn--danger {
+  color: #f0a8a8;
+  background: rgba(180, 40, 40, 0.12);
+  border-color: rgba(180, 40, 40, 0.35);
+}
+
+.view-btn--danger:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(180, 40, 40, 0.45);
+  border-color: transparent;
+  box-shadow: none;
+}
+
 /* ============================================================
    Cards / surfaces
    ============================================================ */

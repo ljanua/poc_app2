@@ -4,7 +4,7 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { Pool } = require('pg');
 const { startVideoProcessingQueue } = require('./video-processing/queue');
-const { createClipUpload, reprocessClip, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
+const { createClipUpload, reprocessClip, deleteClip, toClipResponse, listSegmentsForClips } = require('./video-processing/clip-upload');
 const { resolveClipMediaPath, resolveClipThumbnailPath, streamVideoFile, streamJpegFile } = require('./video-processing/clip-media');
 const { backfillPlayerSkillRatingsFromClips } = require('./video-processing/sync-player-skill-ratings-from-clip');
 const { logEvent, getLogPath } = require('./logging/structured-logger');
@@ -3924,6 +3924,38 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
     const result = await reprocessClip(pool, clipId);
+    sendJson(res, result.status, result.body);
+    return;
+  }
+
+  const clipDeleteMatch = requestUrl.pathname.match(new RegExp(`^${apiPrefix}/clips/([^/]+)$`));
+  if (req.method === 'DELETE' && clipDeleteMatch) {
+    const clipId = decodeURIComponent(clipDeleteMatch[1] || '');
+    const payload = await readJsonBody(req);
+    const actorEmail = String((payload && payload.actorEmail) || '').trim().toLowerCase();
+    if (!actorEmail) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const clip = await pool.query(
+      `
+        SELECT c.id, c.player_id AS "playerId"
+        FROM clips c
+        WHERE c.id = $1
+        LIMIT 1
+      `,
+      [clipId]
+    );
+    if (!clip.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected clip was not found anymore. Refresh and try again.'));
+      return;
+    }
+    const editor = await resolveShareEditorForPlayer(actorEmail, clip.rows[0].playerId);
+    if (!editor) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const result = await deleteClip(pool, clipId);
     sendJson(res, result.status, result.body);
     return;
   }

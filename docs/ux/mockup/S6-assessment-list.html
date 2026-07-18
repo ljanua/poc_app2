@@ -450,7 +450,7 @@
           return;
         }
 
-        const canReprocess =
+        const canEditClips =
           !isGuest &&
           currentUser &&
           (currentUser.role === 'Coach' ||
@@ -474,16 +474,22 @@
               '" target="_blank" rel="noopener noreferrer">Open original</a>'
             : '';
           const reprocessButton =
-            canReprocess && isReprocessEligible
+            canEditClips && isReprocessEligible
               ? '<button type="button" class="view-btn" data-testid="reprocess-clip" data-clip-id="' +
                 escapeHtml(clip.id) +
                 '">Re-process</button>'
               : '';
+          const deleteButton = canEditClips
+            ? '<button type="button" class="view-btn view-btn--danger" data-testid="delete-clip" data-clip-id="' +
+              escapeHtml(clip.id) +
+              '">Delete</button>'
+            : '';
           let primaryAction = '';
           if (isPending) {
-            primaryAction = '<button class="view-btn" disabled>Pending</button>';
+            primaryAction = '<button class="view-btn" disabled>Pending</button>' + deleteButton;
           } else if (isFailed) {
-            primaryAction = reprocessButton || '<button class="view-btn" disabled>Failed</button>';
+            primaryAction =
+              (reprocessButton || '<button class="view-btn" disabled>Failed</button>') + deleteButton;
           } else if (isGuest) {
             primaryAction =
               '<a class="view-btn" data-testid="back-link" href="' + escapeHtml(guestBackHref()) + '">Back</a>';
@@ -492,7 +498,8 @@
               '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' +
               encodeURIComponent(clip.playerName) +
               '">Back</a>' +
-              reprocessButton;
+              reprocessButton +
+              deleteButton;
           }
           const actions =
             '<div class="result-actions">' + openOriginal + primaryAction + '</div>';
@@ -577,6 +584,26 @@
       });
 
       resultsGrid.addEventListener('click', function (event) {
+        const deleteButton = event.target.closest('[data-testid="delete-clip"]');
+        if (deleteButton) {
+          event.preventDefault();
+          event.stopPropagation();
+          const clipId = deleteButton.getAttribute('data-clip-id');
+          if (!window.confirm('Delete this video assessment? This cannot be undone.')) {
+            return;
+          }
+          const actorEmail = currentUser && currentUser.email ? currentUser.email : '';
+          deleteButton.disabled = true;
+          const result = MockupApi.deleteClip(clipId, { actorEmail: actorEmail });
+          if (!result || (result.status !== 204 && (result.status < 200 || result.status >= 300))) {
+            deleteButton.disabled = false;
+            window.alert((result && result.message) || 'Delete failed. Please try again.');
+            return;
+          }
+          render();
+          return;
+        }
+
         const reprocessButton = event.target.closest('[data-testid="reprocess-clip"]');
         if (reprocessButton) {
           event.preventDefault();

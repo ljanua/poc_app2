@@ -6,7 +6,7 @@ const { readMultipartForm, parseSkillFocusField } = require('./read-multipart');
 const { triggerVideoProcessing } = require('./queue');
 const { logAuditEvent } = require('./audit-logger');
 const { reconcilePlayerClipStats } = require('./reconcile-player-clip-stats');
-const { ensureOriginalsDir, originalsDir } = require('./config');
+const { ensureOriginalsDir, originalsDir, segmentsDirForClip, thumbnailPathForClip, getVideoRoot } = require('./config');
 const {
   parseMmSs,
   resolveDurationSeconds,
@@ -334,9 +334,79 @@ async function reprocessClip(pool, clipId) {
   };
 }
 
+function isPathUnderVideoRoot(filePath) {
+  if (!filePath) {
+    return false;
+  }
+  const root = getVideoRoot();
+  const resolved = path.resolve(String(filePath));
+  const rel = path.relative(root, resolved);
+  return Boolean(rel) && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function safeUnlinkFile(filePath) {
+  try {
+    if (!filePath || !isPathUnderVideoRoot(filePath)) {
+      return;
+    }
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+function safeRmDir(dirPath) {
+  try {
+    if (!dirPath || !isPathUnderVideoRoot(dirPath)) {
+      return;
+    }
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+  } catch {
+    // Best-effort cleanup only.
+  }
+}
+
+async function deleteClip(pool, clipId) {
+  const existing = await selectClipById(pool, clipId);
+  if (!existing) {
+    return {
+      status: 404,
+      body: { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' }
+    };
+  }
+
+  const mediaPath = existing.path || existing.videoStoragePath || null;
+  const segmentsByClip = await listSegmentsForClips(pool, [clipId]);
+  const segmentPaths = (segmentsByClip.get(clipId) || []).map((row) => row.path).filter(Boolean);
+  const thumbPath = thumbnailPathForClip(clipId);
+  const segmentsDir = segmentsDirForClip(clipId);
+  const playerId = existing.playerId;
+
+  await pool.query(`DELETE FROM clips WHERE id = $1`, [clipId]);
+  await reconcilePlayerClipStats(pool, playerId);
+
+  safeUnlinkFile(mediaPath);
+  segmentPaths.forEach((segmentPath) => safeUnlinkFile(segmentPath));
+  safeUnlinkFile(thumbPath);
+  safeRmDir(segmentsDir);
+
+  logAuditEvent('clip.deleted', {
+    clipId,
+    playerId,
+    previousStatus: existing.status
+  });
+
+  return { status: 204, body: null };
+}
+
 module.exports = {
   createClipUpload,
   reprocessClip,
+  deleteClip,
   selectClipById,
   toClipResponse,
   listSegmentsForClips,
