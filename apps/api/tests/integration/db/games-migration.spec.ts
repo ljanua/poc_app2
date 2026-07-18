@@ -46,4 +46,14 @@ describe('games and game_performance migration artifacts', () => {
     expect(deploy).toContain('CREATE TABLE IF NOT EXISTS games');
     expect(deploy).toContain('CREATE TABLE IF NOT EXISTS game_performance');
   });
+
+  it('registers POST /games and logs unmatched API 404s in serve-mockup', () => {
+    const servePath = path.join(process.cwd(), 'scripts', 'serve-mockup.js');
+    const serve = fs.readFileSync(servePath, 'utf8');
+    expect(serve).toContain("pathname === `${apiPrefix}/games`");
+    expect(serve).toContain("req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/games`");
+    expect(serve).toContain("logStructured('api.not_found'");
+    expect(serve).toContain("logStructured('api.games.create.ok'");
+    expect(serve).toContain("logStructured('api.games.create.db_error'");
+  });
 });

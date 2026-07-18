@@ -5474,54 +5474,103 @@ async function handlePlayersApi(req, res, requestUrl) {
     const actorEmail = String((body && body.actorEmail) || '').trim().toLowerCase();
     const actor = await resolveGameEditor(actorEmail);
     if (!actor) {
+      logStructured('api.games.create.forbidden', null, {
+        path: requestUrl.pathname,
+        actorEmail: actorEmail || null,
+        reason: 'actor_not_game_editor'
+      });
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
     const teamId = String((body && body.teamId) || '').trim();
     if (!teamId || !(await actorCanAccessTeam(actor, teamId))) {
+      logStructured('api.games.create.forbidden', actor.id, {
+        path: requestUrl.pathname,
+        teamId: teamId || null,
+        reason: 'team_out_of_scope_or_missing'
+      });
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
     const opponent = normalizeLookup(body && body.opponent);
     if (!opponent) {
+      logStructured('api.games.create.validation_error', actor.id, {
+        path: requestUrl.pathname,
+        reason: 'opponent_required'
+      });
       sendJson(res, 400, appError(400, 'validation_error', 'Opponent is required.'));
       return;
     }
     const kickoffAt = String((body && body.kickoffAt) || '').trim();
     if (!kickoffAt || Number.isNaN(Date.parse(kickoffAt))) {
+      logStructured('api.games.create.validation_error', actor.id, {
+        path: requestUrl.pathname,
+        reason: 'kickoff_required_or_invalid',
+        kickoffAt: kickoffAt || null
+      });
       sendJson(res, 400, appError(400, 'validation_error', 'Kickoff date and time are required.'));
       return;
     }
     const homeAway = String((body && body.homeAway) || 'home').trim().toLowerCase();
     if (homeAway !== 'home' && homeAway !== 'away') {
+      logStructured('api.games.create.validation_error', actor.id, {
+        path: requestUrl.pathname,
+        reason: 'home_away_invalid',
+        homeAway
+      });
       sendJson(res, 400, appError(400, 'validation_error', 'Home/away must be home or away.'));
       return;
     }
     const durationMinutes = Math.round(Number(body && body.durationMinutes != null ? body.durationMinutes : 90));
     if (!Number.isInteger(durationMinutes) || durationMinutes <= 0 || durationMinutes > 180) {
+      logStructured('api.games.create.validation_error', actor.id, {
+        path: requestUrl.pathname,
+        reason: 'duration_invalid',
+        durationMinutes
+      });
       sendJson(res, 400, appError(400, 'validation_error', 'Duration must be an integer from 1 to 180 minutes.'));
       return;
     }
     const gameId = `game_${Date.now().toString(36)}_${Math.floor(Math.random() * 10000)}`;
-    const insert = await pool.query(
-      `
-        INSERT INTO games (
-          id, team_id, kickoff_at, opponent, home_away, duration_minutes, status, created_by_user_id
-        ) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, 'upcoming', $7)
-        RETURNING
-          id,
-          team_id AS "teamId",
-          kickoff_at AS "kickoffAt",
-          opponent,
-          home_away AS "homeAway",
-          duration_minutes AS "durationMinutes",
-          status,
-          created_by_user_id AS "createdByUserId",
-          created_at AS "createdAt",
-          updated_at AS "updatedAt"
-      `,
-      [gameId, teamId, kickoffAt, opponent, homeAway, durationMinutes, actor.id]
-    );
+    let insert;
+    try {
+      insert = await pool.query(
+        `
+          INSERT INTO games (
+            id, team_id, kickoff_at, opponent, home_away, duration_minutes, status, created_by_user_id
+          ) VALUES ($1, $2, $3::timestamptz, $4, $5, $6, 'upcoming', $7)
+          RETURNING
+            id,
+            team_id AS "teamId",
+            kickoff_at AS "kickoffAt",
+            opponent,
+            home_away AS "homeAway",
+            duration_minutes AS "durationMinutes",
+            status,
+            created_by_user_id AS "createdByUserId",
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+        `,
+        [gameId, teamId, kickoffAt, opponent, homeAway, durationMinutes, actor.id]
+      );
+    } catch (error) {
+      logStructured('api.games.create.db_error', actor.id, {
+        path: requestUrl.pathname,
+        teamId,
+        opponent,
+        error: String(error && error.message ? error.message : error),
+        code: error && error.code ? String(error.code) : null
+      });
+      throw error;
+    }
+    logStructured('api.games.create.ok', actor.id, {
+      path: requestUrl.pathname,
+      gameId,
+      teamId,
+      opponent,
+      durationMinutes,
+      status: 'upcoming'
+    });
     sendJson(res, 201, { data: { game: toGamePayload(insert.rows[0]) } });
     return;
   }
@@ -5917,6 +5966,12 @@ async function handlePlayersApi(req, res, requestUrl) {
     return;
   }
 
+  logStructured('api.not_found', null, {
+    method: req.method,
+    path: requestUrl.pathname,
+    message: 'Not Found',
+    hint: 'No matching /api/v1 route handler. If this path was added recently, restart scripts/serve-mockup.js.'
+  });
   sendJson(res, 404, appError(404, 'not_found', 'Not Found'));
 }
 
@@ -5951,6 +6006,19 @@ const server = http.createServer(async (req, res) => {
     });
   } catch (error) {
     console.error('Mockup server error:', error);
+    const pathName = (() => {
+      try {
+        return new URL(req.url || '/', `http://${host}:${port}`).pathname;
+      } catch {
+        return String(req.url || '');
+      }
+    })();
+    logStructured('api.unhandled_error', null, {
+      method: req.method,
+      path: pathName,
+      error: String(error && error.message ? error.message : error),
+      name: error && error.name ? String(error.name) : null
+    });
     sendJson(res, 500, appError(500, 'unknown', 'Internal Server Error'));
   }
 });

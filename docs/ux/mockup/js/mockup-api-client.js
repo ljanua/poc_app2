@@ -3641,6 +3641,13 @@
           const game = clone(response.body.data.game || response.body.data);
           return { status: response.status, code: response.status === 201 ? 'created' : 'ok', data: { game: game }, game: game };
         }
+        if (response.status === 404) {
+          return {
+            status: 404,
+            code: 'not_found',
+            message: 'Games API was not found on the server. Restart node scripts/serve-mockup.js so the latest routes load, then try again.'
+          };
+        }
         if (response.status !== 0 && response.status !== 503) {
           return clone(Object.assign({ status: response.status }, response.body || {}));
         }
