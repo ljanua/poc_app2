@@ -4,6 +4,7 @@ data/clip-videos/
 backend_logging.txt
 log/
 .env
+.env_prod
 .env.production
 .env.staging
 .env.local

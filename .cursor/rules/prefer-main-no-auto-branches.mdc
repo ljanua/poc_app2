@@ -1,0 +1,12 @@
+---
+description: Prefer main; never create git branches unless the user asks
+alwaysApply: true
+---
+
+# Git branches
+
+- **Never create a new git branch** (`git checkout -b`, `git switch -c`, worktree feature branches, etc.) unless the user explicitly asks for a branch.
+- **Default to `main`.** Implement, commit, and keep unfinished work on `main` (or whatever branch the user is already on). Do not invent `feat/…` or `fix/…` branches “for cleanliness.”
+- Skills that suggest creating a feature branch (`ce-work`, `ce-debug`, `ce-plan` handoff, etc.) must **skip branch creation** and continue on the current branch unless the user requested otherwise.
+- Do **not** switch the user onto a different branch for convenience. If a needed commit only exists on another local branch, say so and ask before checkout/merge.
+- Pushing, deleting branches, or force-updating `main` still require an explicit user request (existing commit/PR safety rules still apply).
