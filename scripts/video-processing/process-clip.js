@@ -26,9 +26,12 @@ const { syncPlayerSkillRatingsFromClip } = require('./sync-player-skill-ratings-
 const {
   downloadSourceVideo,
   probeDurationSeconds,
-  trimVideoWindow
+  extractWindowMaxFps,
+  normalizeMaxFps
 } = require('./link-ingest');
 const { findPlayerInVideo } = require('./find-player');
+
+const MAX_AI_FPS = 30;
 
 function computeAge(birthMonth, birthYear) {
   if (!birthYear) {
@@ -134,8 +137,8 @@ async function saveClipSegment(pool, clipId, segmentIndex, segmentPath) {
 }
 
 /**
- * For link-sourced clips: download, optionally find player, trim window,
- * and point video_storage_path at the trimmed extract.
+ * Link clips: download → extract Start+Duration at ≤30fps → optional Find player
+ * inside that extract → assessment working file.
  */
 async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
   if (!clip.sourceUrl) {
@@ -152,28 +155,58 @@ async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
     ytdlpPath
   });
 
+  const mediaDuration = await probeDurationSeconds(sourcePath);
+  if (startSec >= mediaDuration) {
+    throw new Error('Start time is beyond the end of the downloaded video.');
+  }
+  const availableFromStart = mediaDuration - startSec;
+  if (availableFromStart < durationSec) {
+    throw new Error(
+      `Not enough video remains after start to fulfill duration ${durationSec}s (only ${Math.max(0, Math.floor(availableFromStart))}s left).`
+    );
+  }
+
+  const windowPath = path.join(originalsDir(), `${clip.id}_window.mp4`);
+  const windowResult = await extractWindowMaxFps(
+    sourcePath,
+    windowPath,
+    startSec,
+    durationSec,
+    MAX_AI_FPS
+  );
+  logAuditEvent('clip.link.window.ready', {
+    clipId: clip.id,
+    sourcePath,
+    windowPath,
+    startSec,
+    durationSec,
+    sourceFps: windowResult.sourceFps,
+    appliedFpsCap: windowResult.appliedFpsCap
+  });
+
+  let workingPath = windowPath;
   let extractStartSec = startSec;
+
   if (clip.findPlayer) {
     if (!clip.avatarUrl) {
       throw new Error('Find player requires the selected player to have a photo assigned.');
     }
-    const mediaDuration = await probeDurationSeconds(sourcePath);
-    if (startSec >= mediaDuration) {
-      throw new Error('Start time is beyond the end of the downloaded video.');
-    }
-    const matchedSec = await findPlayerInVideo(pool, {
+    const windowDuration = await probeDurationSeconds(windowPath);
+    const matchedOffsetSec = await findPlayerInVideo(pool, {
       clipId: clip.id,
-      videoPath: sourcePath,
-      startSec,
-      mediaEndSec: mediaDuration,
+      videoPath: windowPath,
+      startSec: 0,
+      mediaEndSec: windowDuration,
       avatarUrl: clip.avatarUrl,
       framesDir,
       fetchBaseUrl: process.env.MOCKUP_PUBLIC_BASE_URL || 'http://127.0.0.1:4173'
     });
-    if (matchedSec == null) {
+    if (matchedOffsetSec == null) {
       throw new Error('Player was not found in the video after the requested start time.');
     }
-    extractStartSec = matchedSec;
+
+    const absoluteMatchedSec = startSec + matchedOffsetSec;
+    extractStartSec = absoluteMatchedSec;
     await pool.query(
       `
         UPDATE clips
@@ -181,19 +214,32 @@ async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
             updated_at = NOW()
         WHERE id = $1
       `,
-      [clip.id, Math.round(matchedSec * 1000)]
+      [clip.id, Math.round(absoluteMatchedSec * 1000)]
     );
+
+    const remainingInWindow = windowDuration - matchedOffsetSec;
+    if (remainingInWindow < 1) {
+      throw new Error('Not enough video remains after the player was found to extract a clip.');
+    }
+    const assessDuration = Math.min(durationSec, remainingInWindow);
+    const matchedPath = path.join(originalsDir(), `${clip.id}_extract.mp4`);
+    await extractWindowMaxFps(
+      windowPath,
+      matchedPath,
+      matchedOffsetSec,
+      assessDuration,
+      MAX_AI_FPS
+    );
+    workingPath = matchedPath;
+  } else {
+    // Assessment uses the Start+Duration window as-is (already ≤30 fps).
+    const extractPath = path.join(originalsDir(), `${clip.id}_extract.mp4`);
+    if (extractPath !== windowPath) {
+      fs.copyFileSync(windowPath, extractPath);
+      workingPath = extractPath;
+    }
   }
 
-  const remaining = await probeDurationSeconds(sourcePath).then((d) => d - extractStartSec).catch(() => durationSec);
-  if (remaining < durationSec) {
-    throw new Error(
-      `Not enough video remains after the extract start to fulfill duration ${durationSec}s (only ${Math.max(0, Math.floor(remaining))}s left).`
-    );
-  }
-
-  const trimmedPath = path.join(originalsDir(), `${clip.id}_extract.mp4`);
-  await trimVideoWindow(sourcePath, trimmedPath, extractStartSec, durationSec);
   await pool.query(
     `
       UPDATE clips
@@ -203,17 +249,54 @@ async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
           updated_at = NOW()
       WHERE id = $1
     `,
-    [clip.id, trimmedPath, fs.statSync(trimmedPath).size]
+    [clip.id, workingPath, fs.statSync(workingPath).size]
   );
   logAuditEvent('clip.link.extract.ready', {
     clipId: clip.id,
     sourcePath,
-    trimmedPath,
+    workingPath,
     extractStartSec,
     durationSec,
     findPlayer: Boolean(clip.findPlayer)
   });
-  return trimmedPath;
+  return workingPath;
+}
+
+/**
+ * Upload clips: normalize to ≤30 fps before AI segmentation/assessment.
+ */
+async function prepareUploadNormalizeIfNeeded(pool, clip) {
+  if (clip.sourceUrl || !clip.videoStoragePath) {
+    return clip.videoStoragePath;
+  }
+  const inputPath = clip.videoStoragePath;
+  if (!fs.existsSync(inputPath)) {
+    throw new Error('No video file is attached to this clip.');
+  }
+  if (/_norm\.mp4$/i.test(inputPath) || /_extract\.mp4$/i.test(inputPath)) {
+    return inputPath;
+  }
+
+  const normPath = path.join(originalsDir(), `${clip.id}_norm.mp4`);
+  const result = await normalizeMaxFps(inputPath, normPath, MAX_AI_FPS);
+  await pool.query(
+    `
+      UPDATE clips
+      SET video_storage_path = $2,
+          file_size_bytes = $3,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [clip.id, normPath, fs.statSync(normPath).size]
+  );
+  logAuditEvent('clip.fps.normalized', {
+    clipId: clip.id,
+    inputPath,
+    normPath,
+    sourceFps: result.sourceFps,
+    appliedFpsCap: result.appliedFpsCap
+  });
+  return normPath;
 }
 
 async function processClip(pool, clipId) {
@@ -261,6 +344,8 @@ async function processClip(pool, clipId) {
     let videoPath = clip.videoStoragePath;
     if (clip.sourceUrl) {
       videoPath = await prepareLinkSourceIfNeeded(pool, clip, framesDir);
+    } else {
+      videoPath = await prepareUploadNormalizeIfNeeded(pool, clip);
     }
     if (!videoPath) {
       logAuditEvent('clip.processing.no_video', { clipId });
@@ -356,5 +441,6 @@ module.exports = {
   markClipFailed,
   saveClipSegment,
   clearClipSegments,
-  prepareLinkSourceIfNeeded
+  prepareLinkSourceIfNeeded,
+  prepareUploadNormalizeIfNeeded
 };

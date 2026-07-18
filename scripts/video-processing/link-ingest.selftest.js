@@ -4,6 +4,7 @@ const {
   parseMmSs,
   resolveDurationSeconds,
   validateDurationSeconds,
+  shouldApplyMaxFpsFilter,
   DEFAULT_DURATION_SEC,
   MAX_DURATION_SEC
 } = require('./link-ingest');
@@ -28,6 +29,11 @@ assert(resolveDurationSeconds('02:00') === MAX_DURATION_SEC, 'max duration');
 assert(resolveDurationSeconds('02:01') === null, 'over max rejected');
 assert(validateDurationSeconds(0) === false, 'zero invalid');
 assert(validateDurationSeconds(1) === true, 'one second ok');
+
+assert(shouldApplyMaxFpsFilter(60, 30) === true, 'cap 60fps');
+assert(shouldApplyMaxFpsFilter(30, 30) === false, 'keep 30fps');
+assert(shouldApplyMaxFpsFilter(24, 30) === false, 'keep 24fps');
+assert(shouldApplyMaxFpsFilter(null, 30) === true, 'unknown fps apply cap');
 
 assert(parseMatchResponse('{"match":true}') === true, 'json match true');
 assert(parseMatchResponse('{"match":false}') === false, 'json match false');

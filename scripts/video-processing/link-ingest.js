@@ -164,35 +164,112 @@ async function probeDurationSeconds(videoPath) {
   throw new Error('Could not determine video duration.');
 }
 
-async function trimVideoWindow(inputPath, outputPath, startSec, durationSec) {
+async function probeFps(videoPath) {
+  const ffprobe = getFfmpegPath().replace(/ffmpeg(\.exe)?$/i, (match, exe) => `ffprobe${exe || ''}`);
+  try {
+    const { stdout } = await runCommand(ffprobe, [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=avg_frame_rate,r_frame_rate',
+      '-of', 'json',
+      videoPath
+    ]);
+    const parsed = JSON.parse(String(stdout || '{}'));
+    const stream = parsed && Array.isArray(parsed.streams) ? parsed.streams[0] : null;
+    if (!stream) {
+      return null;
+    }
+    const rate = stream.avg_frame_rate && stream.avg_frame_rate !== '0/0'
+      ? stream.avg_frame_rate
+      : stream.r_frame_rate;
+    if (!rate || typeof rate !== 'string' || rate === '0/0') {
+      return null;
+    }
+    const parts = rate.split('/');
+    const num = Number.parseFloat(parts[0]);
+    const den = Number.parseFloat(parts[1] || '1');
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
+      return null;
+    }
+    return num / den;
+  } catch (error) {
+    return null;
+  }
+}
+
+function shouldApplyMaxFpsFilter(sourceFps, maxFps) {
+  if (!Number.isFinite(sourceFps) || sourceFps <= 0) {
+    // Unknown fps: apply the cap filter to be safe for AI input.
+    return true;
+  }
+  return sourceFps > maxFps;
+}
+
+async function reencodeToMp4(inputPath, outputPath, { startSec, durationSec, maxFps }) {
   const dir = path.dirname(outputPath);
   fs.mkdirSync(dir, { recursive: true });
-  await runCommand(getFfmpegPath(), [
+  const fpsCap = Number.isFinite(maxFps) && maxFps > 0 ? maxFps : 30;
+  const sourceFps = await probeFps(inputPath);
+  const applyFps = shouldApplyMaxFpsFilter(sourceFps, fpsCap);
+
+  const args = [
     '-hide_banner',
     '-loglevel', 'error',
-    '-y',
-    '-ss', String(startSec),
-    '-i', inputPath,
-    '-t', String(durationSec),
-    '-c', 'copy',
-    outputPath
-  ]);
-  // If stream copy fails to produce a readable file length, re-encode once.
-  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1024) {
-    await runCommand(getFfmpegPath(), [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-y',
-      '-ss', String(startSec),
-      '-i', inputPath,
-      '-t', String(durationSec),
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-movflags', '+faststart',
-      outputPath
-    ]);
+    '-y'
+  ];
+  if (startSec != null && Number.isFinite(startSec) && startSec > 0) {
+    args.push('-ss', String(startSec));
   }
-  return outputPath;
+  args.push('-i', inputPath);
+  if (durationSec != null && Number.isFinite(durationSec) && durationSec > 0) {
+    args.push('-t', String(durationSec));
+  }
+  if (applyFps) {
+    args.push('-vf', `fps=${fpsCap}`);
+  }
+  args.push(
+    '-c:v', 'libx264',
+    '-c:a', 'aac',
+    '-movflags', '+faststart',
+    outputPath
+  );
+  await runCommand(getFfmpegPath(), args);
+  if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1024) {
+    throw new Error('ffmpeg re-encode produced an empty or missing output file.');
+  }
+  return {
+    outputPath,
+    sourceFps,
+    appliedFpsCap: applyFps ? fpsCap : null
+  };
+}
+
+/**
+ * Extract [startSec, startSec+durationSec) and ensure output fps is at most maxFps.
+ */
+async function extractWindowMaxFps(inputPath, outputPath, startSec, durationSec, maxFps) {
+  return reencodeToMp4(inputPath, outputPath, {
+    startSec: Math.max(0, Number(startSec) || 0),
+    durationSec: Math.max(1, Number(durationSec) || 1),
+    maxFps: maxFps == null ? 30 : maxFps
+  });
+}
+
+/**
+ * Re-encode full file so fps is at most maxFps (no time window).
+ */
+async function normalizeMaxFps(inputPath, outputPath, maxFps) {
+  return reencodeToMp4(inputPath, outputPath, {
+    startSec: null,
+    durationSec: null,
+    maxFps: maxFps == null ? 30 : maxFps
+  });
+}
+
+/** @deprecated Prefer extractWindowMaxFps for AI working files. */
+async function trimVideoWindow(inputPath, outputPath, startSec, durationSec) {
+  const result = await extractWindowMaxFps(inputPath, outputPath, startSec, durationSec, 30);
+  return result.outputPath;
 }
 
 async function extractFrameAt(videoPath, atSec, outputJpegPath) {
@@ -222,6 +299,10 @@ module.exports = {
   looksLikeDirectMediaUrl,
   downloadSourceVideo,
   probeDurationSeconds,
+  probeFps,
+  shouldApplyMaxFpsFilter,
+  extractWindowMaxFps,
+  normalizeMaxFps,
   trimVideoWindow,
   extractFrameAt
 };
