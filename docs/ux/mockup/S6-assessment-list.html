@@ -450,6 +450,13 @@
           return;
         }
 
+        const canReprocess =
+          !isGuest &&
+          currentUser &&
+          (currentUser.role === 'Coach' ||
+            currentUser.role === 'ClubAdmin' ||
+            currentUser.role === 'SystemAdmin');
+
         clips.forEach(function (clip) {
           clipsById[String(clip.id)] = clip;
           const isComplete = clip.status === 'complete' || clip.status === 'assessed';
@@ -457,13 +464,33 @@
           const isFailed = clip.status === 'failed';
           const statusClass = isComplete ? 'status-assessed' : isPending ? 'status-pending' : 'status-failed';
           const statusLabel = clip.status === 'in_progress' ? 'in progress' : clip.status;
-          const action = isPending
-            ? '<button class="view-btn" disabled>Pending</button>'
-            : isFailed
-              ? '<button class="view-btn" disabled>Failed</button>'
-              : isGuest
-                ? '<a class="view-btn" data-testid="back-link" href="' + escapeHtml(guestBackHref()) + '">Back</a>'
-                : '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' + encodeURIComponent(clip.playerName) + '">Back</a>';
+          const sourceUrl = String(clip.sourceUrl || '').trim();
+          const openOriginal = sourceUrl
+            ? '<a class="view-btn view-btn--secondary" data-testid="open-original-link" href="' +
+              escapeHtml(sourceUrl) +
+              '" target="_blank" rel="noopener noreferrer">Open original</a>'
+            : '';
+          let primaryAction = '';
+          if (isPending) {
+            primaryAction = '<button class="view-btn" disabled>Pending</button>';
+          } else if (isFailed && canReprocess) {
+            primaryAction =
+              '<button type="button" class="view-btn" data-testid="reprocess-clip" data-clip-id="' +
+              escapeHtml(clip.id) +
+              '">Re-process</button>';
+          } else if (isFailed) {
+            primaryAction = '<button class="view-btn" disabled>Failed</button>';
+          } else if (isGuest) {
+            primaryAction =
+              '<a class="view-btn" data-testid="back-link" href="' + escapeHtml(guestBackHref()) + '">Back</a>';
+          } else {
+            primaryAction =
+              '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' +
+              encodeURIComponent(clip.playerName) +
+              '">Back</a>';
+          }
+          const actions =
+            '<div class="result-actions">' + openOriginal + primaryAction + '</div>';
           const scoreMarkup = buildScoreMarkup(clip, isComplete, isFailed);
           const skillListMarkup = buildSkillListMarkup(clip, isComplete);
           const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
@@ -494,7 +521,7 @@
             scoreMarkup +
             skillListMarkup +
             '</div>' +
-            action +
+            actions +
             '</div>';
 
           resultsGrid.appendChild(card);
@@ -545,6 +572,23 @@
       });
 
       resultsGrid.addEventListener('click', function (event) {
+        const reprocessButton = event.target.closest('[data-testid="reprocess-clip"]');
+        if (reprocessButton) {
+          event.preventDefault();
+          event.stopPropagation();
+          const clipId = reprocessButton.getAttribute('data-clip-id');
+          const actorEmail = currentUser && currentUser.email ? currentUser.email : '';
+          reprocessButton.disabled = true;
+          const result = MockupApi.reprocessClip(clipId, { actorEmail: actorEmail });
+          if (!result || result.status < 200 || result.status >= 300) {
+            reprocessButton.disabled = false;
+            window.alert((result && result.message) || 'Re-process failed. Please try again.');
+            return;
+          }
+          render();
+          return;
+        }
+
         const playButton = event.target.closest('[data-testid="clip-play-button"]');
         if (!playButton) {
           return;

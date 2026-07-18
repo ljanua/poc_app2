@@ -193,7 +193,7 @@
       ],
       playerAvatars: {},
       clips: [
-        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 0.84, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making', skillFocus: ['Decision-making', 'Composure'], skillRatings: { 'Decision-making': 0.84 } },
+        { id: 1, playerId: 10, situation: 'Penalty kick attempt, 3rd minute', status: 'complete', score: 0.84, summary: 'Confident execution under pressure.', comments: 'Confident execution under pressure.', submittedAt: '2 hours ago', skill: 'Decision-making', skillFocus: ['Decision-making', 'Composure'], skillRatings: { 'Decision-making': 0.84 }, sourceUrl: 'https://example.com/videos/messi-penalty' },
         { id: 2, playerId: 11, situation: 'Counter-attack, left wing run', status: 'complete', score: 0.76, summary: 'Pace was strong, timing can improve.', comments: 'Pace was strong, timing can improve.', submittedAt: '5 hours ago', skill: 'Pace & Agility', skillFocus: ['Pace & Agility', 'Timing'], skillRatings: { 'Pace & Agility': 0.76, Timing: 0.70 } },
         { id: 3, playerId: 12, situation: 'One-on-one with goalkeeper', status: 'complete', score: 0.90, summary: 'Excellent control and composure.', comments: 'Excellent control and composure.', submittedAt: '1 day ago', skill: 'Technical Skill', skillFocus: ['Technical Skill'], skillRatings: { 'Technical Skill': 0.90 } },
         { id: 4, playerId: 13, situation: 'Sprint and finish, 45th minute', status: 'submitted', score: null, summary: '', submittedAt: 'Submitted 1 hour ago', skill: 'Pace & Agility', skillFocus: ['Pace & Agility'], skillRatings: null }
@@ -3397,6 +3397,7 @@
             skillFocus: Array.isArray(clip.skillFocus) ? clone(clip.skillFocus) : (clip.skill ? [clip.skill] : []),
             skillRatings: clip.skillRatings && typeof clip.skillRatings === 'object' ? clone(clip.skillRatings) : null,
             path: clip.path || null,
+            sourceUrl: clip.sourceUrl || null,
             segments: Array.isArray(clip.segments) ? clone(clip.segments) : []
           };
         })
@@ -3555,6 +3556,97 @@
 
       saveStore(store);
       return { status: 202, code: 'submitted', message: 'Clip submitted for assessment! Processing will begin shortly.' };
+    },
+
+    reprocessClip(clipId, payload) {
+      const id = String(clipId || '').trim();
+      const actorEmail = String((payload && payload.actorEmail) || '').trim().toLowerCase();
+      if (!id) {
+        return { status: 400, code: 'validation_error', message: 'Clip id is required.' };
+      }
+      if (!actorEmail) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      if (shouldUseBackendPlayersMode()) {
+        const response = backendRequest('POST', '/clips/' + encodeURIComponent(id) + '/reprocess', {
+          actorEmail: actorEmail
+        });
+        if (response.status >= 200 && response.status < 300) {
+          return {
+            status: response.status,
+            code: 'submitted',
+            message: 'Clip queued for re-processing.',
+            data: response.body && response.body.data ? response.body.data : null
+          };
+        }
+        const errorBody = response.body || {};
+        return {
+          status: response.status || 500,
+          code: errorBody.code || 'unknown',
+          message: errorBody.message || 'Re-process failed. Please try again.'
+        };
+      }
+
+      const store = loadStore();
+      const actor = (store.users || []).find(function (user) {
+        return String(user.email || '').toLowerCase() === actorEmail;
+      });
+      if (
+        !actor ||
+        actor.status !== 'active' ||
+        (actor.role !== 'Coach' && actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')
+      ) {
+        return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+      }
+
+      const clip = (store.clips || []).find(function (entry) {
+        return String(entry.id) === id;
+      });
+      if (!clip) {
+        return { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' };
+      }
+      if (String(clip.status || '').toLowerCase() !== 'failed') {
+        return { status: 409, code: 'conflict', message: 'Only failed clips can be re-processed.' };
+      }
+
+      if (actor.role === 'Coach' || actor.role === 'ClubAdmin') {
+        const player = (store.players || []).find(function (entry) {
+          return String(entry.id) === String(clip.playerId);
+        });
+        const team = player
+          ? (store.teams || []).find(function (entry) {
+              return entry.name === player.teamName;
+            })
+          : null;
+        const allowed = new Set(
+          (store.coachClubs || [])
+            .filter(function (entry) {
+              return String(entry.userId) === String(actor.id) || String(entry.userId) === String(actor.email);
+            })
+            .map(function (entry) {
+              return String(entry.clubId);
+            })
+        );
+        if (!team || !allowed.has(String(team.clubId))) {
+          return { status: 403, code: 'forbidden', message: 'You do not have permission to perform this action.' };
+        }
+      }
+
+      clip.status = 'submitted';
+      clip.errorMessage = null;
+      clip.comments = null;
+      clip.score = null;
+      clip.summary = '';
+      clip.skillRatings = null;
+      clip.submittedAt = 'Submitted just now';
+      saveStore(store);
+      return {
+        status: 202,
+        code: 'submitted',
+        message: 'Clip queued for re-processing.',
+        data: clone(clip)
+      };
     },
 
     listUsers() {

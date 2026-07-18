@@ -66,6 +66,121 @@ test.describe('S6 Assessment Results list', () => {
     await expect(neymarCard.getByTestId('rating-star')).toHaveAttribute('data-bright', 'true');
   });
 
+  test('shows Open original for clips with sourceUrl and omits it otherwise', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    const messiCard = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    const openLink = messiCard.getByTestId('open-original-link');
+    await expect(openLink).toBeVisible();
+    await expect(openLink).toHaveAttribute('href', 'https://example.com/videos/messi-penalty');
+    await expect(openLink).toHaveAttribute('target', '_blank');
+    await expect(openLink).toHaveAttribute('rel', /noopener/);
+
+    const ronaldoCard = page.locator('.result-card').filter({ hasText: 'Cristiano Ronaldo' });
+    await expect(ronaldoCard.getByTestId('open-original-link')).toHaveCount(0);
+  });
+
+  test('shows Re-process for failed clips as coach and queues submitted status', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_fail_1',
+        playerId: 10,
+        situation: 'Failed link ingest',
+        status: 'failed',
+        score: null,
+        summary: '',
+        comments: 'Download failed',
+        errorMessage: 'Download failed',
+        submittedAt: 'just now',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: null,
+        sourceUrl: 'https://example.com/videos/failed-clip'
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    const card = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(card.getByTestId('open-original-link')).toHaveAttribute(
+      'href',
+      'https://example.com/videos/failed-clip'
+    );
+    await expect(card.getByTestId('reprocess-clip')).toBeVisible();
+    await card.getByTestId('reprocess-clip').click();
+    await expect(card.locator('.status-pending')).toBeVisible();
+    await expect(card.getByTestId('reprocess-clip')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Pending' })).toBeVisible();
+  });
+
+  test('guest share S6 hides Re-process on failed clips', async ({ page }) => {
+    await page.route('**/api/v1/share/*/dashboard', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: {
+            player: {
+              id: 10,
+              name: 'Lionel Messi',
+              teamName: 'U19 Prime',
+              position: 'RW / LW – Winger'
+            }
+          }
+        })
+      });
+    });
+    await page.route('**/api/v1/share/*/clips', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: [{
+            id: 'clip_fail_guest',
+            playerId: 10,
+            playerName: 'Lionel Messi',
+            teamName: 'U19 Prime',
+            situation: 'Failed link ingest',
+            status: 'failed',
+            score: null,
+            summary: '',
+            comments: 'Download failed',
+            errorMessage: 'Download failed',
+            submittedAt: 'just now',
+            skill: 'Passing',
+            skillFocus: ['Passing'],
+            skillRatings: null,
+            sourceUrl: 'https://example.com/videos/failed-clip',
+            segments: []
+          }]
+        })
+      });
+    });
+
+    await page.goto('/S6-assessment-list.html?share=guest-token-demo');
+    await expect(page.locator('#roleMeta')).toHaveText('Guest View');
+    const card = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(card.getByTestId('open-original-link')).toBeVisible();
+    await expect(card.getByTestId('reprocess-clip')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Failed' })).toBeVisible();
+  });
+
   test('opens player dashboard from Back actions', async ({ page }) => {
     await page.getByRole('link', { name: 'Back' }).first().click();
     await expect(page).toHaveURL(/S2-player-dashboard\.html|S2-player-dashboard$/);

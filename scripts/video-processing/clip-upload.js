@@ -271,8 +271,61 @@ async function createClipUpload(pool, req, helpers) {
   };
 }
 
+async function reprocessClip(pool, clipId) {
+  const existing = await selectClipById(pool, clipId);
+  if (!existing) {
+    return {
+      status: 404,
+      body: { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' }
+    };
+  }
+  if (String(existing.status || '').toLowerCase() !== 'failed') {
+    return {
+      status: 409,
+      body: {
+        status: 409,
+        code: 'conflict',
+        message: 'Only failed clips can be re-processed.'
+      }
+    };
+  }
+
+  await pool.query(
+    `
+      UPDATE clips
+      SET status = 'submitted',
+          error_message = NULL,
+          comments = NULL,
+          score = NULL,
+          summary = NULL,
+          skill_ratings = NULL,
+          processing_started_at = NULL,
+          processing_completed_at = NULL,
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+    [clipId]
+  );
+
+  await reconcilePlayerClipStats(pool, existing.playerId);
+  triggerVideoProcessing(pool);
+
+  const updated = await selectClipById(pool, clipId);
+  const segmentsByClip = await listSegmentsForClips(pool, [clipId]);
+  logAuditEvent('clip.reprocessed', {
+    clipId,
+    playerId: existing.playerId,
+    previousStatus: existing.status
+  });
+  return {
+    status: 202,
+    body: { data: toClipResponse(updated, segmentsByClip.get(clipId) || []) }
+  };
+}
+
 module.exports = {
   createClipUpload,
+  reprocessClip,
   selectClipById,
   toClipResponse,
   listSegmentsForClips,

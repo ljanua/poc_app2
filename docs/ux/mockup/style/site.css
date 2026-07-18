@@ -358,6 +358,28 @@ header {
 
 .view-btn:disabled { color: var(--text-dim); background: var(--surface-1); border-color: var(--border-soft); cursor: not-allowed; }
 
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  align-self: center;
+}
+
+.view-btn--secondary {
+  color: var(--text-soft);
+  background: transparent;
+  border-color: var(--border-soft);
+}
+
+.view-btn--secondary:hover:not(:disabled) {
+  color: var(--lime);
+  background: rgba(198, 255, 58, 0.08);
+  border-color: rgba(198, 255, 58, 0.28);
+  box-shadow: none;
+}
+
 /* ============================================================
    Cards / surfaces
    ============================================================ */
