@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { Pool } = require('pg');
 const path = require('node:path');
 const { purgeSoccerPositionOrphans } = require('../../scripts/purge-soccer-position-orphans.js');
+const { purgeQaSkills } = require('../../scripts/purge-qa-skills.js');
 
 try {
   require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
@@ -87,6 +88,35 @@ async function assignSkillToPositionViaApi(page, positionId, skillId) {
   return result;
 }
 
+async function removeSkillFromPositionViaApi(page, positionId, skillId) {
+  const result = await page.evaluate(async ({ positionId, skillId }) => {
+    const url =
+      '/api/v1/positions/' +
+      encodeURIComponent(positionId) +
+      '/skills/' +
+      encodeURIComponent(skillId);
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actorEmail: 'maria@vantageiq.club' })
+    });
+    return { status: response.status };
+  }, { positionId, skillId });
+  return result;
+}
+
+async function deleteSkillViaApi(page, skillId) {
+  const result = await page.evaluate(async ({ skillId }) => {
+    const response = await fetch('/api/v1/skills/' + encodeURIComponent(skillId), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actorEmail: 'maria@vantageiq.club' })
+    });
+    return { status: response.status, body: response.status === 204 ? null : await response.json() };
+  }, { skillId });
+  return result;
+}
+
 test.describe('S8 Skills page', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/S0-login.html');
@@ -101,6 +131,7 @@ test.describe('S8 Skills page', () => {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     try {
       await purgeSoccerPositionOrphans(pool);
+      await purgeQaSkills(pool);
     } finally {
       await pool.end();
     }
@@ -215,10 +246,12 @@ test.describe('S8 Skills page', () => {
     const skill2 = await createSkillViaApi(page, skill2Name);
     expect(skill1.status).toBe(201);
     expect(skill2.status).toBe(201);
+    const skill1Id = skill1.body.data.id;
+    const skill2Id = skill2.body.data.id;
 
     // Assign to the seeded GK position
-    const assign1 = await assignSkillToPositionViaApi(page, 'pos_gk', skill1.body.data.id);
-    const assign2 = await assignSkillToPositionViaApi(page, 'pos_gk', skill2.body.data.id);
+    const assign1 = await assignSkillToPositionViaApi(page, 'pos_gk', skill1Id);
+    const assign2 = await assignSkillToPositionViaApi(page, 'pos_gk', skill2Id);
     expect([200, 201]).toContain(assign1.status);
     expect([200, 201]).toContain(assign2.status);
 
@@ -227,6 +260,12 @@ test.describe('S8 Skills page', () => {
     await page.selectOption('#positionSkillsFilter', 'pos_gk');
     await expect(page.locator('#positionSkillsTableBody tr', { hasText: skill1Name })).toHaveCount(1);
     await expect(page.locator('#positionSkillsTableBody tr', { hasText: skill2Name })).toHaveCount(1);
+
+    // Teardown: do not leave QA skills on Soccer GK
+    expect((await removeSkillFromPositionViaApi(page, 'pos_gk', skill1Id)).status).toBe(204);
+    expect((await removeSkillFromPositionViaApi(page, 'pos_gk', skill2Id)).status).toBe(204);
+    expect((await deleteSkillViaApi(page, skill1Id)).status).toBe(204);
+    expect((await deleteSkillViaApi(page, skill2Id)).status).toBe(204);
   });
 
   test('Delete Skill flow removes assignments first then deletes the skill', async ({ page }) => {
