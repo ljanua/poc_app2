@@ -465,21 +465,25 @@
           const statusClass = isComplete ? 'status-assessed' : isPending ? 'status-pending' : 'status-failed';
           const statusLabel = clip.status === 'in_progress' ? 'in progress' : clip.status;
           const sourceUrl = String(clip.sourceUrl || '').trim();
+          const mediaPath = String(clip.path || '').trim();
+          const isReprocessEligible =
+            (isFailed || isComplete) && Boolean(mediaPath || sourceUrl);
           const openOriginal = sourceUrl
             ? '<a class="view-btn view-btn--secondary" data-testid="open-original-link" href="' +
               escapeHtml(sourceUrl) +
               '" target="_blank" rel="noopener noreferrer">Open original</a>'
             : '';
+          const reprocessButton =
+            canReprocess && isReprocessEligible
+              ? '<button type="button" class="view-btn" data-testid="reprocess-clip" data-clip-id="' +
+                escapeHtml(clip.id) +
+                '">Re-process</button>'
+              : '';
           let primaryAction = '';
           if (isPending) {
             primaryAction = '<button class="view-btn" disabled>Pending</button>';
-          } else if (isFailed && canReprocess) {
-            primaryAction =
-              '<button type="button" class="view-btn" data-testid="reprocess-clip" data-clip-id="' +
-              escapeHtml(clip.id) +
-              '">Re-process</button>';
           } else if (isFailed) {
-            primaryAction = '<button class="view-btn" disabled>Failed</button>';
+            primaryAction = reprocessButton || '<button class="view-btn" disabled>Failed</button>';
           } else if (isGuest) {
             primaryAction =
               '<a class="view-btn" data-testid="back-link" href="' + escapeHtml(guestBackHref()) + '">Back</a>';
@@ -487,7 +491,8 @@
             primaryAction =
               '<a class="view-btn" data-testid="back-link" href="./S2-player-dashboard.html?player=' +
               encodeURIComponent(clip.playerName) +
-              '">Back</a>';
+              '">Back</a>' +
+              reprocessButton;
           }
           const actions =
             '<div class="result-actions">' + openOriginal + primaryAction + '</div>';

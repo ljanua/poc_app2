@@ -129,6 +129,81 @@ test.describe('S6 Assessment Results list', () => {
     await expect(card.getByRole('button', { name: 'Pending' })).toBeVisible();
   });
 
+  test('shows Re-process on complete clips with path and keeps Back', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_complete_path',
+        playerId: 10,
+        situation: 'Complete with stored path',
+        status: 'complete',
+        score: 0.8,
+        summary: 'ok',
+        comments: 'ok',
+        submittedAt: '1 hour ago',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: { Passing: 0.8 },
+        path: 'C:\\vantageiq_videos\\originals\\clip_complete_path.mp4'
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    const card = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(card.getByTestId('back-link')).toBeVisible();
+    await expect(card.getByTestId('reprocess-clip')).toBeVisible();
+    await expect(card.getByTestId('open-original-link')).toHaveCount(0);
+  });
+
+  test('hides Re-process when clip has neither path nor sourceUrl', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.clips = [{
+        id: 'clip_no_media',
+        playerId: 10,
+        situation: 'No media refs',
+        status: 'failed',
+        score: null,
+        summary: '',
+        comments: 'failed',
+        errorMessage: 'failed',
+        submittedAt: 'just now',
+        skill: 'Passing',
+        skillFocus: ['Passing'],
+        skillRatings: null
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    const card = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(card.getByTestId('reprocess-clip')).toHaveCount(0);
+    await expect(card.getByRole('button', { name: 'Failed' })).toBeVisible();
+  });
+
   test('guest share S6 hides Re-process on failed clips', async ({ page }) => {
     await page.route('**/api/v1/share/*/dashboard', async (route) => {
       await route.fulfill({

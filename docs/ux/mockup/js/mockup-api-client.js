@@ -3606,8 +3606,13 @@
       if (!clip) {
         return { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' };
       }
-      if (String(clip.status || '').toLowerCase() !== 'failed') {
-        return { status: 409, code: 'conflict', message: 'Only failed clips can be re-processed.' };
+      const clipStatus = String(clip.status || '').toLowerCase();
+      if (clipStatus !== 'failed' && clipStatus !== 'complete' && clipStatus !== 'assessed') {
+        return {
+          status: 409,
+          code: 'conflict',
+          message: 'Only failed or complete clips can be re-processed.'
+        };
       }
 
       if (actor.role === 'Coach' || actor.role === 'ClubAdmin') {
@@ -3633,6 +3638,7 @@
         }
       }
 
+      const hasPath = Boolean(String(clip.path || '').trim());
       clip.status = 'submitted';
       clip.errorMessage = null;
       clip.comments = null;
@@ -3640,6 +3646,9 @@
       clip.summary = '';
       clip.skillRatings = null;
       clip.submittedAt = 'Submitted just now';
+      if (!hasPath) {
+        clip.findPlayer = false;
+      }
       saveStore(store);
       return {
         status: 202,

@@ -279,29 +279,40 @@ async function reprocessClip(pool, clipId) {
       body: { status: 404, code: 'not_found', message: 'The selected clip was not found anymore. Refresh and try again.' }
     };
   }
-  if (String(existing.status || '').toLowerCase() !== 'failed') {
+  const status = String(existing.status || '').toLowerCase();
+  if (status !== 'failed' && status !== 'complete' && status !== 'assessed') {
     return {
       status: 409,
       body: {
         status: 409,
         code: 'conflict',
-        message: 'Only failed clips can be re-processed.'
+        message: 'Only failed or complete clips can be re-processed.'
       }
     };
   }
 
+  const pathValue = String(existing.path || existing.videoStoragePath || '').trim();
+  const hasPath = Boolean(pathValue);
+  const setClauses = [
+    "status = 'submitted'",
+    'error_message = NULL',
+    'comments = NULL',
+    'score = NULL',
+    'summary = NULL',
+    'skill_ratings = NULL',
+    'processing_started_at = NULL',
+    'processing_completed_at = NULL'
+  ];
+  if (!hasPath) {
+    // Extract-needed reprocess always skips Find player for this run.
+    setClauses.push('find_player = FALSE');
+  }
+  setClauses.push('updated_at = NOW()');
+
   await pool.query(
     `
       UPDATE clips
-      SET status = 'submitted',
-          error_message = NULL,
-          comments = NULL,
-          score = NULL,
-          summary = NULL,
-          skill_ratings = NULL,
-          processing_started_at = NULL,
-          processing_completed_at = NULL,
-          updated_at = NOW()
+      SET ${setClauses.join(',\n          ')}
       WHERE id = $1
     `,
     [clipId]

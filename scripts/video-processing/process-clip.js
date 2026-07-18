@@ -139,9 +139,18 @@ async function saveClipSegment(pool, clipId, segmentIndex, segmentPath) {
 /**
  * Link clips: download → extract Start+Duration at ≤30fps → optional Find player
  * inside that extract → assessment working file.
+ * Reprocess with an existing on-disk path reuses it (assess-only; no download/extract).
  */
 async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
   if (!clip.sourceUrl) {
+    return clip.videoStoragePath;
+  }
+
+  if (clip.videoStoragePath && fs.existsSync(clip.videoStoragePath)) {
+    logAuditEvent('clip.link.reuse_existing', {
+      clipId: clip.id,
+      path: clip.videoStoragePath
+    });
     return clip.videoStoragePath;
   }
 
