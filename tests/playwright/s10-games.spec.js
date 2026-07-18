@@ -142,6 +142,8 @@ test.describe('S10 Games + Match History Performance', () => {
   test('Games nav is present for coach', async ({ page }) => {
     await page.goto('/S1-player-list.html');
     await expect(page.getByTestId('nav-games')).toBeVisible();
+    await expect(page.getByTestId('nav-games').locator('.nav-icon')).toHaveText('🗓️');
+    await expect(page.getByTestId('nav-games').locator('.nav-icon')).not.toHaveText('???');
     await page.getByTestId('nav-games').click();
     await expect(page).toHaveURL(/S10-games\.html/);
   });
