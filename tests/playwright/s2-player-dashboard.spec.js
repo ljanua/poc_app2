@@ -433,6 +433,27 @@ test.describe('S2 Player Development Dashboard', () => {
     await page.getByTestId('dashboard-section-toggle-assessment-history').click();
     await expect(page.getByTestId('assessment-history-user').first()).toHaveText('video-assessment');
     await expect(page.getByTestId('assessment-history-skills').first()).toBeVisible();
+    // Seeded Ball Control 85 + Passing 82 → mean 83.5 → 84%
+    await expect(page.getByTestId('assessment-history-average').first()).toHaveText('84%');
+  });
+
+  test('Assessment History average uses em dash when no qualifying ratings', async ({ page }) => {
+    await page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem('vantageiq_mockup_v2'));
+      store.assessmentHistory = [{
+        id: 'psrh_empty_core',
+        playerId: 10,
+        skillId: 's_finishing',
+        rating: 70,
+        updatedBy: 'joao@vantageiq.club',
+        assessedAt: '2026-07-01T12:00:00.000Z'
+      }];
+      window.localStorage.setItem('vantageiq_mockup_v2', JSON.stringify(store));
+    });
+    await page.goto('/S2-player-dashboard.html?player=' + encodeURIComponent('Lionel Messi'));
+    await page.getByTestId('dashboard-section-toggle-assessment-history').click();
+    // Role-only finishing is not in Any Position coreSkills → empty strip average is —
+    await expect(page.getByTestId('assessment-history-average').first()).toHaveText('—');
   });
 
   test('uploading an avatar updates the avatar preview immediately on S2', async ({ page }) => {

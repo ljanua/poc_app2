@@ -460,7 +460,7 @@ Source plan: `docs/plans/2026-07-13-005-feat-player-data-change-audit-plan.md` (
 
 ### UI
 
-- S2 collapsible **Assessment History** (`data-testid="assessment-history-section"`); hidden for guest share views. Each event shows Date, Time, User (`updated_by`), and Any-Position skills in S1 card style. Seeded offline video event uses User `video-assessment`.
+- S2 collapsible **Assessment History** (`data-testid="assessment-history-section"`); hidden for guest share views. Each event shows Date, Time, User (`updated_by`), a right-aligned bright-yellow average (`data-testid="assessment-history-average"`, same `#facc15` / `.position-group-average` treatment and `> 0` mean formula as Skill Ratings group averages; `—` when none), and Any-Position skills in S1 card style. Seeded offline video event uses User `video-assessment`.
 - S2 collapsible **Change History**; hidden for guest share views. Rendered near the bottom of the dashboard (after Assessment History), directly above the page-level action buttons (`Compare Player` / `Submit a Clip`).
 - S2 toolbar **Assessment** control (`data-testid="assessment-link"`) sits immediately after Edit; opens `S9-assessment.html?playerId=`. Guests: inert like Edit.
 

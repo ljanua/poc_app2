@@ -540,10 +540,17 @@ header {
 .assessment-history-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
   gap: 0.75rem 1.25rem;
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.assessment-history-meta .position-group-average {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .assessment-history-event .player-card-skills {

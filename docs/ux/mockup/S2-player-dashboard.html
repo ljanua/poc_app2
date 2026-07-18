@@ -880,6 +880,22 @@
             return Number.isFinite(num) ? String(Math.round(num)) : '—';
           }
 
+          // Same formula as Skill Ratings / S1: mean of numeric ratings > 0, rounded.
+          function computeGroupAverage(list) {
+            const values = [];
+            list.forEach(function (row) {
+              const num = Number(row && row.rating);
+              if (Number.isFinite(num) && num > 0) {
+                values.push(num);
+              }
+            });
+            if (!values.length) {
+              return null;
+            }
+            const sum = values.reduce(function (acc, value) { return acc + value; }, 0);
+            return Math.round(sum / values.length);
+          }
+
           function escapeHtml(value) {
             return String(value == null ? '' : value)
               .replace(/&/g, '&amp;')
@@ -899,6 +915,8 @@
               : '—';
             const userLabel = event.updatedBy || '—';
             const rows = Array.isArray(event.coreSkills) ? event.coreSkills : [];
+            const avg = computeGroupAverage(rows);
+            const avgLabel = avg === null ? '—' : String(avg) + '%';
             let skillsMarkup = '';
             if (rows.length) {
               const columns = 'repeat(' + rows.length + ', minmax(0, 1fr))';
@@ -932,6 +950,9 @@
                 '<span data-testid="assessment-history-date">' + escapeHtml(dateLabel) + '</span>' +
                 '<span data-testid="assessment-history-time">' + escapeHtml(timeLabel) + '</span>' +
                 '<span data-testid="assessment-history-user">' + escapeHtml(userLabel) + '</span>' +
+                '<span class="position-group-average" data-testid="assessment-history-average">' +
+                  escapeHtml(avgLabel) +
+                '</span>' +
               '</div>' +
               skillsMarkup;
             listEl.appendChild(card);

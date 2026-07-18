@@ -59,6 +59,7 @@ test.describe('S9 Assessment', () => {
     await expect(page.getByTestId('assessment-history-section')).toBeVisible();
     await expect(page.getByTestId('assessment-history-event').first()).toBeVisible();
     await expect(page.getByTestId('assessment-history-user').first()).toHaveText('joao@vantageiq.club');
+    await expect(page.getByTestId('assessment-history-average').first()).toHaveText('91%');
 
     const live = await page.evaluate(() => {
       const profile = window.MockupApi.getPlayerProfile(10);
