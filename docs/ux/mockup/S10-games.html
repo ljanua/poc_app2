@@ -141,6 +141,7 @@
       let currentMaxStarters = 11;
       let roster = [];
       let previewMinutes = {};
+      let loadedPerformances = [];
 
       function showError(msg) {
         errorEl.textContent = msg || '';
@@ -251,6 +252,7 @@
         const startersList = document.getElementById('startersList');
         startersList.innerHTML = '';
         const existingPerf = response.data.performances || [];
+        loadedPerformances = existingPerf.slice();
         const startedIds = {};
         existingPerf.forEach(function (p) {
           if (p.started) startedIds[String(p.playerId)] = true;
@@ -279,6 +281,31 @@
         listView.hidden = true;
         sheetView.hidden = false;
         refreshPreviewMinutes();
+      }
+
+      function mergePerformancesForRebuild() {
+        const byId = {};
+        (loadedPerformances || []).forEach(function (p) {
+          byId[String(p.playerId)] = {
+            playerId: p.playerId,
+            rating: p.rating,
+            minutes: p.minutes,
+            started: p.started
+          };
+        });
+        Array.prototype.forEach.call(document.querySelectorAll('.rating-input'), function (input) {
+          const id = String(input.getAttribute('data-player-id') || '');
+          if (!id) return;
+          const raw = String(input.value || '').trim();
+          const row = byId[id] || { playerId: id };
+          if (raw !== '') {
+            const n = Number(raw);
+            if (!Number.isNaN(n)) row.rating = n;
+          }
+          byId[id] = row;
+        });
+        loadedPerformances = Object.keys(byId).map(function (id) { return byId[id]; });
+        return loadedPerformances;
       }
 
       function playerOptionsHtml(selectedId) {
@@ -343,7 +370,7 @@
           starterIds: starters,
           substitutions: subs
         }) || {};
-        rebuildRatingsTable(null, starters, false, true);
+        rebuildRatingsTable(mergePerformancesForRebuild(), starters, false, true);
       }
 
       function rebuildRatingsTable(existingPerf, starterOverride, previewOnly, usePreviewMap) {
@@ -448,6 +475,7 @@
         sheetView.hidden = true;
         listView.hidden = false;
         currentGameId = null;
+        loadedPerformances = [];
         renderList();
       });
       document.getElementById('saveSheetBtn').addEventListener('click', function () {

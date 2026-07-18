@@ -135,6 +135,8 @@ test.describe('S10 Games + Match History Performance', () => {
     await expect(page.getByTestId('game-sheet-view')).toBeVisible();
     await expect(page.getByTestId('preview-minutes-' + result.outId)).toHaveText('60');
     await expect(page.getByTestId('preview-minutes-' + result.inId)).toHaveText('30');
+    await expect(page.getByTestId('rating-' + result.outId)).toHaveValue('7');
+    await expect(page.getByTestId('rating-' + result.inId)).toHaveValue('6.5');
   });
 
   test('Games nav is present for coach', async ({ page }) => {
