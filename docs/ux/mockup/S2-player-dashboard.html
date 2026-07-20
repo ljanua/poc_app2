@@ -396,7 +396,7 @@
       }
 
       const submitClipHref = (player.id !== undefined && player.id !== null)
-        ? './S4-video-capture.html?playerId=' + encodeURIComponent(player.id)
+        ? './S4-video-capture.html?playerId=' + encodeURIComponent(player.id) + '&from=s2'
         : './S4-video-capture.html';
       const submitNewClipLink = document.getElementById('submitNewClipLink');
       if (submitNewClipLink) {
@@ -1155,6 +1155,7 @@
         }
 
         const saved = readPlayerSectionState();
+        const sectionFromQuery = String(params.get('section') || '').trim();
         document.querySelectorAll('.stats-section').forEach(function (section) {
           const sectionSlug = section.getAttribute('data-section');
           if (!sectionSlug) {
@@ -1165,7 +1166,11 @@
             section.classList.remove('is-collapsed');
             return;
           }
-          const expanded = saved[sectionSlug] === true;
+          let expanded = saved[sectionSlug] === true;
+          if (sectionFromQuery && sectionFromQuery === sectionSlug) {
+            expanded = true;
+            saveSectionExpanded(sectionSlug, true);
+          }
           applySectionCollapsed(section, !expanded);
         });
 

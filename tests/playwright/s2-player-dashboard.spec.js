@@ -208,7 +208,7 @@ test.describe('S2 Player Development Dashboard', () => {
     await expect(page.getByTestId('preselected-player-filter')).toBeChecked();
 
     await page.goto('/S2-player-dashboard.html');
-    // Both clip CTAs carry playerId (new-clip link may be inside a collapsed section).
+    // Both clip CTAs carry playerId + from=s2 (new-clip link may be inside a collapsed section).
     const submitHrefs = await page.evaluate(() => ({
       newClip: document.getElementById('submitNewClipLink')
         ? document.getElementById('submitNewClipLink').getAttribute('href')
@@ -218,14 +218,52 @@ test.describe('S2 Player Development Dashboard', () => {
         : null
     }));
     expect(submitHrefs.newClip).toMatch(/S4-video-capture\.html\?playerId=/);
+    expect(submitHrefs.newClip).toMatch(/from=s2/);
     expect(submitHrefs.clip).toMatch(/S4-video-capture\.html\?playerId=/);
+    expect(submitHrefs.clip).toMatch(/from=s2/);
 
     const playerId = new URL(submitHrefs.clip, 'http://localhost').searchParams.get('playerId');
     expect(playerId).toBeTruthy();
     await page.getByTestId('submit-clip-link').click();
     await expect(page).toHaveURL(/S4-video-capture\.html|S4-video-capture$/);
     await expect(page).toHaveURL(new RegExp('playerId=' + playerId));
+    await expect(page).toHaveURL(/from=s2/);
     await expect(page.locator('#player')).toHaveValue(String(playerId));
+  });
+
+  test('Cancel from S2-linked S4 returns to dashboard with Video Assessments open', async ({ page }) => {
+    page.on('dialog', (dialog) => dialog.accept());
+    await page.getByTestId('submit-clip-link').click();
+    await expect(page).toHaveURL(/from=s2/);
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html/);
+    await expect(page).toHaveURL(/player=Lionel(\+|%20)Messi/);
+    await expect(page).toHaveURL(/section=video-assessments/);
+    await expect(page.getByTestId('dashboard-section-toggle-video-assessments')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
+    await expect(page.locator('[data-section="video-assessments"]')).not.toHaveClass(/is-collapsed/);
+  });
+
+  test('successful submit from S2-linked S4 returns to dashboard with Video Assessments open', async ({ page }) => {
+    page.on('dialog', (dialog) => dialog.accept());
+    await page.getByTestId('submit-clip-link').click();
+    await expect(page).toHaveURL(/from=s2/);
+    await page.locator('#fileInput').setInputFiles({
+      name: 'training-clip.mp4',
+      mimeType: 'video/mp4',
+      buffer: Buffer.from('fake-video-content')
+    });
+    await page.fill('#situation', 'Penalty kick attempt under pressure');
+    await page.getByRole('button', { name: 'Submit for Assessment' }).click();
+    await expect(page).toHaveURL(/S2-player-dashboard\.html/);
+    await expect(page).toHaveURL(/player=Lionel(\+|%20)Messi/);
+    await expect(page).toHaveURL(/section=video-assessments/);
+    await expect(page.getByTestId('dashboard-section-toggle-video-assessments')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    );
   });
 
   test('shows the player card only, and never fabricated stats, for a player with no recorded stats', async ({ page }) => {

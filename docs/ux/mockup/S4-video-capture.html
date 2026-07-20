@@ -200,8 +200,33 @@
 
     function handleCancel() {
       if (confirm('Discard this clip?')) {
+        if (shouldReturnToS2()) {
+          window.location.href = buildS2ReturnUrl();
+          return;
+        }
         window.history.back();
       }
+    }
+
+    function shouldReturnToS2() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('from') !== 's2') {
+        return false;
+      }
+      const playerSelect = document.getElementById('player');
+      if (!playerSelect || !playerSelect.value) {
+        return false;
+      }
+      const selected = playerSelect.options[playerSelect.selectedIndex];
+      return Boolean(selected && String(selected.text || '').trim());
+    }
+
+    function buildS2ReturnUrl() {
+      const playerSelect = document.getElementById('player');
+      const selected = playerSelect.options[playerSelect.selectedIndex];
+      const playerName = String(selected.text || '').trim();
+      return './S2-player-dashboard.html?player=' + encodeURIComponent(playerName) +
+        '&section=video-assessments';
     }
 
     document.getElementById('clipForm').addEventListener('submit', function (e) {
@@ -292,6 +317,10 @@
         }
 
         alert(response.message);
+        if (shouldReturnToS2()) {
+          window.location.href = buildS2ReturnUrl();
+          return;
+        }
         document.getElementById('clipForm').reset();
         document.getElementById('durationMmSs').value = '00:30';
         document.getElementById('startMmSs').value = '00:00';
