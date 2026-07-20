@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entering app — VantagIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-title">Opening VantagIQ…</div>
+    </header>
+    <div class="content">
+      <p data-testid="handoff-status">Exchanging sign-in code…</p>
+      <p class="error-msg" id="handoffError" data-testid="handoff-error"></p>
+    </div>
+  </div>
+  <script src="./js/mockup-api-client.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code') || '';
+      const errorEl = document.getElementById('handoffError');
+      const statusEl = document.querySelector('[data-testid="handoff-status"]');
+
+      async function run() {
+        if (!code) {
+          errorEl.textContent = 'Missing handoff code.';
+          errorEl.classList.add('show');
+          return;
+        }
+        try {
+          const res = await fetch('/api/v1/auth/handoff/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code })
+          });
+          const body = await res.json();
+          if (!res.ok || !body.user) {
+            errorEl.textContent = body.message || 'Handoff failed.';
+            errorEl.classList.add('show');
+            return;
+          }
+          try {
+            window.localStorage.setItem('vantageiq_access_token', body.token || '');
+            window.localStorage.setItem('vantageiq_current_user_email', body.user.email || '');
+          } catch (_err) {}
+          if (window.MockupApi && typeof MockupApi.continueAfterLogin === 'function') {
+            MockupApi.continueAfterLogin(body.user);
+            return;
+          }
+          statusEl.textContent = 'Signed in as ' + body.user.email;
+          window.location.href = './S1-player-list.html';
+        } catch (err) {
+          errorEl.textContent = 'Could not exchange handoff code.';
+          errorEl.classList.add('show');
+        }
+      }
+      run();
+    })();
+  </script>
+</body>
+</html>

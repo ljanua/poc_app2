@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin moved — VantagIQ</title>
+  <meta http-equiv="refresh" content="0;url=http://127.0.0.1:5500/S7-admin-user-management.html">
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body class="public-landing">
+  <section class="landing-hero">
+    <div class="landing-hero-inner">
+      <h1 data-testid="admin-moved-title">Approvals moved into the app</h1>
+      <p class="landing-promise">
+        SystemAdmin approvals and subscription tiers are managed in the protected app (S7 → Approvals / Tiers).
+      </p>
+      <p>
+        <a class="btn btn-primary" id="adminMovedLink" data-testid="admin-moved-link" href="http://127.0.0.1:5500/S7-admin-user-management.html">Open User Management</a>
+        <a class="btn btn-secondary" href="/" data-testid="admin-moved-home">Back to home</a>
+      </p>
+    </div>
+  </section>
+  <script>
+    (function () {
+      fetch('/api/v1/config').then(function (r) { return r.json(); }).then(function (body) {
+        const appOrigin = (body && body.data && body.data.appOrigin) || 'http://127.0.0.1:5500';
+        const href = appOrigin.replace(/\/$/, '') + '/S7-admin-user-management.html';
+        const link = document.getElementById('adminMovedLink');
+        if (link) link.href = href;
+        window.location.replace(href);
+      }).catch(function () {
+        window.location.replace('http://127.0.0.1:5500/S7-admin-user-management.html');
+      });
+    })();
+  </script>
+</body>
+</html>

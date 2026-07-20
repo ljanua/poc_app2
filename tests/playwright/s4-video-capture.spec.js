@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { completeClubSelectIfNeeded } = require('./_fixture-utils');
 
 test.describe('S4 Video Capture and Submission', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,8 +9,10 @@ test.describe('S4 Video Capture and Submission', () => {
     await page.fill('#email', 'joao@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.locator('#loginForm button[type="submit"]').click();
-    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+    await page.waitForURL(/S1-player-list|S0a-club-select/, { timeout: 20000 });
+    await completeClubSelectIfNeeded(page);
     await page.goto('/S4-video-capture.html');
+    await completeClubSelectIfNeeded(page);
     await expect(page.getByText('Submit a Clip')).toBeVisible();
   });
 
@@ -156,20 +159,43 @@ test.describe('S4 Video Capture and Submission', () => {
     await expect(page.getByLabel('Shot stopping')).toHaveCount(0);
   });
 
-  test('link mode defaults duration to 01:00 and rejects over 02:00', async ({ page }) => {
+  test('analysis window defaults to 00:30 on both modes and rejects over 00:30', async ({ page }) => {
+    await expect(page.getByTestId('analysis-window-fields')).toBeVisible();
+    await expect(page.getByTestId('analysis-window-alert')).toContainText('30 seconds');
+    await expect(page.getByTestId('start-mmss')).toHaveValue('00:00');
+    await expect(page.getByTestId('duration-mmss')).toHaveValue('00:30');
+
     await page.getByTestId('source-mode-link').click();
     await expect(page.getByTestId('link-source-panel')).toBeVisible();
     await expect(page.getByTestId('upload-source-panel')).toBeHidden();
-    await expect(page.getByTestId('duration-mmss')).toHaveValue('01:00');
+    await expect(page.getByTestId('analysis-window-fields')).toBeVisible();
+    await expect(page.getByTestId('duration-mmss')).toHaveValue('00:30');
 
     await page.fill('#videoUrl', 'https://example.com/clip.mp4');
     await page.fill('#startMmSs', '00:10');
-    await page.fill('#durationMmSs', '02:01');
+    await page.fill('#durationMmSs', '00:31');
     await page.selectOption('#player', { label: 'Lionel Messi' });
     await page.fill('#situation', 'Counter attack');
     await page.getByRole('button', { name: 'Submit for Assessment' }).click();
     await expect(page.locator('#videoError')).toHaveClass(/show/);
-    await expect(page.locator('#videoError')).toContainText('02:00');
+    await expect(page.locator('#videoError')).toContainText('00:30');
+  });
+
+  test('upload mode shows start/duration and rejects duration over 00:30', async ({ page }) => {
+    await expect(page.getByTestId('upload-source-panel')).toBeVisible();
+    await expect(page.getByTestId('analysis-window-alert')).toContainText('start point');
+    await page.locator('#fileInput').setInputFiles({
+      name: 'training-clip.mp4',
+      mimeType: 'video/mp4',
+      buffer: Buffer.from('fake-video-content')
+    });
+    await page.fill('#startMmSs', '00:05');
+    await page.fill('#durationMmSs', '01:00');
+    await page.selectOption('#player', { label: 'Lionel Messi' });
+    await page.fill('#situation', 'Penalty kick');
+    await page.getByRole('button', { name: 'Submit for Assessment' }).click();
+    await expect(page.locator('#videoError')).toHaveClass(/show/);
+    await expect(page.locator('#videoError')).toContainText('00:30');
   });
 
   test('Find player is off and disabled when the player has no photo', async ({ page }) => {

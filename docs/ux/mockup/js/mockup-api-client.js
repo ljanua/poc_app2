@@ -4740,10 +4740,10 @@
         formData.append('skillFocus', JSON.stringify(skillFocus.length ? skillFocus : [primarySkill]));
         formData.append('skill', primarySkill);
         formData.append('findPlayer', payload.findPlayer ? 'true' : 'false');
+        formData.append('startMmSs', String(payload.startMmSs || '00:00'));
+        formData.append('durationMmSs', String(payload.durationMmSs || '00:30'));
         if (isLinkMode) {
           formData.append('videoUrl', videoUrl);
-          formData.append('startMmSs', String(payload.startMmSs || '00:00'));
-          formData.append('durationMmSs', String(payload.durationMmSs || '01:00'));
         } else {
           formData.append('video', payload.videoFile, payload.videoFile.name || 'clip.mp4');
         }
@@ -5295,6 +5295,129 @@
       return { status: 200, code: 'ok', user: clone(user) };
     },
 
+    listPendingUsers() {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest(
+        'GET',
+        '/admin/pending-users?actorEmail=' + encodeURIComponent(actorEmail)
+      );
+      if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+        return { status: 200, code: 'ok', users: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    approvePendingUser(userId) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest('POST', '/admin/users/' + encodeURIComponent(userId) + '/approve', {
+        actorEmail
+      });
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, code: 'ok', user: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    rejectPendingUser(userId) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest('POST', '/admin/users/' + encodeURIComponent(userId) + '/reject', {
+        actorEmail
+      });
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, code: 'ok', user: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    listSubscriptionTiersAdmin() {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest(
+        'GET',
+        '/admin/subscription-tiers?actorEmail=' + encodeURIComponent(actorEmail)
+      );
+      if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+        return { status: 200, code: 'ok', tiers: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    updateSubscriptionTier(tierId, payload) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest('PUT', '/admin/subscription-tiers/' + encodeURIComponent(tierId), Object.assign({}, payload || {}, {
+        actorEmail
+      }));
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, code: 'ok', tier: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    listJoinRequests() {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest(
+        'GET',
+        '/admin/join-requests?actorEmail=' + encodeURIComponent(actorEmail)
+      );
+      if (response.status === 200 && response.body && Array.isArray(response.body.data)) {
+        return { status: 200, code: 'ok', requests: clone(response.body.data) };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    approveJoinRequest(intentId) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest('POST', '/admin/join-requests/' + encodeURIComponent(intentId) + '/approve', {
+        actorEmail
+      });
+      if (response.status === 200) {
+        return { status: 200, code: 'ok' };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    rejectJoinRequest(intentId) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const response = backendRequest('POST', '/admin/join-requests/' + encodeURIComponent(intentId) + '/reject', {
+        actorEmail
+      });
+      if (response.status === 200) {
+        return { status: 200, code: 'ok' };
+      }
+      return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
     login(email, password) {
       if (shouldUseBackendPlayersMode()) {
         const response = backendRequest('POST', '/auth/login', { email, password });
@@ -5321,9 +5444,23 @@
       return { status: 200, token: 'jwt-' + user.role.toLowerCase(), role: user.role, user: clone(user) };
     },
 
-    register(name, email, password) {
+    register(name, email, password, tierCode) {
       if (shouldUseBackendPlayersMode()) {
-        const response = backendRequest('POST', '/auth/register', { name, email, password });
+        const response = backendRequest('POST', '/auth/register', {
+          name,
+          email,
+          password,
+          tierCode: tierCode || 'free'
+        });
+        if (response.body && response.body.pendingApproval) {
+          return {
+            status: response.status || 201,
+            pendingApproval: true,
+            message: response.body.message || 'Your account is awaiting SystemAdmin approval.',
+            pendingUrl: response.body.pendingUrl || null,
+            user: response.body.user ? clone(response.body.user) : null
+          };
+        }
         if ((response.status === 200 || response.status === 201) && response.body && response.body.user) {
           setSessionEmail(response.body.user.email);
           clearActiveClubStorage();

@@ -10,7 +10,8 @@ const {
   extractPosterFrame,
   readFramesAsBase64,
   ensureFfmpegAvailable,
-  setFfmpegPath
+  setFfmpegPath,
+  MAX_SEGMENTS
 } = require('./ffmpeg-utils');
 const { getFfmpegPath, ensureSegmentsDirForClip, ensureThumbnailPathForClip, getYtdlpPath, originalsDir } = require('./config');
 const { reviewSegment } = require('./ollama-client');
@@ -27,7 +28,7 @@ const {
   downloadSourceVideo,
   probeDurationSeconds,
   extractWindowMaxFps,
-  normalizeMaxFps
+  MAX_DURATION_SEC
 } = require('./link-ingest');
 const { findPlayerInVideo } = require('./find-player');
 
@@ -272,7 +273,7 @@ async function prepareLinkSourceIfNeeded(pool, clip, framesDir) {
 }
 
 /**
- * Upload clips: normalize to ≤30 fps before AI segmentation/assessment.
+ * Upload clips: trim to start+duration (≤30s), normalize to ≤30 fps, then AI segment.
  */
 async function prepareUploadNormalizeIfNeeded(pool, clip) {
   if (clip.sourceUrl || !clip.videoStoragePath) {
@@ -282,12 +283,37 @@ async function prepareUploadNormalizeIfNeeded(pool, clip) {
   if (!fs.existsSync(inputPath)) {
     throw new Error('No video file is attached to this clip.');
   }
-  if (/_norm\.mp4$/i.test(inputPath) || /_extract\.mp4$/i.test(inputPath)) {
+  if (/_extract\.mp4$/i.test(inputPath) || /_window\.mp4$/i.test(inputPath)) {
     return inputPath;
   }
 
-  const normPath = path.join(originalsDir(), `${clip.id}_norm.mp4`);
-  const result = await normalizeMaxFps(inputPath, normPath, MAX_AI_FPS);
+  const startSec = Math.max(0, Number(clip.sourceStartMs || 0) / 1000);
+  let durationSec = clip.sourceDurationMs != null
+    ? Number(clip.sourceDurationMs) / 1000
+    : MAX_DURATION_SEC;
+  if (!Number.isFinite(durationSec) || durationSec < 1) {
+    throw new Error('Clip is missing a valid analysis duration (start/duration window).');
+  }
+  durationSec = Math.min(durationSec, MAX_DURATION_SEC);
+
+  const mediaDuration = await probeDurationSeconds(inputPath);
+  if (startSec >= mediaDuration) {
+    throw new Error('Start time is beyond the end of the uploaded video.');
+  }
+  const availableFromStart = mediaDuration - startSec;
+  if (availableFromStart < 1) {
+    throw new Error('Not enough video remains after the requested start time.');
+  }
+  const windowDuration = Math.min(durationSec, availableFromStart);
+
+  const extractPath = path.join(originalsDir(), `${clip.id}_extract.mp4`);
+  const result = await extractWindowMaxFps(
+    inputPath,
+    extractPath,
+    startSec,
+    windowDuration,
+    MAX_AI_FPS
+  );
   await pool.query(
     `
       UPDATE clips
@@ -296,16 +322,18 @@ async function prepareUploadNormalizeIfNeeded(pool, clip) {
           updated_at = NOW()
       WHERE id = $1
     `,
-    [clip.id, normPath, fs.statSync(normPath).size]
+    [clip.id, extractPath, fs.statSync(extractPath).size]
   );
-  logAuditEvent('clip.fps.normalized', {
+  logAuditEvent('clip.upload.window.ready', {
     clipId: clip.id,
     inputPath,
-    normPath,
+    extractPath,
+    startSec,
+    durationSec: windowDuration,
     sourceFps: result.sourceFps,
     appliedFpsCap: result.appliedFpsCap
   });
-  return normPath;
+  return extractPath;
 }
 
 async function processClip(pool, clipId) {
@@ -365,7 +393,15 @@ async function processClip(pool, clipId) {
     }
 
     await clearClipSegments(pool, clipId);
-    const segmentPaths = await segmentVideo(videoPath, durableSegmentsDir);
+    const allSegmentPaths = await segmentVideo(videoPath, durableSegmentsDir);
+    const segmentPaths = allSegmentPaths.slice(0, MAX_SEGMENTS);
+    for (const extraPath of allSegmentPaths.slice(MAX_SEGMENTS)) {
+      try {
+        fs.unlinkSync(extraPath);
+      } catch (unlinkError) {
+        // Best-effort cleanup of surplus segments beyond the analysis cap.
+      }
+    }
 
     for (let index = 0; index < segmentPaths.length; index += 1) {
       const segmentPath = segmentPaths[index];

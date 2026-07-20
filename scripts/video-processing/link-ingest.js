@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { originalsDir, ensureOriginalsDir } = require('./config');
-const { runCommand, getFfmpegPath } = require('./ffmpeg-utils');
+const { runCommand, getFfmpegPath, SEGMENT_SECONDS, MAX_SEGMENTS } = require('./ffmpeg-utils');
 const { logAuditEvent } = require('./audit-logger');
 
 const MIN_DURATION_SEC = 1;
-const MAX_DURATION_SEC = 120;
-const DEFAULT_DURATION_SEC = 60;
+/** Analysis window max = segment length × max segments (10s × 3). */
+const MAX_DURATION_SEC = SEGMENT_SECONDS * MAX_SEGMENTS;
+const DEFAULT_DURATION_SEC = MAX_DURATION_SEC;
 
 function parseMmSs(value) {
   const raw = String(value == null ? '' : value).trim();

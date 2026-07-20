@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OAuth (stub) — VantagIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body class="public-landing">
+  <section class="landing-hero">
+    <div class="landing-hero-inner">
+      <h1 data-testid="oauth-stub-title">Continue with OAuth (local stub)</h1>
+      <p class="landing-promise">Provider credentials are not required in stub mode. Confirm the identity below to continue.</p>
+      <form class="auth-form" id="oauthStubForm" data-testid="oauth-stub-form">
+        <div>
+          <label class="form-label" for="oauthName">Name</label>
+          <input id="oauthName" data-testid="oauth-name" type="text" required>
+        </div>
+        <div>
+          <label class="form-label" for="oauthEmail">Email</label>
+          <input id="oauthEmail" data-testid="oauth-email" type="email" required>
+        </div>
+        <button class="btn btn-primary" type="submit" data-testid="oauth-stub-submit">Continue</button>
+      </form>
+      <p class="error-msg" id="oauthError" data-testid="oauth-error"></p>
+    </div>
+  </section>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const provider = params.get('provider') || 'google';
+      const tier = params.get('tier') || 'free';
+      const mode = params.get('mode') || 'register';
+      const form = document.getElementById('oauthStubForm');
+      const errorEl = document.getElementById('oauthError');
+      const title = document.getElementById('oauth-stub-title') || document.querySelector('[data-testid="oauth-stub-title"]');
+      if (title && mode === 'login') {
+        title.textContent = 'Sign in with ' + provider + ' (local stub)';
+      }
+      document.getElementById('oauthName').value = provider.charAt(0).toUpperCase() + provider.slice(1) + ' User';
+      if (mode === 'login') {
+        document.getElementById('oauthEmail').value = '';
+        document.getElementById('oauthEmail').placeholder = 'Same email used at registration';
+      } else {
+        document.getElementById('oauthEmail').value = provider + '.stub.' + Date.now() + '@example.com';
+      }
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        errorEl.classList.remove('show');
+        const name = document.getElementById('oauthName').value;
+        const email = document.getElementById('oauthEmail').value;
+        try {
+          let org = {};
+          try {
+            org = JSON.parse(sessionStorage.getItem('vantageiq_signup_org') || '{}') || {};
+          } catch (_e) {
+            org = {};
+          }
+          const res = await fetch('/api/v1/auth/oauth/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider: provider,
+              tierCode: tier,
+              mode: mode,
+              name: name,
+              email: email,
+              providerUserId: provider + '_stub_' + email,
+              intent: org.intent,
+              clubName: org.clubName,
+              teamName: org.teamName,
+              targetClubId: org.targetClubId,
+              targetTeamId: org.targetTeamId
+            })
+          });
+          const body = await res.json();
+          if (body.pendingApproval) {
+            window.location.href = body.pendingUrl || '/pending';
+            return;
+          }
+          if (!res.ok) {
+            if (body.code === 'pending_approval') {
+              window.location.href = body.pendingUrl || '/pending';
+              return;
+            }
+            errorEl.textContent = body.message || 'OAuth failed.';
+            errorEl.classList.add('show');
+            return;
+          }
+          if (body.appHandoffUrl) {
+            window.location.href = body.appHandoffUrl;
+            return;
+          }
+          errorEl.textContent = 'No handoff URL returned.';
+          errorEl.classList.add('show');
+        } catch (err) {
+          errorEl.textContent = 'Could not reach the server.';
+          errorEl.classList.add('show');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

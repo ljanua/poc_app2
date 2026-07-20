@@ -1,11 +1,28 @@
 -- Canonical source-of-record schema for current mockup and API flows.
 
+CREATE TABLE IF NOT EXISTS subscription_tiers (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  max_teams INT NOT NULL CHECK (max_teams >= 0),
+  max_coaches INT NOT NULL CHECK (max_coaches >= 0),
+  max_club_admins INT NOT NULL CHECK (max_club_admins >= 0),
+  videos_per_day INT NOT NULL CHECK (videos_per_day >= 0),
+  max_videos_per_team INT NOT NULL CHECK (max_videos_per_team >= 0),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
   role TEXT NOT NULL CHECK (role IN ('SystemAdmin', 'Coach', 'ClubAdmin')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  approval_status TEXT NOT NULL DEFAULT 'active' CHECK (approval_status IN ('pending', 'active', 'rejected')),
+  subscription_tier_id TEXT REFERENCES subscription_tiers(id),
   password_hash TEXT,
   password_plaintext TEXT,
   last_login_label TEXT,
@@ -16,6 +33,30 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_role_status ON users(role, status);
 CREATE INDEX IF NOT EXISTS idx_users_updated_at ON users(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_users_approval_status ON users(approval_status);
+CREATE INDEX IF NOT EXISTS idx_users_subscription_tier_id ON users(subscription_tier_id);
+
+CREATE TABLE IF NOT EXISTS user_oauth_identities (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'apple', 'facebook')),
+  provider_user_id TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (provider, provider_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_oauth_identities_user_id ON user_oauth_identities(user_id);
+
+CREATE TABLE IF NOT EXISTS auth_handoff_codes (
+  code TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_handoff_codes_user_id ON auth_handoff_codes(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_handoff_codes_expires_at ON auth_handoff_codes(expires_at);
 
 CREATE TABLE IF NOT EXISTS teams (
   id TEXT PRIMARY KEY,
@@ -57,6 +98,30 @@ CREATE TABLE IF NOT EXISTS coach_clubs (
 
 CREATE INDEX IF NOT EXISTS idx_coach_clubs_club_id ON coach_clubs(club_id);
 CREATE INDEX IF NOT EXISTS idx_coach_clubs_user_id ON coach_clubs(user_id);
+
+CREATE TABLE IF NOT EXISTS registration_intents (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  intent TEXT NOT NULL CHECK (intent IN ('create', 'join')),
+  status TEXT NOT NULL CHECK (status IN (
+    'pending_sa',
+    'pending_join',
+    'completed',
+    'sa_rejected',
+    'join_rejected'
+  )),
+  proposed_club_name TEXT,
+  proposed_team_name TEXT,
+  target_club_id TEXT REFERENCES clubs(id) ON DELETE SET NULL,
+  target_team_id TEXT REFERENCES teams(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_registration_intents_user_id ON registration_intents(user_id);
+CREATE INDEX IF NOT EXISTS idx_registration_intents_status ON registration_intents(status);
+CREATE INDEX IF NOT EXISTS idx_registration_intents_target_club ON registration_intents(target_club_id);
+
 
 CREATE TABLE IF NOT EXISTS players (
   id TEXT PRIMARY KEY,

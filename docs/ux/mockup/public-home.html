@@ -23,7 +23,7 @@
         </button>
         <button type="button" class="landing-door" id="doorCoach" data-testid="door-coach">
           I’m a coach
-          <small>Start free · Sign in</small>
+          <small>Choose a plan · Sign in</small>
         </button>
       </div>
 
@@ -40,26 +40,75 @@
       </div>
 
       <div class="landing-panel" id="panelCoach" data-testid="panel-coach" hidden>
-        <h2>Start free as a club admin</h2>
+        <h2>Create your account</h2>
+        <p class="landing-soft-free" data-testid="no-billing-note">No billing yet — pick a tier; a SystemAdmin must approve before app access.</p>
         <form class="auth-form" id="signupForm" data-testid="signup-form">
           <div>
-            <label class="form-label" for="signupName">Name</label>
-            <input id="signupName" data-testid="signup-name" type="text" autocomplete="name" required>
+            <label class="form-label" for="signupTier">Subscription tier</label>
+            <select id="signupTier" data-testid="signup-tier" required>
+              <option value="free">Free Tier</option>
+              <option value="professional">Professional</option>
+              <option value="club_basic">Club Basic</option>
+              <option value="club_premium">Club Premium</option>
+            </select>
           </div>
           <div>
-            <label class="form-label" for="signupEmail">Email</label>
-            <input id="signupEmail" data-testid="signup-email" type="email" autocomplete="email" required>
+            <label class="form-label" for="signupAuthMethod">Sign-up method</label>
+            <select id="signupAuthMethod" data-testid="signup-auth-method" required>
+              <option value="password">Email / password</option>
+              <option value="google">Google</option>
+              <option value="apple">Apple</option>
+              <option value="facebook">Facebook</option>
+            </select>
           </div>
-          <div>
-            <label class="form-label" for="signupPassword">Password</label>
-            <input id="signupPassword" data-testid="signup-password" type="password" autocomplete="new-password" required minlength="10">
+          <div id="passwordFields" data-testid="password-fields">
+            <div>
+              <label class="form-label" for="signupName">Name</label>
+              <input id="signupName" data-testid="signup-name" type="text" autocomplete="name">
+            </div>
+            <div>
+              <label class="form-label" for="signupEmail">Email</label>
+              <input id="signupEmail" data-testid="signup-email" type="email" autocomplete="email">
+            </div>
+            <div>
+              <label class="form-label" for="signupPassword">Password</label>
+              <input id="signupPassword" data-testid="signup-password" type="password" autocomplete="new-password" minlength="10">
+            </div>
           </div>
-          <button class="btn btn-primary" type="submit" data-testid="signup-submit">Create free account</button>
+          <div id="orgFields" data-testid="org-fields">
+            <div id="proIntentWrap" data-testid="pro-intent-wrap" hidden>
+              <label class="form-label" for="signupIntent">Professional path</label>
+              <select id="signupIntent" data-testid="signup-intent">
+                <option value="create">Create my club</option>
+                <option value="join">Join an existing club</option>
+              </select>
+            </div>
+            <div id="createFields" data-testid="create-fields">
+              <div id="clubNameWrap" data-testid="club-name-wrap" hidden>
+                <label class="form-label" for="signupClubName">Club name</label>
+                <input id="signupClubName" data-testid="signup-club-name" type="text">
+              </div>
+              <div>
+                <label class="form-label" for="signupTeamName" id="signupTeamLabel">Team name</label>
+                <input id="signupTeamName" data-testid="signup-team-name" type="text" required>
+              </div>
+            </div>
+            <div id="joinFields" data-testid="join-fields" hidden>
+              <label class="form-label" for="signupClubSearch">Find club</label>
+              <input id="signupClubSearch" data-testid="signup-club-search" type="search" placeholder="Type at least 2 letters">
+              <select id="signupClubSelect" data-testid="signup-club-select" size="4" style="width:100%;margin-top:0.35rem;"></select>
+              <label class="form-label" for="signupTeamSelect">Team (optional)</label>
+              <select id="signupTeamSelect" data-testid="signup-team-select">
+                <option value="">Any / assign later</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" type="submit" data-testid="signup-submit">Continue</button>
         </form>
         <p class="error-msg" id="signupError" data-testid="signup-error"></p>
         <p class="landing-signin-row">
           Already registered?
-          <a href="./S0-login.html" data-testid="sign-in-link">Sign in</a>
+          <a href="./public-signin.html" data-testid="sign-in-link">Sign in</a>
         </p>
       </div>
     </div>
@@ -71,7 +120,7 @@
       Gather info, monitor progress, share results, and use <strong data-testid="ai-mention">AI-assisted assessment</strong> for clearer guidance.
     </p>
     <p class="landing-soft-free" data-testid="free-to-start">
-      Free to start — set up your club and first team. Upgrade later when you need more.
+      Free to start — choose a tier that fits. Upgrade later when you need more.
     </p>
     <div class="landing-proof-grid">
       <figure class="landing-shot">
@@ -89,7 +138,6 @@
     </div>
   </section>
 
-  <script src="./js/mockup-api-client.js"></script>
   <script>
     (function () {
       const doorParent = document.getElementById('doorParent');
@@ -101,6 +149,8 @@
       const copyStatus = document.getElementById('copyStatus');
       const signupForm = document.getElementById('signupForm');
       const signupError = document.getElementById('signupError');
+      const authMethod = document.getElementById('signupAuthMethod');
+      const passwordFields = document.getElementById('passwordFields');
 
       function showPanel(which) {
         const parentOn = which === 'parent';
@@ -111,8 +161,97 @@
         doorCoach.classList.toggle('is-active', coachOn);
       }
 
+      function syncAuthMethod() {
+        const isPassword = authMethod.value === 'password';
+        passwordFields.hidden = !isPassword;
+        document.getElementById('signupName').required = isPassword;
+        document.getElementById('signupEmail').required = isPassword;
+        document.getElementById('signupPassword').required = isPassword;
+      }
+
+      const signupTier = document.getElementById('signupTier');
+      const signupIntent = document.getElementById('signupIntent');
+      const proIntentWrap = document.getElementById('proIntentWrap');
+      const createFields = document.getElementById('createFields');
+      const joinFields = document.getElementById('joinFields');
+      const clubNameWrap = document.getElementById('clubNameWrap');
+      const signupClubSearch = document.getElementById('signupClubSearch');
+      const signupClubSelect = document.getElementById('signupClubSelect');
+      const signupTeamSelect = document.getElementById('signupTeamSelect');
+
+      function syncOrgFields() {
+        const tier = signupTier.value;
+        const isPro = tier === 'professional';
+        const intent = isPro ? signupIntent.value : 'create';
+        proIntentWrap.hidden = !isPro;
+        const joining = isPro && intent === 'join';
+        createFields.hidden = joining;
+        joinFields.hidden = !joining;
+        clubNameWrap.hidden = tier === 'free' || joining;
+        document.getElementById('signupTeamLabel').textContent =
+          tier === 'free' ? 'Team name (club will use the same name)' : 'Team name';
+        document.getElementById('signupTeamName').required = !joining;
+        document.getElementById('signupClubName').required = !joining && tier !== 'free';
+      }
+
+      function collectOrgPayload() {
+        const tierCode = signupTier.value;
+        const isPro = tierCode === 'professional';
+        const intent = isPro ? signupIntent.value : 'create';
+        if (intent === 'join') {
+          return {
+            intent: 'join',
+            targetClubId: signupClubSelect.value || null,
+            targetTeamId: signupTeamSelect.value || null
+          };
+        }
+        const teamName = document.getElementById('signupTeamName').value;
+        const clubName = tierCode === 'free'
+          ? teamName
+          : document.getElementById('signupClubName').value;
+        return { intent: 'create', clubName: clubName, teamName: teamName };
+      }
+
+      signupTier.addEventListener('change', syncOrgFields);
+      signupIntent.addEventListener('change', syncOrgFields);
+      syncOrgFields();
+
+      let searchTimer = null;
+      signupClubSearch.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async function () {
+          const q = signupClubSearch.value.trim();
+          signupClubSelect.innerHTML = '';
+          if (q.length < 2) return;
+          const res = await fetch('/api/v1/clubs/search?q=' + encodeURIComponent(q));
+          const body = await res.json();
+          (body.data || []).forEach(function (club) {
+            const opt = document.createElement('option');
+            opt.value = club.id;
+            opt.textContent = club.name;
+            signupClubSelect.appendChild(opt);
+          });
+        }, 250);
+      });
+
+      signupClubSelect.addEventListener('change', async function () {
+        signupTeamSelect.innerHTML = '<option value="">Any / assign later</option>';
+        const clubId = signupClubSelect.value;
+        if (!clubId) return;
+        const res = await fetch('/api/v1/clubs/' + encodeURIComponent(clubId) + '/teams');
+        const body = await res.json();
+        (body.data || []).forEach(function (team) {
+          const opt = document.createElement('option');
+          opt.value = team.id;
+          opt.textContent = team.name;
+          signupTeamSelect.appendChild(opt);
+        });
+      });
+
       doorParent.addEventListener('click', function () { showPanel('parent'); });
       doorCoach.addEventListener('click', function () { showPanel('coach'); });
+      authMethod.addEventListener('change', syncAuthMethod);
+      syncAuthMethod();
 
       copyBtn.addEventListener('click', function () {
         const text = askMsg.value;
@@ -133,23 +272,60 @@
         }
       });
 
-      signupForm.addEventListener('submit', function (event) {
+      signupForm.addEventListener('submit', async function (event) {
         event.preventDefault();
         signupError.classList.remove('show');
         signupError.textContent = '';
 
-        const name = document.getElementById('signupName').value;
-        const email = document.getElementById('signupEmail').value;
-        const password = document.getElementById('signupPassword').value;
-        const response = MockupApi.register(name, email, password);
+        const tierCode = signupTier.value;
+        const method = authMethod.value;
+        const org = collectOrgPayload();
 
-        if (response.status !== 200 && response.status !== 201) {
-          signupError.textContent = response.message || 'Could not create your account. Please try again.';
+        try {
+          if (method !== 'password') {
+            const start = await fetch('/api/v1/auth/oauth/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ provider: method, tierCode: tierCode, mode: 'register', ...org })
+            });
+            const startBody = await start.json();
+            if (!start.ok || !startBody.data || !startBody.data.authorizeUrl) {
+              signupError.textContent = (startBody && startBody.message) || 'Could not start OAuth.';
+              signupError.classList.add('show');
+              return;
+            }
+            try {
+              sessionStorage.setItem('vantageiq_signup_org', JSON.stringify(org));
+            } catch (_e) {}
+            window.location.href = startBody.data.authorizeUrl;
+            return;
+          }
+
+          const name = document.getElementById('signupName').value;
+          const email = document.getElementById('signupEmail').value;
+          const password = document.getElementById('signupPassword').value;
+          const res = await fetch('/api/v1/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: name,
+              email: email,
+              password: password,
+              tierCode: tierCode,
+              ...org
+            })
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            signupError.textContent = body.message || 'Could not create your account.';
+            signupError.classList.add('show');
+            return;
+          }
+          window.location.href = body.pendingUrl || '/pending';
+        } catch (err) {
+          signupError.textContent = 'Could not reach the server.';
           signupError.classList.add('show');
-          return;
         }
-
-        MockupApi.continueAfterLogin(response.user);
       });
     })();
   </script>

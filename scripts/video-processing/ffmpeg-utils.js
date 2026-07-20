@@ -5,7 +5,8 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 
-const SEGMENT_SECONDS = 30;
+const SEGMENT_SECONDS = 10;
+const MAX_SEGMENTS = 3;
 const FRAMES_PER_SEGMENT = 3;
 
 const FFMPEG_INSTALL_HINT =
@@ -63,12 +64,17 @@ function removeDirRecursive(dirPath) {
 
 async function segmentVideo(videoPath, outputDir) {
   const pattern = path.join(outputDir, 'segment_%03d.mp4');
+  // Re-encode at 480p, strip audio; keyframes every SEGMENT_SECONDS for clean cuts.
   await runCommand(ffmpegPath, [
     '-hide_banner',
     '-loglevel', 'error',
     '-i', videoPath,
-    '-c', 'copy',
-    '-map', '0',
+    '-an',
+    '-vf', 'scale=-2:480',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-force_key_frames', `expr:gte(t,n_forced*${SEGMENT_SECONDS})`,
+    '-movflags', '+faststart',
     '-f', 'segment',
     '-segment_time', String(SEGMENT_SECONDS),
     '-reset_timestamps', '1',
@@ -120,6 +126,8 @@ function readFramesAsBase64(framePaths) {
 
 module.exports = {
   SEGMENT_SECONDS,
+  MAX_SEGMENTS,
+  FRAMES_PER_SEGMENT,
   runCommand,
   setFfmpegPath,
   getFfmpegPath,

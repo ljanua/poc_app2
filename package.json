@@ -14,6 +14,7 @@
     "build": "npm run build:solution",
     "build:solution": "npm run bdd:smoke",
     "serve:mockup": "node scripts/serve-mockup.js",
+    "serve:public": "node scripts/serve-public.js",
     "e2e:up": "npm run serve:mockup",
     "pw:test": "playwright test",
     "pw:test:s1": "playwright test tests/playwright/s1-player-list.spec.js",

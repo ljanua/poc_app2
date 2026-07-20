@@ -158,34 +158,39 @@ async function createClipUpload(pool, req, helpers) {
 
   let sourceStartMs = null;
   let sourceDurationMs = null;
-  if (isLinkMode) {
-    const startSec = parseMmSs(fields.startMmSs || fields.start || '');
-    if (startSec == null) {
-      return {
-        status: 400,
-        body: helpers.appError(400, 'validation_error', 'Start time is required as mm:ss (e.g. 01:30).')
-      };
-    }
-    const durationSec = resolveDurationSeconds(fields.durationMmSs || fields.duration);
-    if (durationSec == null) {
-      return {
-        status: 400,
-        body: helpers.appError(
-          400,
-          'validation_error',
-          `Duration must be mm:ss between 00:01 and ${String(Math.floor(MAX_DURATION_SEC / 60)).padStart(2, '0')}:${String(MAX_DURATION_SEC % 60).padStart(2, '0')} (default ${String(Math.floor(DEFAULT_DURATION_SEC / 60)).padStart(2, '0')}:${String(DEFAULT_DURATION_SEC % 60).padStart(2, '0')}).`
-        )
-      };
-    }
-    sourceStartMs = startSec * 1000;
-    sourceDurationMs = durationSec * 1000;
+  const startSec = parseMmSs(fields.startMmSs || fields.start || '');
+  if (startSec == null) {
+    return {
+      status: 400,
+      body: helpers.appError(400, 'validation_error', 'Start time is required as mm:ss (e.g. 01:30).')
+    };
   }
+  const durationSec = resolveDurationSeconds(fields.durationMmSs || fields.duration);
+  if (durationSec == null) {
+    return {
+      status: 400,
+      body: helpers.appError(
+        400,
+        'validation_error',
+        `Duration must be mm:ss between 00:01 and ${String(Math.floor(MAX_DURATION_SEC / 60)).padStart(2, '0')}:${String(MAX_DURATION_SEC % 60).padStart(2, '0')} (default ${String(Math.floor(DEFAULT_DURATION_SEC / 60)).padStart(2, '0')}:${String(DEFAULT_DURATION_SEC % 60).padStart(2, '0')}).`
+      )
+    };
+  }
+  sourceStartMs = startSec * 1000;
+  sourceDurationMs = durationSec * 1000;
 
   const resolved = await resolvePlayerId(pool, playerId, playerName, helpers);
   if (resolved.error) {
     return resolved.error;
   }
   const resolvedPlayerId = resolved.resolvedPlayerId;
+
+  if (typeof helpers.assertNewVideoAllowed === 'function') {
+    const quota = await helpers.assertNewVideoAllowed(resolvedPlayerId);
+    if (!quota.ok) {
+      return { status: quota.error.status, body: quota.error };
+    }
+  }
 
   if (findPlayer) {
     const avatarUrl = await loadPlayerAvatar(pool, resolvedPlayerId);

@@ -16,108 +16,157 @@
     </header>
 
     <div class="content">
-      <div class="toolbar">
-        <input class="search-bar" id="userSearch" type="text" placeholder="Search by name or email">
-        <select class="pill-select" id="statusFilter" aria-label="Filter users by status">
-          <option value="all">All statuses</option>
-          <option value="active">Active only</option>
-          <option value="inactive">Inactive only</option>
-        </select>
-        <select class="pill-select" id="roleFilter" aria-label="Filter users by role">
-          <option value="all">All roles</option>
-          <option value="SystemAdmin">SystemAdmin</option>
-          <option value="Coach">Coach</option>
-          <option value="ClubAdmin">ClubAdmin</option>
-        </select>
+      <div class="tabs" id="s7Tabs" role="tablist" aria-label="Admin sections" data-testid="s7-tabs">
+        <button class="tab active" type="button" role="tab" data-tab-id="users" id="tab-users" aria-controls="tabpanel-users" aria-selected="true" data-testid="tab-users">Users</button>
+        <button class="tab" type="button" role="tab" data-tab-id="approvals" id="tab-approvals" aria-controls="tabpanel-approvals" aria-selected="false" data-role-visible-to="SystemAdmin" data-testid="tab-approvals" hidden>Approvals</button>
+        <button class="tab" type="button" role="tab" data-tab-id="join-requests" id="tab-join-requests" aria-controls="tabpanel-join-requests" aria-selected="false" data-role-visible-to="SystemAdmin,ClubAdmin" data-testid="tab-join-requests" hidden>Join requests</button>
+        <button class="tab" type="button" role="tab" data-tab-id="tiers" id="tab-tiers" aria-controls="tabpanel-tiers" aria-selected="false" data-role-visible-to="SystemAdmin" data-testid="tab-tiers" hidden>Tiers</button>
       </div>
 
-      <div class="kpi-row">
-        <div class="kpi-card">
-          <div class="kpi-label">Active Users</div>
-          <div class="kpi-value" id="kpiActive">27</div>
+      <section class="s7-tabpanel" role="tabpanel" id="tabpanel-users" data-tab-id="users" aria-labelledby="tab-users" data-testid="tabpanel-users">
+        <div class="toolbar">
+          <input class="search-bar" id="userSearch" type="text" placeholder="Search by name or email">
+          <select class="pill-select" id="statusFilter" aria-label="Filter users by status">
+            <option value="all">All statuses</option>
+            <option value="active">Active only</option>
+            <option value="inactive">Inactive only</option>
+          </select>
+          <select class="pill-select" id="roleFilter" aria-label="Filter users by role">
+            <option value="all">All roles</option>
+            <option value="SystemAdmin">SystemAdmin</option>
+            <option value="Coach">Coach</option>
+            <option value="ClubAdmin">ClubAdmin</option>
+          </select>
         </div>
-        <div class="kpi-card">
-          <div class="kpi-label">SystemAdmin</div>
-          <div class="kpi-value" id="kpiAdmin">3</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Coach</div>
-          <div class="kpi-value" id="kpiCoach">24</div>
-        </div>
-      </div>
 
-      <div class="page-actions">
-        <button class="btn btn-primary js-admin-action" id="openCreateUser">Create User</button>
-        <button class="btn btn-secondary js-admin-action" id="toggleRoleView">Switch to Coach View</button>
-        <a class="btn btn-secondary" href="./S7a-clubs.html" data-testid="open-clubs-page" data-role-visible-to="SystemAdmin">View List of Clubs</a>
-        <button class="btn btn-secondary">Export Access Report</button>
-      </div>
-
-      <div class="table-card">
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Clubs</th>
-                <th>Last Login</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="usersTableBody">
-              <tr data-name="Maria Alves" data-email="maria@vantageiq.club" data-role="SystemAdmin" data-status="active">
-                <td>Maria Alves</td>
-                <td>maria@vantageiq.club</td>
-                <td><span class="team-chip">SystemAdmin</span></td>
-                <td><span class="badge badge-improving">Active</span></td>
-                <td>Today, 08:31</td>
-                <td>
-                  <div class="inline-actions">
-                    <button class="mini-btn js-admin-action js-change-role" data-user="Maria Alves" data-role="SystemAdmin">Change Role</button>
-                    <button class="mini-btn js-admin-action js-change-password" data-user="Maria Alves">Change Password</button>
-                    <button class="mini-btn warn js-admin-action">Deactivate</button>
-                  </div>
-                </td>
-              </tr>
-              <tr data-name="Joao Lima" data-email="joao@vantageiq.club" data-role="Coach" data-status="active">
-                <td>Joao Lima</td>
-                <td>joao@vantageiq.club</td>
-                <td><span class="team-chip">Coach</span></td>
-                <td><span class="badge badge-improving">Active</span></td>
-                <td>Yesterday</td>
-                <td>
-                  <div class="inline-actions">
-                    <button class="mini-btn js-admin-action js-change-role" data-user="Joao Lima" data-role="Coach">Change Role</button>
-                    <button class="mini-btn js-admin-action js-change-password" data-user="Joao Lima">Change Password</button>
-                    <button class="mini-btn warn js-admin-action">Deactivate</button>
-                  </div>
-                </td>
-              </tr>
-              <tr data-name="Ana Costa" data-email="ana@vantageiq.club" data-role="Coach" data-status="inactive">
-                <td>Ana Costa</td>
-                <td>ana@vantageiq.club</td>
-                <td><span class="team-chip">Coach</span></td>
-                <td><span class="badge badge-declining">Inactive</span></td>
-                <td>6 days ago</td>
-                <td>
-                  <div class="inline-actions">
-                    <button class="mini-btn js-admin-action js-change-role" data-user="Ana Costa" data-role="Coach">Change Role</button>
-                    <button class="mini-btn js-admin-action js-change-password" data-user="Ana Costa">Change Password</button>
-                    <button class="mini-btn positive js-admin-action">Reactivate</button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Active Users</div>
+            <div class="kpi-value" id="kpiActive">27</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">SystemAdmin</div>
+            <div class="kpi-value" id="kpiAdmin">3</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Coach</div>
+            <div class="kpi-value" id="kpiCoach">24</div>
+          </div>
         </div>
-      </div>
 
-      <div class="notice" id="roleNotice" style="margin-top: 1rem;">
-        Only SystemAdmin can create users, assign roles, and deactivate accounts.
-      </div>
+        <div class="page-actions">
+          <button class="btn btn-primary js-admin-action" id="openCreateUser">Create User</button>
+          <button class="btn btn-secondary js-admin-action" id="toggleRoleView">Switch to Coach View</button>
+          <a class="btn btn-secondary" href="./S7a-clubs.html" data-testid="open-clubs-page" data-role-visible-to="SystemAdmin">View List of Clubs</a>
+          <button class="btn btn-secondary">Export Access Report</button>
+        </div>
+
+        <div class="table-card">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Approval</th>
+                  <th>Clubs</th>
+                  <th>Last Login</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody">
+                <tr data-name="Maria Alves" data-email="maria@vantageiq.club" data-role="SystemAdmin" data-status="active">
+                  <td>Maria Alves</td>
+                  <td>maria@vantageiq.club</td>
+                  <td><span class="team-chip">SystemAdmin</span></td>
+                  <td><span class="badge badge-improving">Active</span></td>
+                  <td>Today, 08:31</td>
+                  <td>
+                    <div class="inline-actions">
+                      <button class="mini-btn js-admin-action js-change-role" data-user="Maria Alves" data-role="SystemAdmin">Change Role</button>
+                      <button class="mini-btn js-admin-action js-change-password" data-user="Maria Alves">Change Password</button>
+                      <button class="mini-btn warn js-admin-action">Deactivate</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr data-name="Joao Lima" data-email="joao@vantageiq.club" data-role="Coach" data-status="active">
+                  <td>Joao Lima</td>
+                  <td>joao@vantageiq.club</td>
+                  <td><span class="team-chip">Coach</span></td>
+                  <td><span class="badge badge-improving">Active</span></td>
+                  <td>Yesterday</td>
+                  <td>
+                    <div class="inline-actions">
+                      <button class="mini-btn js-admin-action js-change-role" data-user="Joao Lima" data-role="Coach">Change Role</button>
+                      <button class="mini-btn js-admin-action js-change-password" data-user="Joao Lima">Change Password</button>
+                      <button class="mini-btn warn js-admin-action">Deactivate</button>
+                    </div>
+                  </td>
+                </tr>
+                <tr data-name="Ana Costa" data-email="ana@vantageiq.club" data-role="Coach" data-status="inactive">
+                  <td>Ana Costa</td>
+                  <td>ana@vantageiq.club</td>
+                  <td><span class="team-chip">Coach</span></td>
+                  <td><span class="badge badge-declining">Inactive</span></td>
+                  <td>6 days ago</td>
+                  <td>
+                    <div class="inline-actions">
+                      <button class="mini-btn js-admin-action js-change-role" data-user="Ana Costa" data-role="Coach">Change Role</button>
+                      <button class="mini-btn js-admin-action js-change-password" data-user="Ana Costa">Change Password</button>
+                      <button class="mini-btn positive js-admin-action">Reactivate</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="notice" id="roleNotice" style="margin-top: 1rem;">
+          Only SystemAdmin can create users, assign roles, and deactivate accounts.
+        </div>
+
+      </section>
+
+      <section class="s7-tabpanel" role="tabpanel" id="tabpanel-approvals" data-tab-id="approvals" aria-labelledby="tab-approvals" data-testid="tabpanel-approvals" hidden>
+        <h2>Pending approvals</h2>
+        <p class="muted-text">Approve or reject self-registered users before they can sign in to the app.</p>
+        <div class="table-card">
+          <div class="table-wrap">
+            <table class="data-table" data-testid="pending-table">
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Role</th><th>Tier</th><th>Intent</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="pendingBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <p id="pendingEmpty" data-testid="pending-empty" hidden>No pending users.</p>
+      </section>
+
+      <section class="s7-tabpanel" role="tabpanel" id="tabpanel-join-requests" data-tab-id="join-requests" aria-labelledby="tab-join-requests" data-testid="tabpanel-join-requests" hidden>
+        <h2>Join requests</h2>
+        <p class="muted-text">Approve Professional coaches requesting to join your club.</p>
+        <div class="table-card">
+          <div class="table-wrap">
+            <table class="data-table" data-testid="join-requests-table">
+              <thead>
+                <tr><th>Name</th><th>Email</th><th>Club</th><th>Team</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="joinRequestsBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <p id="joinRequestsEmpty" data-testid="join-requests-empty" hidden>No pending join requests.</p>
+      </section>
+
+      <section class="s7-tabpanel" role="tabpanel" id="tabpanel-tiers" data-tab-id="tiers" aria-labelledby="tab-tiers" data-testid="tabpanel-tiers" hidden>
+        <h2>Subscription tiers</h2>
+        <p class="muted-text">Edit quota limits. Changes apply to enforcement immediately.</p>
+        <div id="tiersEditor" data-testid="tiers-editor"></div>
+      </section>
     </div>
 
     <nav class="bottom-nav">
@@ -289,6 +338,211 @@
       }
       MockupApi.applyRoleGatedNav(sessionUser);
 
+      function switchS7Tab(tabId) {
+        const tabs = document.querySelectorAll('#s7Tabs .tab');
+        const panels = document.querySelectorAll('.s7-tabpanel');
+        tabs.forEach(function (tab) {
+          const active = tab.getAttribute('data-tab-id') === tabId;
+          tab.classList.toggle('active', active);
+          tab.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        panels.forEach(function (panel) {
+          const match = panel.getAttribute('data-tab-id') === tabId;
+          panel.hidden = !match;
+        });
+        if (tabId === 'approvals') {
+          renderPending();
+        }
+        if (tabId === 'join-requests') {
+          renderJoinRequests();
+        }
+        if (tabId === 'tiers') {
+          renderTiers();
+        }
+      }
+
+      function renderPending() {
+        const tbody = document.getElementById('pendingBody');
+        const empty = document.getElementById('pendingEmpty');
+        if (!tbody) return;
+        const response = MockupApi.listPendingUsers();
+        if (response.status >= 400) {
+          showToast(response.message || 'Could not load pending users.');
+          return;
+        }
+        tbody.innerHTML = '';
+        const rows = response.users || [];
+        empty.hidden = rows.length > 0;
+        rows.forEach(function (user) {
+          const tr = document.createElement('tr');
+          tr.setAttribute('data-testid', 'pending-row-' + user.id);
+          tr.innerHTML =
+            '<td>' + escapeHtml(user.name) + '</td>' +
+            '<td>' + escapeHtml(user.email) + '</td>' +
+            '<td>' + escapeHtml(user.role) + '</td>' +
+            '<td>' + escapeHtml(user.tierDisplayName || user.tierCode || '') + '</td>' +
+            '<td>' + escapeHtml(formatRegIntent(user)) + '</td>' +
+            '<td></td>';
+          const actions = tr.lastElementChild;
+          const approve = document.createElement('button');
+          approve.className = 'mini-btn positive';
+          approve.type = 'button';
+          approve.textContent = 'Approve';
+          approve.setAttribute('data-testid', 'approve-' + user.id);
+          approve.addEventListener('click', function () {
+            const r = MockupApi.approvePendingUser(user.id);
+            if (r.status >= 400) {
+              showToast(r.message || 'Approve failed.');
+              return;
+            }
+            showToast('Approved ' + user.email);
+            renderPending();
+            renderUsers();
+            applyFilters();
+          });
+          const reject = document.createElement('button');
+          reject.className = 'mini-btn warn';
+          reject.type = 'button';
+          reject.textContent = 'Reject';
+          reject.setAttribute('data-testid', 'reject-' + user.id);
+          reject.addEventListener('click', function () {
+            const r = MockupApi.rejectPendingUser(user.id);
+            if (r.status >= 400) {
+              showToast(r.message || 'Reject failed.');
+              return;
+            }
+            showToast('Rejected ' + user.email);
+            renderPending();
+            renderUsers();
+            applyFilters();
+          });
+          actions.appendChild(approve);
+          actions.appendChild(reject);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function formatRegIntent(user) {
+        if (!user.regIntent) return '—';
+        if (user.regIntent === 'join') {
+          return 'Join ' + (user.targetClubName || user.targetClubId || '');
+        }
+        return 'Create ' + (user.proposedClubName || '') + ' / ' + (user.proposedTeamName || '');
+      }
+
+      function renderJoinRequests() {
+        const tbody = document.getElementById('joinRequestsBody');
+        const empty = document.getElementById('joinRequestsEmpty');
+        if (!tbody) return;
+        const response = MockupApi.listJoinRequests();
+        if (response.status >= 400) {
+          showToast(response.message || 'Could not load join requests.');
+          return;
+        }
+        tbody.innerHTML = '';
+        const rows = response.requests || [];
+        empty.hidden = rows.length > 0;
+        rows.forEach(function (row) {
+          const tr = document.createElement('tr');
+          tr.setAttribute('data-testid', 'join-row-' + row.id);
+          tr.innerHTML =
+            '<td>' + escapeHtml(row.userName) + '</td>' +
+            '<td>' + escapeHtml(row.userEmail) + '</td>' +
+            '<td>' + escapeHtml(row.clubName || '') + '</td>' +
+            '<td>' + escapeHtml(row.teamName || '—') + '</td>' +
+            '<td></td>';
+          const actions = tr.lastElementChild;
+          const approve = document.createElement('button');
+          approve.className = 'mini-btn positive';
+          approve.type = 'button';
+          approve.textContent = 'Approve';
+          approve.setAttribute('data-testid', 'join-approve-' + row.id);
+          approve.addEventListener('click', function () {
+            const r = MockupApi.approveJoinRequest(row.id);
+            if (r.status >= 400) {
+              showToast(r.message || 'Approve failed.');
+              return;
+            }
+            showToast('Join approved');
+            renderJoinRequests();
+          });
+          const reject = document.createElement('button');
+          reject.className = 'mini-btn warn';
+          reject.type = 'button';
+          reject.textContent = 'Reject';
+          reject.setAttribute('data-testid', 'join-reject-' + row.id);
+          reject.addEventListener('click', function () {
+            const r = MockupApi.rejectJoinRequest(row.id);
+            if (r.status >= 400) {
+              showToast(r.message || 'Reject failed.');
+              return;
+            }
+            showToast('Join rejected');
+            renderJoinRequests();
+          });
+          actions.appendChild(approve);
+          actions.appendChild(reject);
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderTiers() {
+        const root = document.getElementById('tiersEditor');
+        if (!root) return;
+        const response = MockupApi.listSubscriptionTiersAdmin();
+        if (response.status >= 400) {
+          showToast(response.message || 'Could not load tiers.');
+          return;
+        }
+        root.innerHTML = '';
+        (response.tiers || []).forEach(function (tier) {
+          const form = document.createElement('form');
+          form.className = 'auth-form';
+          form.style.marginBottom = '1.25rem';
+          form.setAttribute('data-testid', 'tier-form-' + tier.code);
+          form.innerHTML =
+            '<h3>' + escapeHtml(tier.displayName) + ' <small>(' + escapeHtml(tier.code) + ')</small></h3>' +
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0.5rem;">' +
+            '<label class="form-label">Teams<input name="maxTeams" type="number" min="0" value="' + Number(tier.maxTeams) + '"></label>' +
+            '<label class="form-label">Coaches<input name="maxCoaches" type="number" min="0" value="' + Number(tier.maxCoaches) + '"></label>' +
+            '<label class="form-label">ClubAdmins<input name="maxClubAdmins" type="number" min="0" value="' + Number(tier.maxClubAdmins) + '"></label>' +
+            '<label class="form-label">Videos/day<input name="videosPerDay" type="number" min="0" value="' + Number(tier.videosPerDay) + '"></label>' +
+            '<label class="form-label">Max videos/team<input name="maxVideosPerTeam" type="number" min="0" value="' + Number(tier.maxVideosPerTeam) + '"></label>' +
+            '</div>' +
+            '<button class="btn btn-secondary" type="submit" data-testid="save-tier-' + escapeHtml(tier.code) + '">Save ' + escapeHtml(tier.code) + '</button>';
+          form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            const fd = new FormData(form);
+            const payload = {
+              maxTeams: Number(fd.get('maxTeams')),
+              maxCoaches: Number(fd.get('maxCoaches')),
+              maxClubAdmins: Number(fd.get('maxClubAdmins')),
+              videosPerDay: Number(fd.get('videosPerDay')),
+              maxVideosPerTeam: Number(fd.get('maxVideosPerTeam'))
+            };
+            const r = MockupApi.updateSubscriptionTier(tier.id, payload);
+            if (r.status >= 400) {
+              showToast(r.message || 'Save failed.');
+              return;
+            }
+            showToast('Saved ' + tier.code);
+            renderTiers();
+          });
+          root.appendChild(form);
+        });
+      }
+
+      const s7Tabs = document.getElementById('s7Tabs');
+      if (s7Tabs) {
+        s7Tabs.addEventListener('click', function (event) {
+          const tab = event.target.closest('.tab');
+          if (!tab || tab.hidden) return;
+          switchS7Tab(tab.getAttribute('data-tab-id'));
+        });
+      }
+      // Keep Approvals/Tiers panels closed until selected (tabs are role-gated).
+      switchS7Tab('users');
+
       const usersTableBody = document.getElementById('usersTableBody');
       const userSearch = document.getElementById('userSearch');
       const statusFilter = document.getElementById('statusFilter');
@@ -347,6 +601,7 @@
           row.setAttribute('data-email', user.email);
           row.setAttribute('data-role', user.role);
           row.setAttribute('data-status', user.status);
+          row.setAttribute('data-approval', user.approvalStatus || 'active');
           row.setAttribute('data-user-id', user.id);
           const userClubIds = Array.isArray(user.clubIds)
             ? user.clubIds.map(function (id) { return String(id); })
@@ -365,11 +620,19 @@
                 : '<span class="muted-text">—</span>') +
               ' <button class="mini-btn js-admin-action js-assign-club" data-user-id="' + user.id + '" data-user-name="' + escapeHtml(user.name) + '" data-email="' + user.email + '">Assign</button>' +
             '</td>';
+          const approval = String(user.approvalStatus || 'active');
+          const approvalBadge =
+            approval === 'active'
+              ? '<span class="badge badge-improving" data-testid="approval-active">Approved</span>'
+              : approval === 'pending'
+                ? '<span class="badge badge-declining" data-testid="approval-pending">Pending</span>'
+                : '<span class="badge badge-declining" data-testid="approval-rejected">Rejected</span>';
           row.innerHTML =
             '<td>' + escapeHtml(user.name) + '</td>' +
             '<td>' + escapeHtml(user.email) + '</td>' +
             '<td><span class="team-chip">' + escapeHtml(user.role) + '</span></td>' +
             '<td><span class="badge ' + (user.status === 'active' ? 'badge-improving' : 'badge-declining') + '">' + (user.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
+            '<td>' + approvalBadge + '</td>' +
             clubsCell +
             '<td>' + escapeHtml(user.lastLogin || 'Unknown') + '</td>' +
             '<td><div class="inline-actions">' +

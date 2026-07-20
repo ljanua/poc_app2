@@ -69,10 +69,20 @@ Plan `docs/plans/2026-07-17-005-fix-users-bottom-nav-all-screens-plan.md` was **
 | 5 | `029_games_and_game_performance.sql` | `games`, `game_substitutions`, `game_performance` |
 | 6 | `030_sports_duration_players.sql` | `sports.duration_minutes`, `sports.number_of_players` |
 | 7 | `031_clubs_default_sport.sql` | `clubs.default_sport_id` |
+| 8 | `032_clubs_is_free_tier.sql` | `clubs.is_free_tier` (+ partial index) for public free signup |
+| 9 | `033_subscription_tiers_and_approval.sql` | `subscription_tiers`, user `approval_status` + `subscription_tier_id`, `user_oauth_identities`, `auth_handoff_codes` |
 
 Skip any row already verified present on production. Apply remaining files **in the order above**.
 
 Later releases: append new `NNN_*.sql` rows to this table (or a dated subsection) when they ship.
+
+### This run focus (2026-07-18 public landing)
+
+If 025–031 are already on prod, the only new gap for free-tier signup is:
+
+| Order | File | What it adds |
+|------:|------|----------------|
+| 1 | `032_clubs_is_free_tier.sql` | `clubs.is_free_tier BOOLEAN NOT NULL DEFAULT FALSE` and `idx_clubs_is_free_tier` |
 
 ---
 
@@ -133,6 +143,24 @@ WHERE table_schema = 'public'
   AND column_name = 'default_sport_id';
 ```
 
+### 032 — club free tier (public landing signup)
+
+```sql
+SELECT column_name, data_type, column_default, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'clubs'
+  AND column_name = 'is_free_tier';
+
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename = 'clubs'
+  AND indexname = 'idx_clubs_is_free_tier';
+```
+
+Expect `is_free_tier` present (boolean, default false) and the partial index name above.
+
 ### 027 — link ingest (if in scope)
 
 ```sql
@@ -167,11 +195,12 @@ Expect the definition to include `ClubAdmin`.
 From repo root, **after loading `.env_prod`** (section above):
 
 ```powershell
-# PowerShell
+# PowerShell — apply only missing files; example includes latest free-tier migration
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/028_player_skill_ratings_history.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/029_games_and_game_performance.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/030_sports_duration_players.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/031_clubs_default_sport.sql
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
 ```
 
 ```bash
@@ -180,9 +209,14 @@ psql "$DATABASE_URL" -f apps/api/src/db/migrations/028_player_skill_ratings_hist
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/029_games_and_game_performance.sql
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/030_sports_duration_players.sql
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/031_clubs_default_sport.sql
+psql "$DATABASE_URL" -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
 ```
 
-Adjust the file list to your gap list; always keep **numeric order**.
+Adjust the file list to your gap list; always keep **numeric order**. For a prod DB already through **031**, apply only:
+
+```powershell
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
+```
 
 - [ ] `.env_prod` was loaded into this shell before any `psql`.
 - [ ] Each `psql -f` exited 0 (or equivalent Node `client.query` succeeded).
@@ -230,6 +264,9 @@ Log in as the roles you care about; check only features this release touches.
 | Area | Check |
 |------|--------|
 | Auth / club session | Multi-club user sees club select; header shows active club |
+| Public landing | `/` shows dual-door marketing page; `/mockup` still hub |
+| Free signup | Coach door → create account → `ClubAdmin` + personal club; `clubs.is_free_tier = true` |
+| Free-tier caps | First team OK; second team / extra coach blocked |
 | S9 Assessment history | Open a player assessment path; history loads without 500 |
 | S10 Games | List/create fixture; open Game Sheet; ratings persist after reopen |
 | S8 Skills | Sport filter / club default sport behave as expected |

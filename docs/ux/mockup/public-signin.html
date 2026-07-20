@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — VantagIQ</title>
+  <link rel="stylesheet" href="./style/site.css">
+</head>
+<body class="public-landing">
+  <section class="landing-hero">
+    <div class="landing-hero-inner">
+      <div class="landing-brand">
+        <img class="brand-logo landing-logo" src="/data/img/VantagIQ_transp_300_2.png" alt="VantageIQ">
+        <span class="landing-wordmark">VantagIQ</span>
+      </div>
+      <h1>Sign in</h1>
+      <form class="auth-form" id="signinForm" data-testid="public-signin-form">
+        <div>
+          <label class="form-label" for="signinAuthMethod">Sign-in method</label>
+          <select id="signinAuthMethod" data-testid="signin-auth-method" required>
+            <option value="password">Email / password</option>
+            <option value="google">Google</option>
+            <option value="apple">Apple</option>
+            <option value="facebook">Facebook</option>
+          </select>
+        </div>
+        <div id="passwordFields" data-testid="password-fields">
+          <div>
+            <label class="form-label" for="signinEmail">Email</label>
+            <input id="signinEmail" data-testid="signin-email" type="email" autocomplete="email">
+          </div>
+          <div>
+            <label class="form-label" for="signinPassword">Password</label>
+            <input id="signinPassword" data-testid="signin-password" type="password" autocomplete="current-password">
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit" data-testid="signin-submit">Continue</button>
+      </form>
+      <p class="error-msg" id="signinError" data-testid="signin-error"></p>
+      <p class="landing-signin-row"><a href="/" data-testid="signin-back-home">Back to home</a></p>
+    </div>
+  </section>
+  <script>
+    (function () {
+      const form = document.getElementById('signinForm');
+      const errorEl = document.getElementById('signinError');
+      const authMethod = document.getElementById('signinAuthMethod');
+      const passwordFields = document.getElementById('passwordFields');
+
+      function syncAuthMethod() {
+        const isPassword = authMethod.value === 'password';
+        passwordFields.hidden = !isPassword;
+        document.getElementById('signinEmail').required = isPassword;
+        document.getElementById('signinPassword').required = isPassword;
+      }
+
+      authMethod.addEventListener('change', syncAuthMethod);
+      syncAuthMethod();
+
+      form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        errorEl.classList.remove('show');
+        errorEl.textContent = '';
+        const method = authMethod.value;
+
+        try {
+          if (method !== 'password') {
+            const start = await fetch('/api/v1/auth/oauth/start', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ provider: method, mode: 'login' })
+            });
+            const startBody = await start.json();
+            if (!start.ok || !startBody.data || !startBody.data.authorizeUrl) {
+              errorEl.textContent = (startBody && startBody.message) || 'Could not start OAuth sign-in.';
+              errorEl.classList.add('show');
+              return;
+            }
+            window.location.href = startBody.data.authorizeUrl;
+            return;
+          }
+
+          const email = document.getElementById('signinEmail').value;
+          const password = document.getElementById('signinPassword').value;
+          const res = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            if (body.code === 'pending_approval' && body.pendingUrl) {
+              window.location.href = body.pendingUrl;
+              return;
+            }
+            errorEl.textContent = body.message || 'Sign in failed.';
+            errorEl.classList.add('show');
+            return;
+          }
+          if (body.appHandoffUrl) {
+            window.location.href = body.appHandoffUrl;
+            return;
+          }
+          errorEl.textContent = 'Signed in, but no app handoff URL was returned.';
+          errorEl.classList.add('show');
+        } catch (err) {
+          errorEl.textContent = 'Could not reach the server.';
+          errorEl.classList.add('show');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

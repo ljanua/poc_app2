@@ -17,11 +17,33 @@ const { logEvent, getLogPath } = require('./logging/structured-logger');
 const { generateShareToken, hashShareToken } = require('./share-token');
 const { suggestSkillAbbreviation, normalizeSkillAbbreviation, validateSkillAbbreviation } = require('./skills/suggest-abbreviation');
 const crypto = require('node:crypto');
+const {
+  ensureSubscriptionSchema,
+  createPendingRegistration,
+  consumeHandoffCode,
+  approveSystemAdminRegistration,
+  rejectSystemAdminRegistration,
+  getMembershipGate,
+  listPendingJoinRequestsForActor,
+  approveClubJoinRequest,
+  rejectClubJoinRequest,
+  createClubRecovery
+} = require('./auth/registration');
+const { verifyPassword } = require('./auth/passwords');
+const { issueAccessToken } = require('./auth/jwt');
+const {
+  assertTierAllowsNewTeam,
+  assertTierAllowsNewMember,
+  assertTierAllowsNewVideo,
+  resolveTeamIdForPlayer,
+  getTierForUser
+} = require('./tiers/quota');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
 
 const host = process.env.MOCKUP_HOST || '0.0.0.0';
 const port = Number(process.env.MOCKUP_PORT || 5500);
+const publicOrigin = (process.env.PUBLIC_ORIGIN || 'http://127.0.0.1:5501').replace(/\/$/, '');
 const root = path.join(process.cwd(), 'docs', 'ux', 'mockup');
 const dataImgRoot = path.join(process.cwd(), 'data', 'img');
 const apiPrefix = '/api/v1';
@@ -739,6 +761,9 @@ function toUserPayload(row) {
     email: row.email,
     role: row.role,
     status: row.status,
+    approvalStatus: row.approvalStatus || row.approval_status || null,
+    subscriptionTierId: row.subscriptionTierId || row.subscription_tier_id || null,
+    tierCode: row.tierCode || null,
     lastLogin: row.lastLogin || row.last_login_label || row.lastLoginLabel || null,
     password: row.password || row.password_hash || row.passwordHash || '',
     clubIds: Array.isArray(row.clubIds) ? row.clubIds : []
@@ -1350,47 +1375,9 @@ function appError(status, code, message) {
   return { status, code, message };
 }
 
-async function getClubFreeTierFlag(clubId) {
-  const row = await pool.query(
-    `SELECT is_free_tier AS "isFreeTier" FROM clubs WHERE id = $1 LIMIT 1`,
-    [clubId]
-  );
-  return row.rows[0] || null;
-}
-
-async function assertFreeTierAllowsNewTeam(clubId) {
-  const club = await getClubFreeTierFlag(clubId);
-  if (!club || !club.isFreeTier) {
-    return { ok: true };
-  }
-  const count = await pool.query(`SELECT COUNT(*)::int AS n FROM teams WHERE club_id = $1`, [clubId]);
-  if ((count.rows[0] && count.rows[0].n) >= 1) {
-    return {
-      ok: false,
-      error: appError(403, 'free_tier_limit', 'Free tier allows only 1 team. Upgrade to add more teams.')
-    };
-  }
-  return { ok: true };
-}
-
-async function assertFreeTierAllowsNewMember(clubId) {
-  const club = await getClubFreeTierFlag(clubId);
-  if (!club || !club.isFreeTier) {
-    return { ok: true };
-  }
-  const count = await pool.query(`SELECT COUNT(*)::int AS n FROM coach_clubs WHERE club_id = $1`, [clubId]);
-  if ((count.rows[0] && count.rows[0].n) >= 1) {
-    return {
-      ok: false,
-      error: appError(403, 'free_tier_limit', 'Free tier allows only 1 coach (your own account). Upgrade to add more coaches.')
-    };
-  }
-  return { ok: true };
-}
-
 function resolveTarget(urlPath) {
   if (urlPath === '/' || urlPath === '') {
-    return path.join(root, 'public-home.html');
+    return path.join(root, 'mockup-hub.html');
   }
 
   if (urlPath === '/mockup' || urlPath === '/mockup/') {
@@ -1812,6 +1799,9 @@ async function ensureDatabase() {
       ON clubs(is_free_tier)
       WHERE is_free_tier = TRUE
   `);
+
+  // Migration 033: subscription tiers, approval, OAuth, handoff codes.
+  await ensureSubscriptionSchema(pool);
 
   // Feature 037: skill abbreviation (additive; skills table comes from migrations/deploy).
   try {
@@ -2661,7 +2651,12 @@ async function handlePlayersApi(req, res, requestUrl) {
   console.log('API request', req.method, logPath);
 
   const mutatingMethods = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
-  if (mutatingMethods.has(req.method) && requestUrl.pathname !== `${apiPrefix}/auth/login` && requestUrl.pathname !== `${apiPrefix}/auth/register`) {
+  const openMutatingPaths = new Set([
+    `${apiPrefix}/auth/login`,
+    `${apiPrefix}/auth/register`,
+    `${apiPrefix}/auth/handoff/exchange`
+  ]);
+  if (mutatingMethods.has(req.method) && !openMutatingPaths.has(requestUrl.pathname)) {
     const queryActorEmail = String(requestUrl.searchParams.get('actorEmail') || '').trim();
     const queryUserId = queryActorEmail ? await resolveUserIdByEmail(queryActorEmail) : null;
     logStructured(`api.${req.method.toLowerCase()}${requestUrl.pathname}`, queryUserId, {
@@ -3524,9 +3519,9 @@ async function handlePlayersApi(req, res, requestUrl) {
     );
     const alreadyMember = existing.rows.length > 0;
     if (!alreadyMember) {
-      const freeMemberOk = await assertFreeTierAllowsNewMember(clubId);
-      if (!freeMemberOk.ok) {
-        sendJson(res, freeMemberOk.error.status, freeMemberOk.error);
+      const memberOk = await assertTierAllowsNewMember(pool, clubId, user.rows[0].role);
+      if (!memberOk.ok) {
+        sendJson(res, memberOk.error.status, memberOk.error);
         return;
       }
       await pool.query(
@@ -3677,9 +3672,9 @@ async function handlePlayersApi(req, res, requestUrl) {
       }
     }
 
-    const freeTeamOk = await assertFreeTierAllowsNewTeam(clubId);
-    if (!freeTeamOk.ok) {
-      sendJson(res, freeTeamOk.error.status, freeTeamOk.error);
+    const teamOk = await assertTierAllowsNewTeam(pool, clubId);
+    if (!teamOk.ok) {
+      sendJson(res, teamOk.error.status, teamOk.error);
       return;
     }
 
@@ -4025,6 +4020,8 @@ async function handlePlayersApi(req, res, requestUrl) {
         email,
         role,
         status,
+        approval_status AS "approvalStatus",
+        subscription_tier_id AS "subscriptionTierId",
         password_hash AS "passwordHash",
         last_login_label AS "lastLogin",
         COALESCE(
@@ -4096,17 +4093,20 @@ async function handlePlayersApi(req, res, requestUrl) {
         sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
         return;
       }
-      const freeMemberOk = await assertFreeTierAllowsNewMember(clubId);
-      if (!freeMemberOk.ok) {
-        sendJson(res, freeMemberOk.error.status, freeMemberOk.error);
+      const memberOk = await assertTierAllowsNewMember(pool, clubId, role);
+      if (!memberOk.ok) {
+        sendJson(res, memberOk.error.status, memberOk.error);
         return;
       }
     }
 
     const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     await pool.query(`
-      INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
-      VALUES ($1, $2, $3, $4, 'active', $5, 'Just now')
+      INSERT INTO users (id, name, email, role, status, password_hash, last_login_label, approval_status, subscription_tier_id)
+      VALUES (
+        $1, $2, $3, $4, 'active', $5, 'Just now', 'active',
+        (SELECT id FROM subscription_tiers WHERE code = 'free' LIMIT 1)
+      )
     `, [userId, name, email, role, password]);
 
     if (clubId) {
@@ -4249,8 +4249,279 @@ async function handlePlayersApi(req, res, requestUrl) {
       return;
     }
 
-    const updated = await pool.query(`UPDATE users SET status = 'active', updated_at = NOW() WHERE LOWER(email) = LOWER($1) RETURNING id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"`, [email]);
+    const updated = await pool.query(
+      `UPDATE users
+       SET status = 'active',
+           approval_status = CASE
+             WHEN $2::boolean THEN 'active'
+             ELSE approval_status
+           END,
+           updated_at = NOW()
+       WHERE LOWER(email) = LOWER($1)
+       RETURNING id, name, email, role, status,
+                 approval_status AS "approvalStatus",
+                 subscription_tier_id AS "subscriptionTierId",
+                 password_hash AS "passwordHash",
+                 last_login_label AS "lastLogin"`,
+      [email, Boolean(isSystemAdmin)]
+    );
     sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  async function requireSystemAdminFromRequest(req, requestUrl, payload) {
+    const actorEmail = String(
+      (payload && payload.actorEmail) ||
+      requestUrl.searchParams.get('actorEmail') ||
+      req.headers['x-actor-email'] ||
+      ''
+    ).trim().toLowerCase();
+    const { actor, isSystemAdmin } = await resolveUserAdminActor({ actorEmail });
+    if (!actor || !isSystemAdmin) {
+      return { ok: false, error: appError(403, 'forbidden', 'You do not have permission to perform this action.') };
+    }
+    return { ok: true, actor };
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/admin/pending-users`) {
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, null);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const rows = await pool.query(
+      `
+        SELECT u.id, u.name, u.email, u.role, u.status,
+               u.approval_status AS "approvalStatus",
+               u.created_at AS "createdAt",
+               st.code AS "tierCode",
+               st.display_name AS "tierDisplayName",
+               ri.intent AS "regIntent",
+               ri.status AS "regIntentStatus",
+               ri.proposed_club_name AS "proposedClubName",
+               ri.proposed_team_name AS "proposedTeamName",
+               ri.target_club_id AS "targetClubId",
+               c.name AS "targetClubName"
+        FROM users u
+        LEFT JOIN subscription_tiers st ON st.id = u.subscription_tier_id
+        LEFT JOIN LATERAL (
+          SELECT *
+          FROM registration_intents
+          WHERE user_id = u.id
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) ri ON TRUE
+        LEFT JOIN clubs c ON c.id = ri.target_club_id
+        WHERE u.approval_status = 'pending'
+        ORDER BY u.created_at ASC
+      `
+    );
+    sendJson(res, 200, { data: rows.rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/users/[^/]+/approve$`))) {
+    const payload = await readJsonBody(req);
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, payload);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const userId = requestUrl.pathname.split('/').slice(-2)[0];
+    const result = await approveSystemAdminRegistration(pool, userId);
+    if (!result.ok) {
+      sendJson(res, result.error.status, result.error);
+      return;
+    }
+    const updated = await pool.query(
+      `
+        SELECT id, name, email, role, status,
+               approval_status AS "approvalStatus",
+               subscription_tier_id AS "subscriptionTierId",
+               password_hash AS "passwordHash",
+               last_login_label AS "lastLogin"
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [userId]
+    );
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]), materialize: result });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/users/[^/]+/reject$`))) {
+    const payload = await readJsonBody(req);
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, payload);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const userId = requestUrl.pathname.split('/').slice(-2)[0];
+    const result = await rejectSystemAdminRegistration(pool, userId);
+    if (!result.ok) {
+      sendJson(res, result.error.status, result.error);
+      return;
+    }
+    const updated = await pool.query(
+      `
+        SELECT id, name, email, role, status,
+               approval_status AS "approvalStatus",
+               subscription_tier_id AS "subscriptionTierId",
+               password_hash AS "passwordHash",
+               last_login_label AS "lastLogin"
+        FROM users WHERE id = $1 LIMIT 1
+      `,
+      [userId]
+    );
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/admin/join-requests`) {
+    const actorEmail = String(
+      requestUrl.searchParams.get('actorEmail') || req.headers['x-actor-email'] || ''
+    ).trim().toLowerCase();
+    const actorRes = await pool.query(
+      `SELECT id, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [actorEmail]
+    );
+    const actor = actorRes.rows[0];
+    if (!actor || actor.status !== 'active' || (actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const rows = await listPendingJoinRequestsForActor(pool, actor);
+    sendJson(res, 200, { data: rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/join-requests/[^/]+/approve$`))) {
+    const payload = await readJsonBody(req);
+    const actorEmail = String(payload.actorEmail || req.headers['x-actor-email'] || '').trim().toLowerCase();
+    const actorRes = await pool.query(
+      `SELECT id, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [actorEmail]
+    );
+    const actor = actorRes.rows[0];
+    if (!actor || actor.status !== 'active' || (actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const intentId = requestUrl.pathname.split('/').slice(-2)[0];
+    const result = await approveClubJoinRequest(pool, intentId, actor);
+    if (!result.ok) {
+      sendJson(res, result.error.status, result.error);
+      return;
+    }
+    sendJson(res, 200, { data: { ok: true } });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/join-requests/[^/]+/reject$`))) {
+    const payload = await readJsonBody(req);
+    const actorEmail = String(payload.actorEmail || req.headers['x-actor-email'] || '').trim().toLowerCase();
+    const actorRes = await pool.query(
+      `SELECT id, email, role, status FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [actorEmail]
+    );
+    const actor = actorRes.rows[0];
+    if (!actor || actor.status !== 'active' || (actor.role !== 'ClubAdmin' && actor.role !== 'SystemAdmin')) {
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
+    const intentId = requestUrl.pathname.split('/').slice(-2)[0];
+    const result = await rejectClubJoinRequest(pool, intentId, actor);
+    if (!result.ok) {
+      sendJson(res, result.error.status, result.error);
+      return;
+    }
+    sendJson(res, 200, { data: { ok: true } });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/auth/create-club-recovery`) {
+    const payload = await readJsonBody(req);
+    const email = String(payload.email || payload.actorEmail || '').trim().toLowerCase();
+    const userRes = await pool.query(
+      `SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
+    if (!userRes.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'User not found.'));
+      return;
+    }
+    const result = await createClubRecovery(pool, userRes.rows[0].id, {
+      clubName: payload.clubName,
+      teamName: payload.teamName
+    });
+    if (!result.ok) {
+      sendJson(res, result.error.status, result.error);
+      return;
+    }
+    sendJson(res, 200, { data: result });
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.pathname === `${apiPrefix}/admin/subscription-tiers`) {
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, null);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const rows = await pool.query(
+      `
+        SELECT id, code, display_name AS "displayName",
+               max_teams AS "maxTeams", max_coaches AS "maxCoaches",
+               max_club_admins AS "maxClubAdmins", videos_per_day AS "videosPerDay",
+               max_videos_per_team AS "maxVideosPerTeam", active, sort_order AS "sortOrder"
+        FROM subscription_tiers
+        ORDER BY sort_order ASC, code ASC
+      `
+    );
+    sendJson(res, 200, { data: rows.rows });
+    return;
+  }
+
+  if (req.method === 'PUT' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/subscription-tiers/[^/]+$`))) {
+    const payload = await readJsonBody(req);
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, payload);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const tierId = requestUrl.pathname.split('/').pop();
+    const maxTeams = Number(payload.maxTeams);
+    const maxCoaches = Number(payload.maxCoaches);
+    const maxClubAdmins = Number(payload.maxClubAdmins);
+    const videosPerDay = Number(payload.videosPerDay);
+    const maxVideosPerTeam = Number(payload.maxVideosPerTeam);
+    if ([maxTeams, maxCoaches, maxClubAdmins, videosPerDay, maxVideosPerTeam].some((n) => !Number.isFinite(n) || n < 0 || n > 10000)) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Quota values must be numbers between 0 and 10000.'));
+      return;
+    }
+    const displayName = String(payload.displayName || '').trim();
+    const updated = await pool.query(
+      `
+        UPDATE subscription_tiers
+        SET display_name = COALESCE(NULLIF($2, ''), display_name),
+            max_teams = $3,
+            max_coaches = $4,
+            max_club_admins = $5,
+            videos_per_day = $6,
+            max_videos_per_team = $7,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, code, display_name AS "displayName",
+                  max_teams AS "maxTeams", max_coaches AS "maxCoaches",
+                  max_club_admins AS "maxClubAdmins", videos_per_day AS "videosPerDay",
+                  max_videos_per_team AS "maxVideosPerTeam", active, sort_order AS "sortOrder"
+      `,
+      [tierId, displayName, maxTeams, maxCoaches, maxClubAdmins, videosPerDay, maxVideosPerTeam]
+    );
+    if (!updated.rows[0]) {
+      sendJson(res, 404, appError(404, 'not_found', 'Tier not found.'));
+      return;
+    }
+    sendJson(res, 200, { data: updated.rows[0] });
     return;
   }
 
@@ -4258,93 +4529,144 @@ async function handlePlayersApi(req, res, requestUrl) {
     const payload = await readJsonBody(req);
     const email = String(payload.email || '').trim().toLowerCase();
     const password = String(payload.password || '').trim();
-    const row = await pool.query(`SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin" FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
+    const row = await pool.query(
+      `SELECT id, name, email, role, status,
+              approval_status AS "approvalStatus",
+              subscription_tier_id AS "subscriptionTierId",
+              password_hash AS "passwordHash",
+              last_login_label AS "lastLogin"
+       FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      [email]
+    );
 
-    if (!row.rows[0] || row.rows[0].status !== 'active' || row.rows[0].passwordHash !== password) {
-      logStructured('auth.login.failure', row.rows[0] ? row.rows[0].id : null, {
+    const userRow = row.rows[0];
+    const passwordOk = userRow ? await verifyPassword(password, userRow.passwordHash) : false;
+    if (!userRow || !passwordOk) {
+      logStructured('auth.login.failure', userRow ? userRow.id : null, {
         email: email || null,
         reason: 'invalid_credentials_or_inactive'
       });
       sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
       return;
     }
+    if (userRow.approvalStatus === 'pending') {
+      sendJson(res, 403, {
+        status: 403,
+        code: 'pending_approval',
+        message: 'Your account is awaiting SystemAdmin approval.'
+      });
+      return;
+    }
+    if (userRow.approvalStatus !== 'active' || userRow.status !== 'active') {
+      logStructured('auth.login.failure', userRow.id, {
+        email: email || null,
+        reason: 'inactive_or_rejected'
+      });
+      sendJson(res, 403, appError(403, 'forbidden', 'You do not have permission to perform this action.'));
+      return;
+    }
 
-    await pool.query(`UPDATE users SET last_login_label = $1, updated_at = NOW() WHERE id = $2`, ['Just now', row.rows[0].id]);
-    const user = toUserPayload({ ...row.rows[0], lastLogin: 'Just now' });
+    const membership = await getMembershipGate(pool, userRow.id);
+    if (!membership.ok) {
+      sendJson(res, 403, {
+        status: 403,
+        code: membership.code,
+        message: membership.message
+      });
+      return;
+    }
+
+    await pool.query(`UPDATE users SET last_login_label = $1, updated_at = NOW() WHERE id = $2`, ['Just now', userRow.id]);
+    const tier = await getTierForUser(pool, userRow.id);
+    const user = toUserPayload({
+      ...userRow,
+      lastLogin: 'Just now',
+      tierCode: tier && tier.code,
+      clubIds: membership.clubIds || []
+    });
+    const token = issueAccessToken(userRow, tier);
     logStructured('auth.login.success', user.id, { email: user.email, role: user.role });
-    sendJson(res, 200, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
+    sendJson(res, 200, { token, role: user.role, user });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/auth/handoff/exchange`) {
+    const payload = await readJsonBody(req);
+    const userId = await consumeHandoffCode(pool, payload.code);
+    if (!userId) {
+      sendJson(res, 403, appError(403, 'forbidden', 'Invalid or expired handoff code.'));
+      return;
+    }
+    const row = await pool.query(
+      `SELECT id, name, email, role, status,
+              approval_status AS "approvalStatus",
+              subscription_tier_id AS "subscriptionTierId",
+              password_hash AS "passwordHash",
+              last_login_label AS "lastLogin"
+       FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    const userRow = row.rows[0];
+    if (!userRow || userRow.approvalStatus !== 'active' || userRow.status !== 'active') {
+      sendJson(res, 403, appError(403, 'forbidden', 'Account is not approved for app access.'));
+      return;
+    }
+    const membership = await getMembershipGate(pool, userRow.id);
+    if (!membership.ok) {
+      sendJson(res, 403, {
+        status: 403,
+        code: membership.code,
+        message: membership.message
+      });
+      return;
+    }
+    const tier = await getTierForUser(pool, userRow.id);
+    const user = toUserPayload({
+      ...userRow,
+      tierCode: tier && tier.code,
+      clubIds: membership.clubIds || []
+    });
+    const token = issueAccessToken(userRow, tier);
+    sendJson(res, 200, { token, role: user.role, user });
     return;
   }
 
   if (req.method === 'POST' && requestUrl.pathname === `${apiPrefix}/auth/register`) {
     const payload = await readJsonBody(req);
-    const email = String(payload.email || '').trim().toLowerCase();
-    const name = normalizeLookup(payload.name);
-    const password = String(payload.password || '').trim();
-    const hasNumber = /\d/.test(password);
-
-    if (!name || name.length < 2 || !email.includes('@') || password.length < 10 || !hasNumber) {
-      sendJson(res, 400, appError(400, 'validation_error', 'Please review the form fields and try again.'));
-      return;
-    }
-
-    const existing = await pool.query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [email]);
-    if (existing.rows[0]) {
-      sendJson(res, 409, appError(409, 'conflict', 'A user with the same identifier already exists.'));
-      return;
-    }
-
-    const baseClubName = `${name}'s Club`.slice(0, 60);
-    let clubName = baseClubName;
-    let suffix = 0;
-    while (true) {
-      const clash = await pool.query(`SELECT id FROM clubs WHERE LOWER(name) = LOWER($1) LIMIT 1`, [clubName]);
-      if (!clash.rows[0]) {
-        break;
-      }
-      suffix += 1;
-      const tag = ` ${suffix}`;
-      clubName = `${baseClubName.slice(0, Math.max(2, 60 - tag.length))}${tag}`;
-    }
-
-    const userId = `u_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-    const clubId = `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1000)}`;
-
-    await pool.query('BEGIN');
     try {
-      await pool.query(`
-        INSERT INTO users (id, name, email, role, status, password_hash, last_login_label)
-        VALUES ($1, $2, $3, 'ClubAdmin', 'active', $4, 'Just now')
-      `, [userId, name, email, password]);
-
-      await pool.query(
-        `INSERT INTO clubs (id, name, status, default_sport_id, is_free_tier)
-         VALUES ($1, $2, 'active', 'sport_soccer', TRUE)`,
-        [clubId, clubName]
-      );
-
-      await pool.query(
-        `INSERT INTO coach_clubs (user_id, club_id) VALUES ($1, $2)`,
-        [userId, clubId]
-      );
-
-      await pool.query('COMMIT');
+      const result = await createPendingRegistration(pool, {
+        name: payload.name,
+        email: payload.email,
+        password: payload.password,
+        tierCode: payload.tierCode || payload.tier || 'free',
+        intent: payload.intent,
+        clubName: payload.clubName,
+        teamName: payload.teamName,
+        targetClubId: payload.targetClubId,
+        targetTeamId: payload.targetTeamId
+      });
+      if (!result.ok) {
+        sendJson(res, result.error.status, result.error);
+        return;
+      }
+      logStructured('auth.register.pending', result.user.id, {
+        email: result.user.email,
+        role: result.user.role,
+        tierCode: result.tier.code,
+        intent: result.intent && result.intent.intent
+      });
+      sendJson(res, 201, {
+        status: 201,
+        pendingApproval: true,
+        message: 'Your account is awaiting SystemAdmin approval.',
+        user: toUserPayload(result.user),
+        intent: result.intent || null,
+        pendingUrl: `${publicOrigin}/pending`
+      });
     } catch (error) {
-      await pool.query('ROLLBACK');
       console.error('auth.register failed', error);
       sendJson(res, 500, appError(500, 'unknown', 'Could not create your free account. Please try again.'));
-      return;
     }
-
-    const created = await pool.query(
-      `SELECT id, name, email, role, status, password_hash AS "passwordHash", last_login_label AS "lastLogin"
-       FROM users WHERE id = $1 LIMIT 1`,
-      [userId]
-    );
-    const user = toUserPayload(created.rows[0]);
-    user.clubIds = [clubId];
-    logStructured('auth.register.success', user.id, { email: user.email, role: user.role, clubId });
-    sendJson(res, 201, { token: 'jwt-' + user.role.toLowerCase(), role: user.role, user });
     return;
   }
 
@@ -4538,7 +4860,11 @@ async function handlePlayersApi(req, res, requestUrl) {
     if (contentType.includes('multipart/form-data')) {
       const uploadResult = await createClipUpload(pool, req, {
         normalizeLookup,
-        appError
+        appError,
+        assertNewVideoAllowed: async (playerId) => {
+          const teamId = await resolveTeamIdForPlayer(pool, playerId);
+          return assertTierAllowsNewVideo(pool, teamId);
+        }
       });
       sendJson(res, uploadResult.status, uploadResult.body);
       return;
@@ -4557,6 +4883,13 @@ async function handlePlayersApi(req, res, requestUrl) {
     const player = await pool.query(`SELECT id FROM players WHERE LOWER(name) = LOWER($1) LIMIT 1`, [playerName]);
     if (!player.rows[0]) {
       sendJson(res, 404, appError(404, 'not_found', 'The selected player was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const teamId = await resolveTeamIdForPlayer(pool, player.rows[0].id);
+    const videoOk = await assertTierAllowsNewVideo(pool, teamId);
+    if (!videoOk.ok) {
+      sendJson(res, videoOk.error.status, videoOk.error);
       return;
     }
 
@@ -6368,6 +6701,11 @@ if (!fs.existsSync(root)) {
 const server = http.createServer(async (req, res) => {
   try {
     const requestUrl = new URL(req.url || '/', `http://${host}:${port}`);
+    if (requestUrl.pathname === '/' || requestUrl.pathname === '') {
+      res.writeHead(302, { Location: publicOrigin + '/' });
+      res.end();
+      return;
+    }
     if (requestUrl.pathname.startsWith(apiPrefix)) {
       await handlePlayersApi(req, res, requestUrl);
       return;

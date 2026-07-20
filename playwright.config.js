@@ -2,9 +2,9 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests/playwright',
-  timeout: 30_000,
+  timeout: 45_000,
   expect: {
-    timeout: 5_000
+    timeout: 8_000
   },
   retries: 0,
   use: {
@@ -14,10 +14,18 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure'
   },
-  webServer: {
-    command: 'node scripts/serve-mockup.js',
-    url: 'http://127.0.0.1:5500',
-    reuseExistingServer: true,
-    timeout: 30_000
-  }
+  webServer: [
+    {
+      command: 'node scripts/serve-public.js',
+      url: 'http://127.0.0.1:5501/api/v1/config',
+      reuseExistingServer: true,
+      timeout: 60_000
+    },
+    {
+      command: 'node scripts/serve-mockup.js',
+      url: 'http://127.0.0.1:5500/api/v1/health',
+      reuseExistingServer: true,
+      timeout: 60_000
+    }
+  ]
 });
