@@ -79,4 +79,45 @@ test.describe('S7 Approvals & Tiers (SystemAdmin)', () => {
     await expect(page.getByTestId('tabpanel-approvals')).toBeHidden();
     await expect(page.getByTestId('tabpanel-tiers')).toBeHidden();
   });
+
+  test('AE4: ClubAdmin sees Subscription column but cannot change subscription', async ({ page, request }) => {
+    const denied = await request.post(APP + '/api/v1/admin/users/u_coach_joao/subscription', {
+      headers: { 'X-Actor-Email': CLUB_ADMIN_EMAIL, 'Content-Type': 'application/json' },
+      data: { actorEmail: CLUB_ADMIN_EMAIL, tierCode: 'professional' }
+    });
+    expect(denied.status()).toBe(403);
+
+    await loginAs(page, CLUB_ADMIN_EMAIL);
+    await page.goto(APP + '/S7-admin-user-management.html');
+    await expect(page.getByTestId('subscription-column-header')).toBeVisible();
+    await expect(page.getByTestId('subscription-cell').first()).toBeVisible();
+    await expect(page.getByTestId('change-subscription')).toHaveCount(0);
+  });
+
+  test('AE5: pending registrant appears on Approvals but not on Users', async ({ page, request }) => {
+    const stamp = Date.now();
+    const email = `s7.users.hide.${stamp}@example.com`;
+    const register = await request.post(PUBLIC + '/api/v1/auth/register', {
+      data: {
+        name: `S7 Hide ${stamp}`,
+        email,
+        password: 'SecurePass123',
+        tierCode: 'free',
+        intent: 'create',
+        teamName: `S7 Hide Team ${stamp}`,
+        clubName: `S7 Hide Club ${stamp}`
+      }
+    });
+    expect(register.status()).toBe(201);
+    const registered = await register.json();
+    const userId = registered.user && registered.user.id;
+    expect(userId).toBeTruthy();
+
+    await loginAs(page, ADMIN_EMAIL);
+    await page.goto(APP + '/S7-admin-user-management.html');
+    await expect(page.locator('#usersTableBody tr').filter({ hasText: email })).toHaveCount(0);
+
+    await page.getByTestId('tab-approvals').click();
+    await expect(page.getByTestId('pending-row-' + userId)).toBeVisible({ timeout: 15000 });
+  });
 });

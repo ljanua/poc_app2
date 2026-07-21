@@ -36,7 +36,8 @@ const {
   assertTierAllowsNewMember,
   assertTierAllowsNewVideo,
   resolveTeamIdForPlayer,
-  getTierForUser
+  getTierForUser,
+  roleForTierCode
 } = require('./tiers/quota');
 
 require('dotenv').config({ path: path.join(process.cwd(), '.env') });
@@ -763,7 +764,8 @@ function toUserPayload(row) {
     status: row.status,
     approvalStatus: row.approvalStatus || row.approval_status || null,
     subscriptionTierId: row.subscriptionTierId || row.subscription_tier_id || null,
-    tierCode: row.tierCode || null,
+    tierCode: row.tierCode || row.tier_code || null,
+    tierDisplayName: row.tierDisplayName || row.tier_display_name || null,
     lastLogin: row.lastLogin || row.last_login_label || row.lastLoginLabel || null,
     password: row.password || row.password_hash || row.passwordHash || '',
     clubIds: Array.isArray(row.clubIds) ? row.clubIds : []
@@ -3991,7 +3993,7 @@ async function handlePlayersApi(req, res, requestUrl) {
     const params = [];
     if (requestedEmail) {
       params.push(requestedEmail);
-      whereSql = `WHERE LOWER(email) = LOWER($${params.length})`;
+      whereSql = `WHERE LOWER(u.email) = LOWER($${params.length})`;
     }
     if (actor && actor.role === 'ClubAdmin' && actor.status === 'active') {
       const clubId = String(requestUrl.searchParams.get('clubId') || '').trim();
@@ -4006,31 +4008,37 @@ async function handlePlayersApi(req, res, requestUrl) {
       }
       params.push(clubId);
       const clubFilter = `
-        id IN (
+        u.id IN (
           SELECT user_id FROM coach_clubs WHERE club_id = $${params.length}
         )
       `;
       whereSql = whereSql ? `${whereSql} AND ${clubFilter}` : `WHERE ${clubFilter}`;
     }
 
+    const approvedFilter = `u.approval_status = 'active'`;
+    whereSql = whereSql ? `${whereSql} AND ${approvedFilter}` : `WHERE ${approvedFilter}`;
+
     const userRows = await pool.query(`
       SELECT
-        id,
-        name,
-        email,
-        role,
-        status,
-        approval_status AS "approvalStatus",
-        subscription_tier_id AS "subscriptionTierId",
-        password_hash AS "passwordHash",
-        last_login_label AS "lastLogin",
+        u.id,
+        u.name,
+        u.email,
+        u.role,
+        u.status,
+        u.approval_status AS "approvalStatus",
+        u.subscription_tier_id AS "subscriptionTierId",
+        st.code AS "tierCode",
+        st.display_name AS "tierDisplayName",
+        u.password_hash AS "passwordHash",
+        u.last_login_label AS "lastLogin",
         COALESCE(
-          (SELECT array_agg(club_id ORDER BY club_id) FROM coach_clubs WHERE user_id = users.id),
+          (SELECT array_agg(club_id ORDER BY club_id) FROM coach_clubs WHERE user_id = u.id),
           ARRAY[]::text[]
         ) AS "clubIds"
-      FROM users
+      FROM users u
+      LEFT JOIN subscription_tiers st ON st.id = u.subscription_tier_id
       ${whereSql}
-      ORDER BY name ASC
+      ORDER BY u.name ASC
     `, params);
 
     sendJson(res, 200, { data: userRows.rows.map(toUserPayload) });
@@ -4317,6 +4325,99 @@ async function handlePlayersApi(req, res, requestUrl) {
       `
     );
     sendJson(res, 200, { data: rows.rows });
+    return;
+  }
+
+  if (req.method === 'POST' && requestUrl.pathname.match(new RegExp(`^${apiPrefix}/admin/users/[^/]+/subscription$`))) {
+    const payload = await readJsonBody(req);
+    const gate = await requireSystemAdminFromRequest(req, requestUrl, payload);
+    if (!gate.ok) {
+      sendJson(res, gate.error.status, gate.error);
+      return;
+    }
+    const userId = requestUrl.pathname.split('/').slice(-2)[0];
+    const tierIdRaw = String(payload.tierId || '').trim();
+    const tierCodeRaw = String(payload.tierCode || payload.code || '').trim().toLowerCase();
+    let tierRow = null;
+    if (tierIdRaw) {
+      const byId = await pool.query(
+        `
+          SELECT id, code, display_name AS "displayName", active
+          FROM subscription_tiers
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [tierIdRaw]
+      );
+      tierRow = byId.rows[0] || null;
+    } else if (tierCodeRaw) {
+      const byCode = await pool.query(
+        `
+          SELECT id, code, display_name AS "displayName", active
+          FROM subscription_tiers
+          WHERE LOWER(code) = $1
+          LIMIT 1
+        `,
+        [tierCodeRaw]
+      );
+      tierRow = byCode.rows[0] || null;
+    }
+    if (!tierRow || !tierRow.active) {
+      sendJson(res, 400, appError(400, 'validation_error', 'Choose an active subscription tier.'));
+      return;
+    }
+
+    const existing = await pool.query(
+      `SELECT id, role, status FROM users WHERE id = $1 LIMIT 1`,
+      [userId]
+    );
+    const target = existing.rows[0];
+    if (!target) {
+      sendJson(res, 404, appError(404, 'not_found', 'The selected user was not found anymore. Refresh and try again.'));
+      return;
+    }
+
+    const nextRole = target.role === 'SystemAdmin'
+      ? 'SystemAdmin'
+      : roleForTierCode(tierRow.code);
+
+    await pool.query(
+      `
+        UPDATE users
+        SET subscription_tier_id = $2,
+            role = $3,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [userId, tierRow.id, nextRole]
+    );
+
+    const updated = await pool.query(
+      `
+        SELECT
+          u.id,
+          u.name,
+          u.email,
+          u.role,
+          u.status,
+          u.approval_status AS "approvalStatus",
+          u.subscription_tier_id AS "subscriptionTierId",
+          st.code AS "tierCode",
+          st.display_name AS "tierDisplayName",
+          u.password_hash AS "passwordHash",
+          u.last_login_label AS "lastLogin",
+          COALESCE(
+            (SELECT array_agg(club_id ORDER BY club_id) FROM coach_clubs WHERE user_id = u.id),
+            ARRAY[]::text[]
+          ) AS "clubIds"
+        FROM users u
+        LEFT JOIN subscription_tiers st ON st.id = u.subscription_tier_id
+        WHERE u.id = $1
+        LIMIT 1
+      `,
+      [userId]
+    );
+    sendJson(res, 200, { data: toUserPayload(updated.rows[0]) });
     return;
   }
 

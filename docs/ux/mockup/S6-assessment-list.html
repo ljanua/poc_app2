@@ -321,13 +321,45 @@
           .replace(/'/g, '&#39;');
       }
 
-      function buildCommentMarkup(clip, isComplete, isFailed) {
-        const text = clip.comments || (isFailed ? clip.errorMessage : '');
-        if (!text) {
+      function truncateCommentPreview(text, maxLen) {
+        const raw = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!raw) {
           return '';
         }
-        const errorClass = isFailed ? ' result-comment--error' : '';
-        return '<div class="result-comment' + errorClass + '">' + escapeHtml(text) + '</div>';
+        const limit = maxLen || 120;
+        if (raw.length <= limit) {
+          return raw;
+        }
+        return raw.slice(0, limit - 1).trim() + '…';
+      }
+
+      function buildCommentMarkup(text, options) {
+        const value = String(text || '');
+        if (!value) {
+          return '';
+        }
+        const opts = options || {};
+        const errorClass = opts.isError ? ' result-comment--error' : '';
+        const previewClass = opts.preview ? ' result-comment--preview' : ' result-comment--full';
+        const testId = opts.preview ? 'assessment-comment-preview' : 'assessment-comment-full';
+        return (
+          '<div class="result-comment' + errorClass + previewClass + '" data-testid="' + testId + '">' +
+          escapeHtml(value) +
+          '</div>'
+        );
+      }
+
+      function assessmentDetailPayload(clip, isComplete, isFailed) {
+        const text = clip.comments || (isFailed ? clip.errorMessage : '') || '';
+        const skillsMarkup = isComplete ? buildSkillListMarkup(clip, true) : '';
+        const hasSkills = Boolean(skillsMarkup);
+        const hasText = Boolean(String(text).trim());
+        return {
+          text: text,
+          skillsMarkup: skillsMarkup,
+          hasDetails: hasText || hasSkills,
+          isError: Boolean(isFailed && text)
+        };
       }
 
       /** Format clip.score as percent. Primary: 0–1 fraction. Legacy: values > 1 treated as 1–5. */
@@ -369,9 +401,12 @@
         const rated = clip.skillRatings && typeof clip.skillRatings === 'object' && !Array.isArray(clip.skillRatings)
           ? Object.keys(clip.skillRatings)
           : [];
+        // Live API often returns skillFocus: [] while still setting clip.skill (offline mock
+        // already maps empty focus → [skill]). Fall back so Expand + skill rows still appear.
+        const fallback = focus.length || rated.length ? [] : (clip.skill ? [clip.skill] : []);
         const seen = {};
         const ordered = [];
-        focus.concat(rated).forEach(function (name) {
+        focus.concat(rated).concat(fallback).forEach(function (name) {
           const key = String(name || '').trim();
           if (!key || seen[key]) {
             return;
@@ -380,29 +415,6 @@
           ordered.push(key);
         });
         return ordered;
-      }
-
-      const skillAbbrByName = (function () {
-        const map = {};
-        const catalog = MockupApi.listSkills(
-          currentUser && currentUser.role,
-          currentUser && currentUser.email,
-          'all'
-        ) || [];
-        catalog.forEach(function (skill) {
-          if (!skill || !skill.name) return;
-          const key = String(skill.name).trim().toLowerCase();
-          const abbr = skill.abbreviation || (MockupApi.suggestSkillAbbreviation && MockupApi.suggestSkillAbbreviation(skill.name));
-          if (key && abbr) {
-            map[key] = abbr;
-          }
-        });
-        return map;
-      })();
-
-      function skillDisplayLabel(skillName) {
-        const key = String(skillName || '').trim().toLowerCase();
-        return (key && skillAbbrByName[key]) || skillName;
       }
 
       function buildSkillListMarkup(clip, isComplete) {
@@ -417,10 +429,9 @@
         const rows = skills.map(function (skillName) {
           const value = Object.prototype.hasOwnProperty.call(ratings, skillName) ? ratings[skillName] : null;
           const formatted = formatClipScore(value);
-          const label = skillDisplayLabel(skillName);
           return (
             '<li class="result-skill-row" data-testid="result-skill-row">' +
-            '<span class="result-skill-name" title="' + escapeHtml(skillName) + '">' + escapeHtml(label) + '</span>' +
+            '<span class="result-skill-name">' + escapeHtml(skillName) + '</span>' +
             '<span class="result-skill-value" data-testid="result-skill-value">' + escapeHtml(formatted.label) + '</span>' +
             '</li>'
           );
@@ -447,6 +458,7 @@
       }
 
       function render() {
+        resultsGrid.classList.remove('assessment-focus-mode');
         const clips = loadClipsForRender(selectedStatus);
         const countClips = loadClipsForCounts();
         const assessedCount = countClips.filter(function (clip) {
@@ -515,8 +527,31 @@
           const actions =
             '<div class="result-actions">' + openOriginal + primaryAction + '</div>';
           const scoreMarkup = buildScoreMarkup(clip, isComplete, isFailed);
-          const skillListMarkup = buildSkillListMarkup(clip, isComplete);
-          const commentMarkup = buildCommentMarkup(clip, isComplete, isFailed);
+          const detail = assessmentDetailPayload(clip, isComplete, isFailed);
+          const detailsId = 'assessment-details-' + String(clip.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+          let assessmentExpandMarkup = '';
+          if (detail.hasDetails) {
+            const previewText = detail.text ? truncateCommentPreview(detail.text, 120) : '';
+            const previewMarkup = previewText
+              ? buildCommentMarkup(previewText, { preview: true, isError: detail.isError })
+              : '';
+            const fullCommentMarkup = detail.text
+              ? buildCommentMarkup(detail.text, { preview: false, isError: detail.isError })
+              : '';
+            assessmentExpandMarkup =
+              '<div class="assessment-expand-toolbar">' +
+              previewMarkup +
+              '<button type="button" class="assessment-expand-toggle" data-testid="assessment-expand-toggle" aria-expanded="false" aria-controls="' +
+              escapeHtml(detailsId) +
+              '">Expand details</button>' +
+              '</div>' +
+              '<div class="assessment-details" id="' +
+              escapeHtml(detailsId) +
+              '" data-testid="assessment-details" hidden>' +
+              fullCommentMarkup +
+              detail.skillsMarkup +
+              '</div>';
+          }
 
           const card = document.createElement('div');
           card.className = 'result-card';
@@ -540,9 +575,8 @@
             '<span class="status-badge ' + statusClass + '">' + statusLabel + '</span>' +
             '</div>' +
             '<div class="result-meta"><span>' + escapeHtml(clip.submittedAt) + '</span><span>' + escapeHtml(clip.skill) + '</span><span>' + escapeHtml(clip.teamName) + '</span></div>' +
-            commentMarkup +
             scoreMarkup +
-            skillListMarkup +
+            assessmentExpandMarkup +
             '</div>' +
             actions +
             '</div>';
@@ -594,7 +628,60 @@
         });
       });
 
+      function collapseAssessmentCard(card) {
+        if (!card) {
+          return;
+        }
+        const details = card.querySelector('[data-testid="assessment-details"]');
+        const toggle = card.querySelector('[data-testid="assessment-expand-toggle"]');
+        if (details) {
+          details.setAttribute('hidden', '');
+        }
+        card.classList.remove('is-focus-expanded');
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.textContent = 'Expand details';
+        }
+      }
+
+      function clearAssessmentFocus() {
+        resultsGrid.classList.remove('assessment-focus-mode');
+        resultsGrid.querySelectorAll('.result-card.is-focus-expanded').forEach(collapseAssessmentCard);
+      }
+
+      function focusAssessmentCard(card, expandToggle) {
+        clearAssessmentFocus();
+        const details = card.querySelector('[data-testid="assessment-details"]');
+        if (!details) {
+          return;
+        }
+        details.removeAttribute('hidden');
+        card.classList.add('is-focus-expanded');
+        resultsGrid.classList.add('assessment-focus-mode');
+        expandToggle.setAttribute('aria-expanded', 'true');
+        expandToggle.textContent = 'Collapse details';
+        card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+
       resultsGrid.addEventListener('click', function (event) {
+        const expandToggle = event.target.closest('[data-testid="assessment-expand-toggle"]');
+        if (expandToggle) {
+          event.preventDefault();
+          event.stopPropagation();
+          const card = expandToggle.closest('.result-card');
+          const details = card && card.querySelector('[data-testid="assessment-details"]');
+          if (!details) {
+            return;
+          }
+          const willExpand = details.hasAttribute('hidden');
+          if (willExpand) {
+            focusAssessmentCard(card, expandToggle);
+          } else {
+            clearAssessmentFocus();
+          }
+          return;
+        }
+
         const deleteButton = event.target.closest('[data-testid="delete-clip"]');
         if (deleteButton) {
           event.preventDefault();

@@ -5,6 +5,19 @@ const path = require('node:path');
 
 const DEFAULT_VIDEO_ROOT = 'C:\\vantageiq_videos';
 
+const TRUTHY_ENV_VALUES = new Set(['1', 'true', 'yes', 'on']);
+
+function parseEnvBoolean(value, defaultValue) {
+  if (value == null || String(value).trim() === '') {
+    return defaultValue;
+  }
+  return TRUTHY_ENV_VALUES.has(String(value).trim().toLowerCase());
+}
+
+function isVideoProcessingDebugEnabled() {
+  return parseEnvBoolean(process.env.DEBUG, false);
+}
+
 function getVideoRoot() {
   const configured = process.env.VANTAGEIQ_VIDEO_ROOT;
   if (configured && String(configured).trim()) {
@@ -136,6 +149,8 @@ async function getYtdlpPath(pool) {
 
 module.exports = {
   DEFAULT_VIDEO_ROOT,
+  parseEnvBoolean,
+  isVideoProcessingDebugEnabled,
   getVideoRoot,
   originalsDir,
   segmentsDirForClip,

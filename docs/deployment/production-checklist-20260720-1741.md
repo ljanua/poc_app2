@@ -1,5 +1,7 @@
 # Production deployment checklist
 
+**This file:** `docs/deployment/production-checklist-YYYYMMDD-HHMM.md` (stamped per `/ce-deploydb` run).
+
 Use this before shipping mockup/API code that depends on Postgres schema under `apps/api/src/db/`.
 
 **Authority:** apply migrations manually against the production `DATABASE_URL` from repo-root **`.env_prod`**. There is no automatic migrate-on-deploy and no migration-history table. Confirm with `information_schema` (or a known failing query), then apply missing SQL files in number order.
@@ -71,18 +73,20 @@ Plan `docs/plans/2026-07-17-005-fix-users-bottom-nav-all-screens-plan.md` was **
 | 7 | `031_clubs_default_sport.sql` | `clubs.default_sport_id` |
 | 8 | `032_clubs_is_free_tier.sql` | `clubs.is_free_tier` (+ partial index) for public free signup |
 | 9 | `033_subscription_tiers_and_approval.sql` | `subscription_tiers`, user `approval_status` + `subscription_tier_id`, `user_oauth_identities`, `auth_handoff_codes` |
+| 10 | `034_registration_intent_and_join_requests.sql` | `registration_intents` (create/join intent + SA/ClubAdmin approval statuses) |
 
 Skip any row already verified present on production. Apply remaining files **in the order above**.
 
 Later releases: append new `NNN_*.sql` rows to this table (or a dated subsection) when they ship.
 
-### This run focus (2026-07-18 public landing)
+### This run focus (2026-07-20 schema — tiers + registration intent)
 
-If 025–031 are already on prod, the only new gap for free-tier signup is:
+If 025–032 are already on prod, apply only the new gaps:
 
 | Order | File | What it adds |
 |------:|------|----------------|
-| 1 | `032_clubs_is_free_tier.sql` | `clubs.is_free_tier BOOLEAN NOT NULL DEFAULT FALSE` and `idx_clubs_is_free_tier` |
+| 1 | `033_subscription_tiers_and_approval.sql` | Seeded `subscription_tiers`; `users.approval_status` / `subscription_tier_id`; `user_oauth_identities`; `auth_handoff_codes` |
+| 2 | `034_registration_intent_and_join_requests.sql` | `registration_intents` table + indexes for create/join pending flows |
 
 ---
 
@@ -161,6 +165,41 @@ WHERE schemaname = 'public'
 
 Expect `is_free_tier` present (boolean, default false) and the partial index name above.
 
+### 033 — subscription tiers + approval / OAuth
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name IN ('subscription_tiers', 'user_oauth_identities', 'auth_handoff_codes')
+ORDER BY table_name;
+
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'users'
+  AND column_name IN ('approval_status', 'subscription_tier_id');
+
+SELECT code FROM subscription_tiers ORDER BY sort_order;
+```
+
+Expect four tier codes (`free`, `professional`, `club_basic`, `club_premium`) when 033 has been applied.
+
+### 034 — registration intents
+
+```sql
+SELECT table_name
+FROM information_schema.tables
+WHERE table_schema = 'public'
+  AND table_name = 'registration_intents';
+
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename = 'registration_intents'
+ORDER BY indexname;
+```
+
 ### 027 — link ingest (if in scope)
 
 ```sql
@@ -195,12 +234,14 @@ Expect the definition to include `ClubAdmin`.
 From repo root, **after loading `.env_prod`** (section above):
 
 ```powershell
-# PowerShell — apply only missing files; example includes latest free-tier migration
+# PowerShell — apply only missing files; example through latest registration-intent migration
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/028_player_skill_ratings_history.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/029_games_and_game_performance.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/030_sports_duration_players.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/031_clubs_default_sport.sql
 psql $env:DATABASE_URL -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/033_subscription_tiers_and_approval.sql
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/034_registration_intent_and_join_requests.sql
 ```
 
 ```bash
@@ -210,12 +251,21 @@ psql "$DATABASE_URL" -f apps/api/src/db/migrations/029_games_and_game_performanc
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/030_sports_duration_players.sql
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/031_clubs_default_sport.sql
 psql "$DATABASE_URL" -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
+psql "$DATABASE_URL" -f apps/api/src/db/migrations/033_subscription_tiers_and_approval.sql
+psql "$DATABASE_URL" -f apps/api/src/db/migrations/034_registration_intent_and_join_requests.sql
 ```
 
-Adjust the file list to your gap list; always keep **numeric order**. For a prod DB already through **031**, apply only:
+Adjust the file list to your gap list; always keep **numeric order**. For a prod DB already through **032**, apply only:
 
 ```powershell
-psql $env:DATABASE_URL -f apps/api/src/db/migrations/032_clubs_is_free_tier.sql
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/033_subscription_tiers_and_approval.sql
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/034_registration_intent_and_join_requests.sql
+```
+
+For a prod DB already through **033**, apply only:
+
+```powershell
+psql $env:DATABASE_URL -f apps/api/src/db/migrations/034_registration_intent_and_join_requests.sql
 ```
 
 - [ ] `.env_prod` was loaded into this shell before any `psql`.
@@ -267,10 +317,13 @@ Log in as the roles you care about; check only features this release touches.
 | Public landing | `/` shows dual-door marketing page; `/mockup` still hub |
 | Free signup | Coach door → create account → `ClubAdmin` + personal club; `clubs.is_free_tier = true` |
 | Free-tier caps | First team OK; second team / extra coach blocked |
+| Tiers / approvals | S7 Approvals & Tiers tabs load; pending registrations list without 500 |
+| Registration intent | Public create/join wizard persists intent; SA approve materializes club/team |
 | S9 Assessment history | Open a player assessment path; history loads without 500 |
 | S10 Games | List/create fixture; open Game Sheet; ratings persist after reopen |
 | S8 Skills | Sport filter / club default sport behave as expected |
 | S4 link ingest | Link mode UI/API if 027 was applied |
+| S4 analysis window | Start/duration max 30s; segments 10s / 480p / no audio (code + prior schema) |
 | Users nav | SystemAdmin/ClubAdmin see Users; Coach does not |
 
 - [ ] No new `42703` / undefined_column / undefined_table errors in server logs (`log/` or host logs).

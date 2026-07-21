@@ -4992,6 +4992,10 @@
             email: user.email,
             role: user.role,
             status: user.status,
+            approvalStatus: user.approvalStatus || null,
+            subscriptionTierId: user.subscriptionTierId || null,
+            tierCode: user.tierCode || null,
+            tierDisplayName: user.tierDisplayName || null,
             password: user.password || '',
             lastLogin: user.lastLogin || 'Unknown',
             clubIds: Array.isArray(user.clubIds) ? user.clubIds : []
@@ -5015,6 +5019,9 @@
             return entry.clubId;
           });
         return Object.assign({}, user, { clubIds: clubIds });
+      });
+      users = users.filter(function (user) {
+        return String(user.approvalStatus || 'active') === 'active';
       });
       if (session && session.role === 'ClubAdmin' && session.status === 'active') {
         const allowed = activeClubId
@@ -5355,6 +5362,34 @@
         return { status: 200, code: 'ok', tiers: clone(response.body.data) };
       }
       return clone(response.body || { status: response.status || 403, code: 'forbidden', message: 'You do not have permission to perform this action.' });
+    },
+
+    changeUserSubscription(userId, tierIdOrCode) {
+      const session = this.getCurrentUser();
+      const actorEmail = (session && session.email) || '';
+      if (!shouldUseBackendPlayersMode()) {
+        return { status: 503, code: 'service_unavailable', message: 'Backend persistence is unavailable.' };
+      }
+      const payload = { actorEmail };
+      const value = String(tierIdOrCode || '').trim();
+      if (value.indexOf('tier_') === 0) {
+        payload.tierId = value;
+      } else {
+        payload.tierCode = value;
+      }
+      const response = backendRequest(
+        'POST',
+        '/admin/users/' + encodeURIComponent(userId) + '/subscription',
+        payload
+      );
+      if (response.status === 200 && response.body && response.body.data) {
+        return { status: 200, code: 'ok', user: clone(response.body.data) };
+      }
+      return clone(response.body || {
+        status: response.status || 403,
+        code: 'forbidden',
+        message: 'You do not have permission to perform this action.'
+      });
     },
 
     updateSubscriptionTier(tierId, payload) {

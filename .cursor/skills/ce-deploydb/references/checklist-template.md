@@ -1,5 +1,7 @@
 # Production deployment checklist
 
+**Filename:** write each deploy run to `docs/deployment/production-checklist-YYYYMMDD-HHMM.md` (local time). Do not use an untimestamped `production-checklist.md` as the active checklist.
+
 Use this before shipping mockup/API code that depends on Postgres schema under `apps/api/src/db/`.
 
 **Authority:** apply migrations manually against the production `DATABASE_URL` from repo-root **`.env_prod`**. There is no automatic migrate-on-deploy and no migration-history table. Confirm with `information_schema` (or a known failing query), then apply missing SQL files in number order.

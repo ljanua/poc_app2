@@ -348,6 +348,7 @@ async function processClip(pool, clipId) {
   const skillFocusList = Array.isArray(clip.skillFocus) && clip.skillFocus.length
     ? clip.skillFocus
     : ['General'];
+  const coreSkill = skillFocusList[0] || 'General';
   logAuditEvent('clip.processing.started', {
     clipId,
     playerName: clip.playerName,
@@ -360,10 +361,12 @@ async function processClip(pool, clipId) {
     sourceUrl: clip.sourceUrl || null
   });
   const assessmentContext = {
-    sportType: clip.sportType,
+    clipId,
     situation: clip.situation,
     ageOfPlayer: computeAge(clip.birthMonth, clip.birthYear),
-    skillFocusList
+    skillFocusList,
+    position: clip.position,
+    coreSkill
   };
 
   const tempRoot = createTempDir('vantageiq-clip-');
@@ -408,6 +411,7 @@ async function processClip(pool, clipId) {
       await saveClipSegment(pool, clipId, index, segmentPath);
       const framePaths = await extractSegmentFrames(segmentPath, framesDir);
       const frameImages = readFramesAsBase64(framePaths);
+      assessmentContext.segmentIndex = index;
       const segmentResult = await reviewSegment(pool, assessmentContext, frameImages);
       ratingsBySkill = mergeSegmentRatings(ratingsBySkill, segmentResult.ratings);
       if (segmentResult.comments) {

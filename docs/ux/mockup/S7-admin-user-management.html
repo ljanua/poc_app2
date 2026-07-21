@@ -69,10 +69,9 @@
                   <th>Name</th>
                   <th>Email</th>
                   <th>Role</th>
+                  <th data-testid="subscription-column-header">Subscription</th>
                   <th>Status</th>
-                  <th>Approval</th>
                   <th>Clubs</th>
-                  <th>Last Login</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -264,6 +263,28 @@
         <div class="inline-actions">
           <button class="btn btn-primary" type="submit">Update Role</button>
           <button class="btn btn-secondary" type="button" data-close-modal="changeRoleModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="changeSubscriptionModal" aria-hidden="true" data-testid="change-subscription-modal">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h2>Change Subscription</h2>
+        <button class="mini-btn" data-close-modal="changeSubscriptionModal">Close</button>
+      </div>
+      <form id="changeSubscriptionForm" class="modal-form">
+        <div class="notice">Selected user: <strong id="subscriptionTargetUser">-</strong></div>
+        <p class="muted-text">Updating the subscription also syncs the user’s role to the tier mapping (SystemAdmin targets keep SystemAdmin).</p>
+        <label class="form-label" for="updatedSubscriptionTier">Subscription tier <span class="required">*</span></label>
+        <select id="updatedSubscriptionTier" data-testid="subscription-tier-select" required>
+          <option value="">-- Select a tier --</option>
+        </select>
+
+        <div class="inline-actions">
+          <button class="btn btn-primary" type="submit" data-testid="subscription-update-submit">Update Subscription</button>
+          <button class="btn btn-secondary" type="button" data-close-modal="changeSubscriptionModal">Cancel</button>
         </div>
       </form>
     </div>
@@ -620,28 +641,75 @@
                 : '<span class="muted-text">—</span>') +
               ' <button class="mini-btn js-admin-action js-assign-club" data-user-id="' + user.id + '" data-user-name="' + escapeHtml(user.name) + '" data-email="' + user.email + '">Assign</button>' +
             '</td>';
-          const approval = String(user.approvalStatus || 'active');
-          const approvalBadge =
-            approval === 'active'
-              ? '<span class="badge badge-improving" data-testid="approval-active">Approved</span>'
-              : approval === 'pending'
-                ? '<span class="badge badge-declining" data-testid="approval-pending">Pending</span>'
-                : '<span class="badge badge-declining" data-testid="approval-rejected">Rejected</span>';
+          const subscriptionLabel = user.tierDisplayName || user.tierCode || '—';
+          const lastLoginLabel = user.lastLogin || 'Unknown';
+          const statusBadge =
+            '<span class="badge ' +
+            (user.status === 'active' ? 'badge-improving' : 'badge-declining') +
+            '" data-testid="user-status" title="Last login: ' +
+            escapeHtml(lastLoginLabel) +
+            '">' +
+            (user.status === 'active' ? 'Active' : 'Inactive') +
+            '</span>';
+          const changeSubscriptionBtn =
+            state.viewRole === 'SystemAdmin'
+              ? '<button class="mini-btn js-admin-action js-change-subscription" data-testid="change-subscription" data-user="' +
+                escapeHtml(user.name) +
+                '" data-email="' +
+                escapeHtml(user.email) +
+                '" data-user-id="' +
+                escapeHtml(user.id) +
+                '" data-tier-id="' +
+                escapeHtml(user.subscriptionTierId || '') +
+                '" data-tier-code="' +
+                escapeHtml(user.tierCode || '') +
+                '">Change Subscription</button>'
+              : '';
           row.innerHTML =
             '<td>' + escapeHtml(user.name) + '</td>' +
             '<td>' + escapeHtml(user.email) + '</td>' +
             '<td><span class="team-chip">' + escapeHtml(user.role) + '</span></td>' +
-            '<td><span class="badge ' + (user.status === 'active' ? 'badge-improving' : 'badge-declining') + '">' + (user.status === 'active' ? 'Active' : 'Inactive') + '</span></td>' +
-            '<td>' + approvalBadge + '</td>' +
+            '<td data-testid="subscription-cell">' + escapeHtml(subscriptionLabel) + '</td>' +
+            '<td>' + statusBadge + '</td>' +
             clubsCell +
-            '<td>' + escapeHtml(user.lastLogin || 'Unknown') + '</td>' +
             '<td><div class="inline-actions">' +
             '<button class="mini-btn js-admin-action js-change-role" data-user="' + escapeHtml(user.name) + '" data-email="' + user.email + '" data-role="' + user.role + '">Change Role</button>' +
+            changeSubscriptionBtn +
             '<button class="mini-btn js-admin-action js-change-password" data-user="' + escapeHtml(user.name) + '" data-email="' + user.email + '">Change Password</button>' +
             '<button class="mini-btn ' + (user.status === 'active' ? 'warn js-deactivate' : 'positive js-reactivate') + ' js-admin-action" data-email="' + user.email + '">' + (user.status === 'active' ? 'Deactivate' : 'Reactivate') + '</button>' +
             '</div></td>';
           usersTableBody.appendChild(row);
         });
+      }
+
+      function populateSubscriptionTier(selectedTierId, selectedTierCode) {
+        const select = document.getElementById('updatedSubscriptionTier');
+        select.innerHTML = '<option value="">-- Select a tier --</option>';
+        const response = MockupApi.listSubscriptionTiersAdmin
+          ? MockupApi.listSubscriptionTiersAdmin()
+          : { status: 503, tiers: [] };
+        if (response.status >= 400 || !Array.isArray(response.tiers)) {
+          return false;
+        }
+        response.tiers
+          .filter(function (tier) { return tier && tier.active !== false; })
+          .forEach(function (tier) {
+            const opt = document.createElement('option');
+            opt.value = tier.id || tier.code;
+            opt.textContent = tier.displayName || tier.code || tier.id;
+            opt.setAttribute('data-tier-code', tier.code || '');
+            select.appendChild(opt);
+          });
+        if (selectedTierId) {
+          select.value = selectedTierId;
+        }
+        if (!select.value && selectedTierCode) {
+          const match = Array.from(select.options).find(function (opt) {
+            return opt.getAttribute('data-tier-code') === selectedTierCode;
+          });
+          if (match) select.value = match.value;
+        }
+        return select.options.length > 1;
       }
 
       function escapeHtml(value) {
@@ -780,7 +848,7 @@
           select.appendChild(opt);
         });
 
-        if (activeClub && activeClub.id && clubs.length === 1) {
+        if (required && activeClub && activeClub.id && clubs.length === 1) {
           select.value = clubs[0].id;
           select.disabled = true;
           select.required = false;
@@ -790,7 +858,9 @@
           select.required = false;
         } else {
           select.disabled = false;
-          if (previous && clubs.some(function (club) { return club.id === previous; })) {
+          if (!required) {
+            select.value = '';
+          } else if (previous && clubs.some(function (club) { return club.id === previous; })) {
             select.value = previous;
           } else if (required && clubs[0]) {
             select.value = clubs[0].id;
@@ -813,12 +883,15 @@
 
       toggleRoleViewBtn.addEventListener('click', function () {
         state.viewRole = state.viewRole === 'SystemAdmin' ? 'Coach' : 'SystemAdmin';
+        renderUsers();
+        applyFilters();
         setAdminActionState();
         showToast('Role switched to ' + state.viewRole + ' view');
       });
 
       usersTableBody.addEventListener('click', function (event) {
         const roleButton = event.target.closest('.js-change-role');
+        const subscriptionButton = event.target.closest('.js-change-subscription');
         const passwordButton = event.target.closest('.js-change-password');
         const deactivateButton = event.target.closest('.js-deactivate');
         const reactivateButton = event.target.closest('.js-reactivate');
@@ -829,6 +902,26 @@
           document.getElementById('roleTargetUser').textContent = state.selectedUserName;
           document.getElementById('updatedRole').value = roleButton.getAttribute('data-role');
           openModal('changeRoleModal');
+        }
+
+        if (subscriptionButton) {
+          if (state.viewRole !== 'SystemAdmin') {
+            showToast('Only SystemAdmin can change subscriptions.');
+            return;
+          }
+          state.selectedUserName = subscriptionButton.getAttribute('data-user');
+          state.selectedUserEmail = subscriptionButton.getAttribute('data-email');
+          state.selectedUserId = subscriptionButton.getAttribute('data-user-id');
+          document.getElementById('subscriptionTargetUser').textContent = state.selectedUserName;
+          const ok = populateSubscriptionTier(
+            subscriptionButton.getAttribute('data-tier-id'),
+            subscriptionButton.getAttribute('data-tier-code')
+          );
+          if (!ok) {
+            showToast('Subscription tiers are unavailable. Check backend connection.');
+            return;
+          }
+          openModal('changeSubscriptionModal');
         }
 
         if (passwordButton) {
@@ -946,6 +1039,32 @@
         renderUsers();
         applyFilters();
         showToast('Role updated for ' + state.selectedUserName + '.');
+      });
+
+      document.getElementById('changeSubscriptionForm').addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (state.viewRole !== 'SystemAdmin') {
+          showToast('Only SystemAdmin can change subscriptions.');
+          return;
+        }
+        const tierValue = document.getElementById('updatedSubscriptionTier').value;
+        if (!tierValue) {
+          showToast('Choose an active subscription tier.');
+          return;
+        }
+        const response = MockupApi.changeUserSubscription(state.selectedUserId, tierValue);
+        if (response.status >= 400) {
+          showToast(response.message || 'Could not update subscription.');
+          return;
+        }
+        const updated = response.user || {};
+        closeModal('changeSubscriptionModal');
+        renderUsers();
+        applyFilters();
+        setAdminActionState();
+        const tierLabel = updated.tierDisplayName || updated.tierCode || 'updated';
+        const roleLabel = updated.role ? ' Role is now ' + updated.role + '.' : '';
+        showToast('Subscription set to ' + tierLabel + ' for ' + state.selectedUserName + '.' + roleLabel);
       });
 
       document.getElementById('changePasswordForm').addEventListener('submit', function (event) {

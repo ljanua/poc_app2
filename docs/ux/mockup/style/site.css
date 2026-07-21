@@ -1209,8 +1209,104 @@ textarea::placeholder { color: var(--text-dim); }
   color: var(--text-muted);
 }
 
+.result-comment--preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.result-card.is-expanded .result-comment--preview,
+.result-card.is-focus-expanded .result-comment--preview {
+  display: none;
+}
+
+.result-comment--full {
+  white-space: pre-wrap;
+}
+
 .result-comment--error {
   color: #f87171;
+}
+
+.assessment-expand-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+  width: 100%;
+}
+
+.assessment-expand-toolbar .result-comment--preview {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.assessment-expand-toggle {
+  margin-top: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--lime);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: right;
+}
+
+.assessment-expand-toggle:hover {
+  text-decoration: underline;
+}
+
+.assessment-details {
+  margin-top: 0.35rem;
+}
+
+.assessment-details[hidden] {
+  display: none !important;
+}
+
+#resultsGrid.assessment-focus-mode {
+  grid-template-columns: 1fr;
+}
+
+#resultsGrid.assessment-focus-mode .result-card:not(.is-focus-expanded) {
+  display: none;
+}
+
+.result-card.is-focus-expanded {
+  width: 100%;
+  max-width: none;
+  align-items: stretch;
+  cursor: default;
+}
+
+.result-card.is-focus-expanded:hover {
+  transform: none;
+}
+
+.result-card.is-focus-expanded .result-thumbnail {
+  width: 180px;
+  min-height: 150px;
+}
+
+.result-card.is-focus-expanded .result-content {
+  flex: 1;
+  padding: 1.25rem 1.5rem 1.25rem 0;
+}
+
+.result-card.is-focus-expanded .result-comment--full {
+  font-size: 0.9rem;
+  line-height: 1.55;
+  max-width: none;
+}
+
+.result-card.is-focus-expanded .assessment-details {
+  margin-top: 0.5rem;
 }
 
 .rating-star { color: var(--lime); font-size: 1rem; }

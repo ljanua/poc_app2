@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { completeClubSelectIfNeeded } = require('./_fixture-utils');
 
 test.describe('S6 Assessment Results list', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,8 +9,10 @@ test.describe('S6 Assessment Results list', () => {
     await page.fill('#email', 'joao@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.locator('#loginForm button[type="submit"]').click();
-    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$/);
+    await page.waitForURL(/S1-player-list|S0a-club-select/, { timeout: 20000 });
+    await completeClubSelectIfNeeded(page);
     await page.goto('/S6-assessment-list.html');
+    await completeClubSelectIfNeeded(page);
     await expect(page.getByText('Video Assessments')).toBeVisible();
   });
 
@@ -26,10 +29,18 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page.getByText('Neymar Jr')).toBeVisible();
   });
 
-  test('renders clip comments above the rating row on assessed cards', async ({ page }) => {
+  test('renders rating above comment preview on collapsed assessed cards', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
     const firstAssessedCard = page.locator('.result-card').filter({ has: page.locator('.status-assessed') }).first();
-    await expect(firstAssessedCard.locator('.result-comment')).toBeVisible();
-    const commentIndex = await firstAssessedCard.locator('.result-comment').evaluate((node) => {
+    await expect(firstAssessedCard.getByTestId('assessment-comment-preview')).toBeVisible();
+    await expect(firstAssessedCard.getByTestId('assessment-details')).toBeHidden();
+    await expect(firstAssessedCard.getByTestId('result-skills')).toBeHidden();
+    const previewIndex = await firstAssessedCard.getByTestId('assessment-comment-preview').evaluate((node) => {
       const card = node.closest('.result-card');
       const children = Array.from(card.querySelectorAll('.result-comment, .result-rating'));
       return children.indexOf(node);
@@ -39,8 +50,128 @@ test.describe('S6 Assessment Results list', () => {
       const children = Array.from(card.querySelectorAll('.result-comment, .result-rating'));
       return children.indexOf(node);
     });
-    expect(commentIndex).toBeGreaterThanOrEqual(0);
-    expect(ratingIndex).toBeGreaterThan(commentIndex);
+    expect(ratingIndex).toBeGreaterThanOrEqual(0);
+    expect(previewIndex).toBeGreaterThan(ratingIndex);
+  });
+
+  test('expands and collapses assessment details with full comments and skills', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    await expect(page.getByText('Cristiano Ronaldo')).toBeVisible();
+    await expect(page.getByText('Neymar Jr')).toBeVisible();
+
+    const messiCard = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    const toggle = messiCard.getByTestId('assessment-expand-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(messiCard.getByTestId('assessment-details')).toBeHidden();
+    await expect(messiCard.getByTestId('result-skills')).toBeHidden();
+
+    await toggle.click();
+    await expect(page.locator('#resultsGrid')).toHaveClass(/assessment-focus-mode/);
+    await expect(messiCard).toHaveClass(/is-focus-expanded/);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveText('Collapse details');
+    await expect(messiCard.getByTestId('assessment-details')).toBeVisible();
+    await expect(messiCard.getByTestId('assessment-comment-full')).toBeVisible();
+    await expect(messiCard.getByTestId('result-skills')).toBeVisible();
+    await expect(messiCard.getByTestId('result-skill-row')).toHaveCount(2);
+    await expect(page.getByText('Cristiano Ronaldo')).toBeHidden();
+    await expect(page.getByText('Neymar Jr')).toBeHidden();
+
+    await toggle.click();
+    await expect(page.locator('#resultsGrid')).not.toHaveClass(/assessment-focus-mode/);
+    await expect(messiCard).not.toHaveClass(/is-focus-expanded/);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toHaveText('Expand details');
+    await expect(messiCard.getByTestId('assessment-details')).toBeHidden();
+    await expect(messiCard.getByTestId('result-skills')).toBeHidden();
+    await expect(page.getByText('Cristiano Ronaldo')).toBeVisible();
+    await expect(page.getByText('Neymar Jr')).toBeVisible();
+  });
+
+  test('focus expand shows only one card until collapse restores the grid', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    const messiCard = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    const ronaldoCard = page.locator('.result-card').filter({ hasText: 'Cristiano Ronaldo' });
+
+    await messiCard.getByTestId('assessment-expand-toggle').click();
+    await expect(page.locator('#resultsGrid')).toHaveClass(/assessment-focus-mode/);
+    await expect(messiCard).toHaveClass(/is-focus-expanded/);
+    await expect(ronaldoCard).toBeHidden();
+
+    await messiCard.getByTestId('assessment-expand-toggle').click();
+    await expect(page.locator('#resultsGrid')).not.toHaveClass(/assessment-focus-mode/);
+    await expect(ronaldoCard).toBeVisible();
+
+    await ronaldoCard.getByTestId('assessment-expand-toggle').click();
+    await expect(ronaldoCard).toHaveClass(/is-focus-expanded/);
+    await expect(messiCard).toBeHidden();
+    await expect(ronaldoCard.getByTestId('assessment-details')).toBeVisible();
+  });
+
+  test('pending cards omit assessment expand toggle', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+    });
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+
+    const pendingCard = page.locator('.result-card').filter({ has: page.locator('.status-pending') }).first();
+    await expect(pendingCard.getByTestId('assessment-expand-toggle')).toHaveCount(0);
+  });
+
+  test('complete clip with only skill name still shows expand and skill row', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.__USE_MOCK_LOCAL__ = true;
+      window.__USE_BACKEND__ = false;
+    });
+    await page.goto('/S0-login.html');
+    await page.evaluate(() => window.localStorage.removeItem('vantageiq_mockup_v2'));
+    await page.fill('#email', 'joao@vantageiq.club');
+    await page.fill('#password', 'SecurePass123');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await page.waitForURL(/S1-player-list|S0a-club-select/, { timeout: 20000 });
+    await completeClubSelectIfNeeded(page);
+
+    await page.evaluate(() => {
+      const key = 'vantageiq_mockup_v2';
+      const store = JSON.parse(window.localStorage.getItem(key) || '{}');
+      store.clips = [{
+        id: 'clip_skill_only_1',
+        playerId: 10,
+        situation: 'Skill-only complete clip',
+        status: 'complete',
+        score: 0.84,
+        summary: '',
+        comments: null,
+        submittedAt: '1 hour ago',
+        skill: 'Decision-making',
+        skillFocus: [],
+        skillRatings: null,
+        sourceUrl: null,
+        segments: []
+      }];
+      window.localStorage.setItem(key, JSON.stringify(store));
+    });
+
+    await page.goto('/S6-assessment-list.html');
+    await expect(page.getByText('Video Assessments')).toBeVisible();
+    const card = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await expect(card.getByTestId('assessment-expand-toggle')).toBeVisible();
+    await expect(card.getByTestId('assessment-comment-preview')).toHaveCount(0);
+    await card.getByTestId('assessment-expand-toggle').click();
+    await expect(card.getByTestId('result-skills')).toBeVisible();
+    await expect(card.getByTestId('result-skill-row')).toHaveCount(1);
+    await expect(card.getByTestId('result-skill-value')).toHaveText('N/A');
   });
 
   test('shows percent scores and bright star only above 80%', async ({ page }) => {
@@ -341,7 +472,7 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page).toHaveURL(/S2-player-dashboard\.html|S2-player-dashboard$/);
   });
 
-  test('shows per-skill percent and N/A on assessed cards', async ({ page }) => {
+  test('shows per-skill percent and N/A on assessed cards when expanded', async ({ page }) => {
     await page.addInitScript(() => {
       window.__USE_MOCK_LOCAL__ = true;
     });
@@ -349,6 +480,7 @@ test.describe('S6 Assessment Results list', () => {
     await expect(page.getByText('Video Assessments')).toBeVisible();
 
     const messiCard = page.locator('.result-card').filter({ hasText: 'Lionel Messi' });
+    await messiCard.getByTestId('assessment-expand-toggle').click();
     await expect(messiCard.getByTestId('result-skills')).toBeVisible();
     await expect(messiCard.getByTestId('result-skill-row')).toHaveCount(2);
     await expect(messiCard.getByTestId('result-skill-value').filter({ hasText: '84%' })).toHaveCount(1);
@@ -356,9 +488,12 @@ test.describe('S6 Assessment Results list', () => {
     await expect(messiCard.getByTestId('rating-label')).toHaveText('84%');
     await expect(page.getByRole('link', { name: 'View Results' })).toHaveCount(0);
 
-    // Catalog skill "Composure" displays as CMP; unknown "Decision-making" keeps full name.
-    await expect(messiCard.locator('.result-skill-name', { hasText: 'CMP' })).toHaveAttribute('title', 'Composure');
+    // Catalog and freeform skills both show full names (Feature 045).
+    await expect(messiCard.locator('.result-skill-name', { hasText: 'Composure' })).toHaveCount(1);
     await expect(messiCard.locator('.result-skill-name', { hasText: 'Decision-making' })).toHaveCount(1);
+    await expect(messiCard.locator('.result-skill-name', { hasText: 'CMP' })).toHaveCount(0);
+    await expect(messiCard.locator('.assessment-expand-toolbar')).toHaveCount(1);
+    await expect(messiCard.locator('.assessment-expand-toolbar [data-testid="assessment-expand-toggle"]')).toHaveCount(1);
   });
 
   test('does not force Pre-Selected Player without query params', async ({ page }) => {
@@ -647,7 +782,8 @@ test.describe('S6 Assessment Results list', () => {
     await page.fill('#email', 'maria@vantageiq.club');
     await page.fill('#password', 'SecurePass123');
     await page.locator('#loginForm button[type="submit"]').click();
-    await expect(page).toHaveURL(/S1-player-list\.html|S1-player-list$|S7-admin-user-management/);
+    await page.waitForURL(/S1-player-list|S7-admin-user-management|S0a-club-select/, { timeout: 20000 });
+    await completeClubSelectIfNeeded(page);
 
     await page.evaluate(() => {
       const key = 'vantageiq_mockup_v2';
@@ -699,6 +835,11 @@ test.describe('S6 Assessment Results list', () => {
         skillRatings: { Finishing: 0.5 }
       });
       window.localStorage.setItem(key, JSON.stringify(store));
+      // SA clip list is active-club scoped; switch into the foreign club to assert visibility.
+      window.localStorage.setItem(
+        'vantageiq_active_club_id',
+        JSON.stringify({ id: 'c_other', name: 'Other Football Club' })
+      );
     });
 
     await page.goto('/S6-assessment-list.html');
