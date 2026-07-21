@@ -80,7 +80,7 @@ test.describe('S7 Approvals & Tiers (SystemAdmin)', () => {
     await expect(page.getByTestId('tabpanel-tiers')).toBeHidden();
   });
 
-  test('AE4: ClubAdmin sees Subscription column but cannot change subscription', async ({ page, request }) => {
+  test('AE4: ClubAdmin sees subscription under Role but cannot change subscription', async ({ page, request }) => {
     const denied = await request.post(APP + '/api/v1/admin/users/u_coach_joao/subscription', {
       headers: { 'X-Actor-Email': CLUB_ADMIN_EMAIL, 'Content-Type': 'application/json' },
       data: { actorEmail: CLUB_ADMIN_EMAIL, tierCode: 'professional' }
@@ -89,7 +89,7 @@ test.describe('S7 Approvals & Tiers (SystemAdmin)', () => {
 
     await loginAs(page, CLUB_ADMIN_EMAIL);
     await page.goto(APP + '/S7-admin-user-management.html');
-    await expect(page.getByTestId('subscription-column-header')).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Subscription' })).toHaveCount(0);
     await expect(page.getByTestId('subscription-cell').first()).toBeVisible();
     await expect(page.getByTestId('change-subscription')).toHaveCount(0);
   });

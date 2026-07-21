@@ -67,9 +67,7 @@
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Email</th>
                   <th>Role</th>
-                  <th data-testid="subscription-column-header">Subscription</th>
                   <th>Status</th>
                   <th>Clubs</th>
                   <th>Actions</th>
@@ -77,11 +75,20 @@
               </thead>
               <tbody id="usersTableBody">
                 <tr data-name="Maria Alves" data-email="maria@vantageiq.club" data-role="SystemAdmin" data-status="active">
-                  <td>Maria Alves</td>
-                  <td>maria@vantageiq.club</td>
-                  <td><span class="team-chip">SystemAdmin</span></td>
-                  <td><span class="badge badge-improving">Active</span></td>
-                  <td>Today, 08:31</td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary">Maria Alves</span>
+                      <span class="cell-secondary muted-text">maria@vantageiq.club</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary"><span class="team-chip">SystemAdmin</span></span>
+                      <span class="cell-secondary muted-text" data-testid="subscription-cell">—</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-improving" data-testid="user-status" title="Last login: Today, 08:31">Active</span></td>
+                  <td class="clubs-cell"><span class="muted-text">—</span></td>
                   <td>
                     <div class="inline-actions">
                       <button class="mini-btn js-admin-action js-change-role" data-user="Maria Alves" data-role="SystemAdmin">Change Role</button>
@@ -91,11 +98,20 @@
                   </td>
                 </tr>
                 <tr data-name="Joao Lima" data-email="joao@vantageiq.club" data-role="Coach" data-status="active">
-                  <td>Joao Lima</td>
-                  <td>joao@vantageiq.club</td>
-                  <td><span class="team-chip">Coach</span></td>
-                  <td><span class="badge badge-improving">Active</span></td>
-                  <td>Yesterday</td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary">Joao Lima</span>
+                      <span class="cell-secondary muted-text">joao@vantageiq.club</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary"><span class="team-chip">Coach</span></span>
+                      <span class="cell-secondary muted-text" data-testid="subscription-cell">—</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-improving" data-testid="user-status" title="Last login: Yesterday">Active</span></td>
+                  <td class="clubs-cell"><span class="muted-text">—</span></td>
                   <td>
                     <div class="inline-actions">
                       <button class="mini-btn js-admin-action js-change-role" data-user="Joao Lima" data-role="Coach">Change Role</button>
@@ -105,11 +121,20 @@
                   </td>
                 </tr>
                 <tr data-name="Ana Costa" data-email="ana@vantageiq.club" data-role="Coach" data-status="inactive">
-                  <td>Ana Costa</td>
-                  <td>ana@vantageiq.club</td>
-                  <td><span class="team-chip">Coach</span></td>
-                  <td><span class="badge badge-declining">Inactive</span></td>
-                  <td>6 days ago</td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary">Ana Costa</span>
+                      <span class="cell-secondary muted-text">ana@vantageiq.club</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="cell-stack">
+                      <span class="cell-primary"><span class="team-chip">Coach</span></span>
+                      <span class="cell-secondary muted-text" data-testid="subscription-cell">—</span>
+                    </div>
+                  </td>
+                  <td><span class="badge badge-declining" data-testid="user-status" title="Last login: 6 days ago">Inactive</span></td>
+                  <td class="clubs-cell"><span class="muted-text">—</span></td>
                   <td>
                     <div class="inline-actions">
                       <button class="mini-btn js-admin-action js-change-role" data-user="Ana Costa" data-role="Coach">Change Role</button>
@@ -666,10 +691,14 @@
                 '">Change Subscription</button>'
               : '';
           row.innerHTML =
-            '<td>' + escapeHtml(user.name) + '</td>' +
-            '<td>' + escapeHtml(user.email) + '</td>' +
-            '<td><span class="team-chip">' + escapeHtml(user.role) + '</span></td>' +
-            '<td data-testid="subscription-cell">' + escapeHtml(subscriptionLabel) + '</td>' +
+            '<td><div class="cell-stack">' +
+            '<span class="cell-primary">' + escapeHtml(user.name) + '</span>' +
+            '<span class="cell-secondary muted-text">' + escapeHtml(user.email) + '</span>' +
+            '</div></td>' +
+            '<td><div class="cell-stack">' +
+            '<span class="cell-primary"><span class="team-chip">' + escapeHtml(user.role) + '</span></span>' +
+            '<span class="cell-secondary muted-text" data-testid="subscription-cell">' + escapeHtml(subscriptionLabel) + '</span>' +
+            '</div></td>' +
             '<td>' + statusBadge + '</td>' +
             clubsCell +
             '<td><div class="inline-actions">' +

@@ -1676,6 +1676,23 @@ textarea::placeholder { color: var(--text-dim); }
   color: var(--text);
 }
 
+.data-table .cell-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.data-table .cell-primary {
+  min-width: 0;
+}
+
+.data-table .cell-secondary {
+  font-size: 0.78rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
 .tabs {
   display: flex;
   gap: 0.4rem;

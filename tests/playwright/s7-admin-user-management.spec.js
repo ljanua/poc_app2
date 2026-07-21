@@ -156,12 +156,17 @@ test.describe('S7 Admin User Management', () => {
     await expect(newRow.locator('.team-chip.js-club-chip')).toHaveCount(0);
   });
 
-  test('SA sees Subscription column and Change Subscription; change to professional syncs Coach role', async ({ page }) => {
-    await expect(page.getByTestId('subscription-column-header')).toBeVisible();
+  test('SA sees subscription under Role and Change Subscription; change to professional syncs Coach role', async ({ page }) => {
+    await expect(page.getByRole('columnheader', { name: 'Email' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Subscription' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Name' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Role' })).toBeVisible();
     await expect(page.getByTestId('change-subscription').first()).toBeVisible();
 
     const joaoRow = page.locator('tr[data-name="Joao Lima"]');
     await expect(joaoRow).toBeVisible();
+    await expect(joaoRow).toContainText('joao@vantageiq.club');
+    await expect(joaoRow.getByTestId('subscription-cell')).toBeVisible();
 
     await joaoRow.getByTestId('change-subscription').click();
     await expect(page.getByTestId('change-subscription-modal')).toBeVisible();
@@ -184,8 +189,9 @@ test.describe('S7 Admin User Management', () => {
     await expect(page.locator('tr[data-name="Joao Lima"]')).toContainText('Coach');
   });
 
-  test('Users tab has no Approval/Last Login columns; Status shows last-login tooltip', async ({ page }) => {
-    await expect(page.getByTestId('subscription-column-header')).toBeVisible();
+  test('Users tab has no Email/Subscription/Approval/Last Login columns; Status shows last-login tooltip', async ({ page }) => {
+    await expect(page.getByRole('columnheader', { name: 'Email' })).toHaveCount(0);
+    await expect(page.getByRole('columnheader', { name: 'Subscription' })).toHaveCount(0);
     await expect(page.getByRole('columnheader', { name: 'Approval' })).toHaveCount(0);
     await expect(page.getByRole('columnheader', { name: 'Last Login' })).toHaveCount(0);
 
